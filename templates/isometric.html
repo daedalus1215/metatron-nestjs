@@ -1,0 +1,434 @@
+<!-- arch-views: The shape of each module. One tower per module, one floor per directory, in 2:1 axonometric projection. -->
+<title>{{project}} Isometric</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&display=swap">
+
+<style>
+:root {
+  --paper:#EDF1F6; --surface:#FFFFFF; --surface2:#E4EAF2; --sunk:#DCE3EC;
+  --ink:#151E29; --ink2:#485A6F; --ink3:#7A8B9F;
+  --rule:#D2DAE4; --rule2:#B9C4D2;
+  --blue:#2B5CA8; --amber:#A85B06; --rose:#A31C39; --green:#1B6448; --violet:#54479A;
+  --t0:#3B72C4; --t1:#8A98A8; --t2:#6A5AB8; --t3:#C06E12; --t4:#22795A;
+  --t5:#8E7C58; --t6:#177F98; --t7:#9A4E82; --t8:#6E7D8E;
+  --shade:#0B1219;
+  --ground:#D7DFE8; --groundline:#C3CDD9;
+  --link:#B4741F;
+  --shadow:0 1px 2px rgba(21,30,41,.06), 0 10px 30px rgba(21,30,41,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:#0C1218; --surface:#141C25; --surface2:#1B2530; --sunk:#101820;
+    --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
+    --rule:#28343F; --rule2:#36454F;
+    --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6;
+    --t0:#5E93DE; --t1:#7E8C9C; --t2:#8B7CD8; --t3:#D9902F; --t4:#37A87C;
+    --t5:#B09A6C; --t6:#2E9EB8; --t7:#BE6C9F; --t8:#5C6B7C;
+    --shade:#000308;
+    --ground:#161F28; --groundline:#212C37;
+    --link:#E0A04A;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --paper:#0C1218; --surface:#141C25; --surface2:#1B2530; --sunk:#101820;
+  --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
+  --rule:#28343F; --rule2:#36454F;
+  --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6;
+  --t0:#5E93DE; --t1:#7E8C9C; --t2:#8B7CD8; --t3:#D9902F; --t4:#37A87C;
+  --t5:#B09A6C; --t6:#2E9EB8; --t7:#BE6C9F; --t8:#5C6B7C;
+  --shade:#000308;
+  --ground:#161F28; --groundline:#212C37;
+  --link:#E0A04A;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.4);
+}
+
+* { box-sizing:border-box; }
+body { margin:0; background:var(--paper); color:var(--ink);
+  font-family:'Archivo',ui-sans-serif,system-ui,sans-serif; font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; }
+.mono { font-family:'IBM Plex Mono',ui-monospace,monospace; }
+.wrap { max-width:1560px; margin:0 auto; padding:0 26px 80px; }
+
+.mast { padding:48px 0 22px; border-bottom:2px solid var(--ink); }
+.eyebrow { font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--ink3); margin:0 0 16px; }
+h1 { font-size:clamp(34px,5.4vw,62px); line-height:1.02; letter-spacing:-.03em; font-weight:700; margin:0; text-wrap:balance; }
+.dek { font-family:'Source Serif 4',Georgia,serif; font-size:18.5px; line-height:1.6; color:var(--ink2);
+  max-width:64ch; margin:18px 0 0; }
+
+.bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:24px 0 12px; }
+.btn { font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:.04em;
+  border:1px solid var(--rule2); background:var(--surface); color:var(--ink2); padding:6px 11px; cursor:pointer; }
+.btn:hover { border-color:var(--ink3); color:var(--ink); }
+.btn.on { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.btn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+.sep { width:1px; height:20px; background:var(--rule2); margin:0 4px; }
+.hint { font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink3); margin-left:auto; }
+
+.grid { display:grid; grid-template-columns:minmax(0,1fr) 372px; border:1px solid var(--rule2);
+  background:var(--surface); box-shadow:var(--shadow); }
+@media (max-width:1140px){ .grid { grid-template-columns:minmax(0,1fr); } }
+.stage { overflow:auto; background:var(--sunk); }
+svg.iso { display:block; margin:0 auto; }
+svg.iso text { font-family:'IBM Plex Mono',monospace; }
+.gtile { fill:var(--ground); stroke:var(--groundline); stroke-width:.75; }
+.bldg { cursor:pointer; }
+.bldg .face { stroke:var(--shade); stroke-opacity:.24; stroke-width:.6; stroke-linejoin:round; }
+.bldg:hover .face { stroke-opacity:.7; stroke-width:1.1; }
+svg.iso.solo .bldg { opacity:.26; }
+svg.iso.solo .bldg.sel { opacity:1; }
+.blab { font-size:10px; fill:var(--ink); font-weight:600; letter-spacing:-.01em; }
+.bsub { font-size:8px; fill:var(--ink3); letter-spacing:.05em; }
+.lead { stroke:var(--ink3); stroke-width:.75; stroke-dasharray:2 2; opacity:.7; }
+.link { fill:none; stroke:var(--link); stroke-width:1.6; opacity:.62; stroke-linecap:round; }
+.link.hot { opacity:1; stroke-width:2.6; }
+svg.iso.solo .link { opacity:.1; }
+svg.iso.solo .link.hot { opacity:1; }
+.linkcap { font-size:8px; fill:var(--link); font-weight:600; }
+
+.insp { border-left:1px solid var(--rule2); padding:18px 20px; overflow:auto; max-height:min(76vh,880px); }
+@media (max-width:1140px){ .insp { border-left:0; border-top:1px solid var(--rule2); max-height:560px; } }
+.insp .empty { font-family:'Source Serif 4',Georgia,serif; font-style:italic; color:var(--ink3); }
+.insp h3 { margin:0 0 2px; font-size:19px; font-weight:700; letter-spacing:-.02em; }
+.isub { font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink3); margin:0 0 14px; }
+.ilab { font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.13em; text-transform:uppercase;
+  color:var(--ink3); margin:16px 0 7px; padding-bottom:4px; border-bottom:1px solid var(--rule); }
+.floors { list-style:none; margin:0; padding:0; display:flex; flex-direction:column-reverse; }
+.floors li { display:flex; align-items:center; gap:9px; font-family:'IBM Plex Mono',monospace;
+  font-size:10.5px; color:var(--ink2); padding:4px 0; border-bottom:1px dotted var(--rule); }
+.floors li .sw { width:12px; height:12px; flex:0 0 auto; }
+.floors li .nm { color:var(--ink); flex:1; word-break:break-all; }
+.floors li .ct { color:var(--ink3); font-variant-numeric:tabular-nums; }
+.lks { list-style:none; margin:0; padding:0; }
+.lks li { font-family:'IBM Plex Mono',monospace; font-size:10.5px; padding:3px 0; color:var(--ink2); word-break:break-all; }
+.lks li b { color:var(--link); font-weight:600; }
+
+.legend { display:flex; flex-wrap:wrap; gap:10px 16px; padding:11px 16px; border:1px solid var(--rule2);
+  border-top:0; background:var(--surface2); }
+.lg { display:flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--ink2); }
+.lg i { width:10px; height:10px; display:block; }
+
+section { margin-top:52px; }
+.shead { display:flex; align-items:baseline; gap:14px; border-bottom:1px solid var(--rule2);
+  padding-bottom:9px; margin-bottom:20px; flex-wrap:wrap; }
+.shead h2 { font-size:22px; font-weight:600; letter-spacing:-.015em; margin:0; }
+.shead .num { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink3); letter-spacing:.1em; }
+.note { font-family:'Source Serif 4',Georgia,serif; font-size:16.5px; line-height:1.65; color:var(--ink2); max-width:68ch; }
+.note + .note { margin-top:13px; }
+.note strong { color:var(--ink); font-weight:400;
+  box-shadow:inset 0 -0.5em 0 color-mix(in srgb, var(--amber) 18%, transparent); }
+figure { margin:24px 0 0; }
+figcaption { font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink3); margin-top:8px; letter-spacing:.03em; }
+footer { margin-top:64px; padding-top:20px; border-top:2px solid var(--ink); color:var(--ink3); }
+@media (prefers-reduced-motion:reduce){ * { transition:none !important; } }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Isometric projection · 2:1 axonometric · {{modules}} modules</p>
+  <h1>{{project}} Isometric</h1>
+  <p class="dek">The same parsed import graph, drawn in three dimensions. Each module is a tower; each floor is a real directory, its thickness set by how many files live there. The vertical axis is the request path — <strong>you land on the roof and descend</strong>: Entry at the top, Domain Model and Persistence at the foundation. Height is therefore not decoration, it is how many layers a module actually has.</p>
+</header>
+
+<div class="bar" id="bar">
+  <button class="btn" id="rotL">&lt;&lt; rotate</button>
+  <button class="btn" id="rotR">rotate &gt;&gt;</button>
+  <span class="sep"></span>
+  <button class="btn" id="zOut">−</button>
+  <button class="btn" id="zIn">+</button>
+  <span class="sep"></span>
+  <button class="btn on" id="tLinks">cross-domain links</button>
+  <button class="btn on" id="tLabels">labels</button>
+  <button class="btn" id="tTest">specs &amp; migrations</button>
+  <button class="btn" id="reset">reset</button>
+  <span class="hint" id="hint">click a tower to inspect it · typeorm, bootstrap and main.ts appear under the specs toggle</span>
+</div>
+
+<div class="grid">
+  <div class="stage" id="stage"></div>
+  <aside class="insp" id="insp"></aside>
+</div>
+<div class="legend" id="legend"></div>
+
+<section>
+  <div class="shead"><span class="num">01</span><h2>What the skyline tells you</h2></div>
+  <p class="note" data-narr="skyline"></p>
+  <p class="note" data-narr="crossDomain"></p>
+  <p class="note" data-narr="absent"></p>
+</section>
+
+<section>
+  <div class="shead"><span class="num">02</span><h2>The projection</h2></div>
+  <p class="note">True isometric, not perspective: the three axes meet at 120°, and a floor at the back of the scene is drawn exactly the same size as an identical floor at the front. That is the point — <strong>equal things stay equal</strong>, so you can compare two towers' storeys across the whole city without correcting for distance.</p>
+  <figure>
+    <svg viewBox="0 0 620 200" role="img" aria-label="How grid coordinates map to screen position in a 2:1 isometric projection" style="max-width:100%;height:auto">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <g stroke="currentColor" fill="none" opacity=".3">
+        <path d="M60,120 L160,70 L260,120 L160,170 Z"/>
+        <path d="M160,70 L160,20"/><path d="M60,120 L60,70"/><path d="M260,120 L260,70"/>
+        <path d="M60,70 L160,20 L260,70"/>
+      </g>
+      <g stroke="currentColor" fill="none" marker-end="url(#ar)" opacity=".85">
+        <path d="M160,120 L250,166"/><path d="M160,120 L70,166"/><path d="M160,120 L160,45"/>
+      </g>
+      <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+        <text x="256" y="182">+x  (right-down)</text>
+        <text x="16" y="182">+y  (left-down)</text>
+        <text x="170" y="40">+z  (up = toward Entry)</text>
+        <text x="330" y="86" opacity=".75">screenX = (x − y) · 22</text>
+        <text x="330" y="104" opacity=".75">screenY = (x + y) · 11 − z</text>
+        <text x="330" y="128" opacity=".55">tile 44 × 22 px, no foreshortening</text>
+      </g>
+    </svg>
+    <figcaption>One tile of the ground grid, and the vertical axis a tower is extruded along.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="shead"><span class="num">03</span><h2>What is real here</h2></div>
+  <p class="note" data-narr="provenance"></p>
+  <p class="note" data-narr="caveats"></p>
+</section>
+
+<footer>
+  <p class="note" style="font-size:14.5px">Parsed from <span class="mono">{{projectId}}</span> · <span id="gen"></span> · 390 files, 1,047 internal imports, 91 directories, 12 towers.</p>
+</footer>
+
+</div>
+
+<script id="arch" type="application/json">__DATA__</script>
+<script>
+(function(){
+"use strict";
+var D = JSON.parse(document.getElementById('arch').textContent);
+document.getElementById('gen').textContent = new Date(D.generatedAt).toISOString().slice(0,10);
+
+var TIER = D.tiers;
+var ORDER = [0,1,2,3,4,5,6,7,8]; // tier index -> stacking (0 Entry highest)
+
+var state = { rot:0, zoom:1, links:true, labels:true, test:false, sel:null };
+
+function nodesFor(mod){
+  return D.nodes.filter(function(n){
+    if (n.module !== mod) return false;
+    if (!state.test && n.tier > 8) return false;
+    return true;
+  });
+}
+function modules(){
+  return D.modules.map(function(m){ return m.id; }).filter(function(m){ return nodesFor(m).length; });
+}
+
+/* ---- build tower models ---- */
+function towers(){
+  var list = modules().map(function(mod){
+    var ns = nodesFor(mod).slice().sort(function(a,b){ return b.tier - a.tier || a.label.localeCompare(b.label); });
+    var files = ns.reduce(function(a,n){ return a + n.count; }, 0);
+    var floors = [], z = 0;
+    ns.forEach(function(n){
+      var h = 6 + n.count * 1.7;
+      floors.push({ node:n, z0:z, z1:z + h, h:h });
+      z += h + 1.2;
+    });
+    var side = files > 60 ? 3.2 : files > 30 ? 2.6 : files > 12 ? 2.1 : 1.6;
+    return { mod:mod, files:files, floors:floors, top:z, side:side, nodes:ns };
+  });
+  // tallest to the back so nothing occludes anything
+  list.sort(function(a,b){ return b.top - a.top; });
+  var COLS = 4, CELL = 5.4;
+  list.forEach(function(t, i){
+    var r = Math.floor(i / COLS), c = i % COLS;
+    t.cx = c * CELL + CELL/2;
+    t.cy = r * CELL + CELL/2;
+  });
+  return list;
+}
+
+/* ---- isometric projection ---- */
+var TW = 44, TH = 22;
+function rot(x, y, cx, cy){
+  var dx = x - cx, dy = y - cy, r = ((state.rot % 4) + 4) % 4;
+  if (r === 1) { var t = dx; dx = dy; dy = -t; }
+  else if (r === 2) { dx = -dx; dy = -dy; }
+  else if (r === 3) { var t2 = dx; dx = -dy; dy = t2; }
+  return [dx + cx, dy + cy];
+}
+function proj(x, y, z){
+  return [ (x - y) * TW/2, (x + y) * TH/2 - z ];
+}
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function poly(pts, cls, tier, shade){
+  var d = pts.map(function(p){ return p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
+  var fill = 'var(--t'+tier+')';
+  var style = shade > 0 ? 'fill:color-mix(in srgb, var(--t'+tier+') '+(100-shade)+'%, var(--shade))' : 'fill:var(--t'+tier+')';
+  return '<polygon class="'+cls+'" points="'+d+'" fill="'+fill+'" style="'+style+'"/>';
+}
+
+var stage = document.getElementById('stage');
+
+function render(){
+  var T = towers();
+  var COLS = 4, CELL = 5.4;
+  var rows = Math.ceil(T.length / COLS);
+  var gcx = (COLS * CELL) / 2, gcy = (rows * CELL) / 2;
+
+  // world positions after rotation
+  T.forEach(function(t){
+    var p = rot(t.cx, t.cy, gcx, gcy);
+    t.wx = p[0]; t.wy = p[1];
+    t.depth = t.wx + t.wy;
+  });
+
+  // scene bounds
+  var pts = [];
+  T.forEach(function(t){
+    var h = t.side/2;
+    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(function(o){
+      pts.push(proj(t.wx + o[0]*h, t.wy + o[1]*h, 0));
+      pts.push(proj(t.wx + o[0]*h, t.wy + o[1]*h, t.top + 46));
+    });
+  });
+  var minX = Math.min.apply(null, pts.map(function(p){return p[0];})) - 40;
+  var maxX = Math.max.apply(null, pts.map(function(p){return p[0];})) + 40;
+  var minY = Math.min.apply(null, pts.map(function(p){return p[1];})) - 30;
+  var maxY = Math.max.apply(null, pts.map(function(p){return p[1];})) + 40;
+  var W = maxX - minX, H = maxY - minY;
+
+  var s = [];
+  s.push('<svg class="iso'+(state.sel?' solo':'')+'" width="'+(W*state.zoom).toFixed(0)+'" height="'+(H*state.zoom).toFixed(0)+
+    '" viewBox="'+minX.toFixed(1)+' '+minY.toFixed(1)+' '+W.toFixed(1)+' '+H.toFixed(1)+
+    '" role="img" aria-label="Isometric view of the {{project}} backend: one tower per module, one floor per directory">');
+
+  // ground pads, far to near
+  T.slice().sort(function(a,b){ return a.depth - b.depth; }).forEach(function(t){
+    var h = t.side/2 + .34;
+    var c = [ proj(t.wx-h,t.wy-h,0), proj(t.wx+h,t.wy-h,0), proj(t.wx+h,t.wy+h,0), proj(t.wx-h,t.wy+h,0) ];
+    s.push('<polygon class="gtile" points="'+c.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ')+'"/>');
+  });
+
+  // towers, far to near
+  var sorted = T.slice().sort(function(a,b){ return a.depth - b.depth; });
+  sorted.forEach(function(t){
+    var h = t.side/2;
+    var x0 = t.wx - h, x1 = t.wx + h, y0 = t.wy - h, y1 = t.wy + h;
+    var sel = state.sel === t.mod;
+    s.push('<g class="bldg'+(sel?' sel':'')+'" data-m="'+esc(t.mod)+'" tabindex="0" role="button" aria-label="'+esc(t.mod)+', '+t.files+' files, '+t.floors.length+' directories">');
+    t.floors.forEach(function(f){
+      var tier = Math.min(8, f.node.tier);
+      // right face (x = x1) then left face (y = y1) then top
+      s.push(poly([proj(x1,y0,f.z1), proj(x1,y1,f.z1), proj(x1,y1,f.z0), proj(x1,y0,f.z0)], 'face', tier, 26));
+      s.push(poly([proj(x0,y1,f.z1), proj(x1,y1,f.z1), proj(x1,y1,f.z0), proj(x0,y1,f.z0)], 'face', tier, 44));
+      s.push(poly([proj(x0,y0,f.z1), proj(x1,y0,f.z1), proj(x1,y1,f.z1), proj(x0,y1,f.z1)], 'face', tier, 0));
+    });
+    s.push('</g>');
+  });
+
+  // cross-domain links, drawn above the city
+  if (state.links) {
+    var byMod = {};
+    T.forEach(function(t){ byMod[t.mod] = t; });
+    (D.domainEdges || []).forEach(function(e){
+      var a = byMod[e.f], b = byMod[e.t];
+      if (!a || !b) return;
+      var pa = proj(a.wx, a.wy, a.top + 8), pb = proj(b.wx, b.wy, b.top + 8);
+      var mx = (pa[0]+pb[0])/2, my = (pa[1]+pb[1])/2 - Math.min(70, 22 + e.w*1.2);
+      var hot = state.sel && (state.sel === e.f || state.sel === e.t);
+      s.push('<path class="link'+(hot?' hot':'')+'" data-f="'+esc(e.f)+'" data-t="'+esc(e.t)+
+        '" d="M'+pa[0].toFixed(1)+','+pa[1].toFixed(1)+' Q'+mx.toFixed(1)+','+my.toFixed(1)+' '+pb[0].toFixed(1)+','+pb[1].toFixed(1)+'"/>');
+      if (hot) s.push('<text class="linkcap" x="'+mx.toFixed(1)+'" y="'+(my-4).toFixed(1)+'" text-anchor="middle">'+e.w+'</text>');
+    });
+  }
+
+  // labels last so they stay readable
+  if (state.labels) {
+    sorted.forEach(function(t){
+      var p = proj(t.wx, t.wy, t.top + 14);
+      s.push('<line class="lead" x1="'+p[0].toFixed(1)+'" y1="'+(p[1]+13).toFixed(1)+'" x2="'+p[0].toFixed(1)+'" y2="'+(p[1]+2).toFixed(1)+'"/>');
+      s.push('<text class="blab" x="'+p[0].toFixed(1)+'" y="'+p[1].toFixed(1)+'" text-anchor="middle">'+esc(t.mod)+'</text>');
+      s.push('<text class="bsub" x="'+p[0].toFixed(1)+'" y="'+(p[1]+10).toFixed(1)+'" text-anchor="middle">'+t.files+'f · '+t.floors.length+'</text>');
+    });
+  }
+
+  s.push('</svg>');
+  stage.innerHTML = s.join('');
+
+  var svg = stage.querySelector('svg');
+  svg.querySelectorAll('.bldg').forEach(function(g){
+    var m = g.getAttribute('data-m');
+    g.addEventListener('click', function(){ select(state.sel === m ? null : m); });
+    g.addEventListener('keydown', function(ev){ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); g.click(); } });
+  });
+}
+
+function select(m){ state.sel = m; render(); inspect(m); }
+
+function inspect(m){
+  var el = document.getElementById('insp');
+  if (!m) {
+    el.innerHTML = '<p class="empty">Click a tower. You will get its storeys bottom to top — every directory, its architectural tier and its file count — plus the cross-domain arcs that land on it.</p>';
+    return;
+  }
+  var ns = nodesFor(m).slice().sort(function(a,b){ return b.tier - a.tier; });
+  var files = ns.reduce(function(a,n){ return a+n.count; }, 0);
+  var out = (D.domainEdges||[]).filter(function(e){ return e.f === m; });
+  var inc = (D.domainEdges||[]).filter(function(e){ return e.t === m; });
+  var h = [];
+  h.push('<h3>'+esc(m)+'</h3>');
+  h.push('<p class="isub">'+files+' files · '+ns.length+' directories · '+
+    (new Set(ns.map(function(n){return n.tier;}))).size+' of 9 tiers present</p>');
+  h.push('<p class="ilab">Storeys — roof to foundation</p><ul class="floors">');
+  ns.slice().reverse().forEach(function(n){
+    h.push('<li><span class="sw" style="background:var(--t'+Math.min(8,n.tier)+')"></span>'+
+      '<span class="nm">'+esc(n.label)+'</span><span class="ct">'+n.count+'</span></li>');
+  });
+  h.push('</ul>');
+  var missing = TIER.slice(0,9).filter(function(t){ return !ns.some(function(n){ return n.tier === t.i; }); });
+  if (missing.length) {
+    h.push('<p class="ilab">Tiers absent</p><p style="font-family:\'IBM Plex Mono\',monospace;font-size:10.5px;color:var(--ink3);margin:0">'+
+      missing.map(function(t){ return esc(t.name); }).join(' · ')+'</p>');
+  }
+  h.push('<p class="ilab">Depends on</p>');
+  h.push(out.length ? '<ul class="lks">'+out.map(function(e){ return '<li>→ <b>'+esc(e.t)+'</b> ×'+e.w+'</li>'; }).join('')+'</ul>'
+    : '<p style="font-family:\'IBM Plex Mono\',monospace;font-size:10.5px;color:var(--ink3);margin:0">nothing</p>');
+  h.push('<p class="ilab">Depended on by</p>');
+  h.push(inc.length ? '<ul class="lks">'+inc.map(function(e){ return '<li>← <b>'+esc(e.f)+'</b> ×'+e.w+'</li>'; }).join('')+'</ul>'
+    : '<p style="font-family:\'IBM Plex Mono\',monospace;font-size:10.5px;color:var(--ink3);margin:0">nothing</p>');
+  el.innerHTML = h.join('');
+  el.scrollTop = 0;
+}
+
+document.getElementById('legend').innerHTML =
+  TIER.slice(0,9).slice().reverse().map(function(t){
+    return '<span class="lg"><i style="background:var(--t'+t.i+')"></i>'+esc(t.name)+'</span>';
+  }).join('') +
+  '<span class="lg"><svg width="22" height="10"><path d="M0,9 Q11,0 22,9" fill="none" stroke="var(--link)" stroke-width="1.6"/></svg>cross-domain dependency</span>' +
+  '<span class="lg" style="color:var(--ink3)">floor thickness = files in that directory</span>';
+
+/* controls */
+function bind(id, fn){ document.getElementById(id).addEventListener('click', fn); }
+bind('rotL', function(){ state.rot--; render(); });
+bind('rotR', function(){ state.rot++; render(); });
+bind('zIn', function(){ state.zoom = Math.min(2.2, state.zoom * 1.22); render(); });
+bind('zOut', function(){ state.zoom = Math.max(0.45, state.zoom / 1.22); render(); });
+function toggle(id, key){
+  var b = document.getElementById(id);
+  b.addEventListener('click', function(){ state[key] = !state[key]; b.classList.toggle('on', state[key]); render(); });
+}
+toggle('tLinks','links'); toggle('tLabels','labels'); toggle('tTest','test');
+bind('reset', function(){
+  state = { rot:0, zoom:1, links:true, labels:true, test:false, sel:null };
+  document.getElementById('tLinks').classList.add('on');
+  document.getElementById('tLabels').classList.add('on');
+  document.getElementById('tTest').classList.remove('on');
+  render(); inspect(null);
+});
+
+inspect(null);
+render();
+})();
+</script>
