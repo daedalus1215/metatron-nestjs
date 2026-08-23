@@ -123,9 +123,31 @@ you share it.
 |------|---------|
 | `atlas` | Where does everything live, and which of its own rules does the code break? |
 | `traffic` | What happens when a request arrives? Every endpoint as an animated trace with the real payload at each hop. |
-| `isometric` | What shape is each module? One tower per module, one floor per directory. |
-| `flyover` | Let me walk around it. Fly to any module; copy a text digest to paste into a chat. |
+| `city` | What shape is each module, and can I walk around it? One tower per module, one floor per directory, with a projection toggle — see below. |
 | `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
+
+### Isometric or perspective?
+
+The `city` view offers both, and the difference is not cosmetic.
+
+**Isometric** (the default) is a parallel projection: distance changes where a
+tower is drawn, never how big. Four identical towers at four different depths all
+draw the same height. Since a tower's height *is* how many layers a module has,
+**you can compare any two by eye and the answer is right**.
+
+**Perspective** divides by depth, the way a camera does. Nearer towers are drawn
+larger — a module at the front can look taller than a taller one at the back. It
+feels like standing in the city, which is better for exploring, and useless for
+comparing.
+
+```
+parallel      s = focal / distance-to-aim-point     scale is constant
+perspective   s = focal / depth-of-this-point       scale falls off with depth
+```
+
+Measured on a real project: in isometric every tower draws at exactly 5.105
+pixels per unit of height; in perspective that ranges from 4.13 to 5.25 across
+the same towers.
 
 ## Commands
 
