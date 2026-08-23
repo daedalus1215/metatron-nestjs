@@ -65,7 +65,10 @@ if (cmd !== 'scan') {
     if (r.ok) console.log(`  ${r.name.padEnd(11)} ${((r.bytes / 1024).toFixed(0) + ' KB').padStart(7)}  (data ${(r.dataBytes / 1024).toFixed(0)} KB, ${r.via})`);
     else console.log(`  ${r.name.padEnd(11)} FAILED — ${r.error}`);
   }
-  console.log(`\n  open ${path.relative(process.cwd(), path.join(outDir, 'index.html'))}`);
+  const idx = path.join(outDir, 'index.html');
+  const rel = path.relative(process.cwd(), idx);
+  console.log(`\n  open ${rel.startsWith('..') ? idx : rel}`);
 } else {
-  console.log(`\n  -> ${path.relative(process.cwd(), modelPath)}`);
+  const relModel = path.relative(process.cwd(), modelPath);
+  console.log(`\n  -> ${relModel.startsWith('..') ? modelPath : relModel}`);
 }
