@@ -1,29 +1,31 @@
 # metatron
 
-Compile a NestJS/TypeScript backend into a measured architecture model, then look
-at it through interchangeable visual lenses.
+Point it at a NestJS backend and get five interactive views of its architecture,
+plus a list of every place the code breaks its own rules.
 
-Your architecture document says what the code *should* look like. metatron
-measures what it *does* look like, and renders the difference. Nothing in the
-output is drawn or written by hand — every box is a directory that exists, every
-line is an `import` a file actually writes, and every sentence is assembled from
-what the scan found.
+Nothing in the output is drawn or written by hand. Every box is a directory that
+exists, every line is an `import` a file actually writes, and every sentence is
+assembled from what the scan found.
 
-```bash
-npx metatron              # scan, build every lens, write an index
-open .metatron/index.html
-```
+---
 
-## Install
+## Start here
+
+**1. Install it.** Pick one:
 
 ```bash
+# just this project
 npm i -D github:daedalus1215/metatron-nestjs
+
+# or once, for every project on this machine
+git clone https://github.com/daedalus1215/metatron-nestjs
+cd metatron-nestjs && npm link
 ```
 
-Then a config at the root of the package you want to scan:
+**2. Add one file** next to the `src/` you want scanned. For a `backend/src`
+layout that means `backend/arch.config.js`:
 
 ```js
-// arch.config.js
 module.exports = {
   extends: 'nestjs',
   name: 'my-api',
@@ -31,44 +33,48 @@ module.exports = {
 };
 ```
 
-That is usually the whole config. Run `npx metatron` and read the coverage line.
-
-### On a new machine
+**3. Run it.**
 
 ```bash
-git clone https://github.com/daedalus1215/metatron-nestjs
-cd metatron-nestjs && npm link      # puts `metatron` on PATH
-metatron skill                      # teach Claude sessions about it
+metatron            # or `npx metatron` if you installed it into the project
 ```
 
-`npm link` is optional — `npm i -D github:daedalus1215/metatron-nestjs` inside a
-project works too, and `npx metatron` then resolves. `metatron skill` copies the
-bundled skill to `~/.claude/skills/metatron/SKILL.md` so a Claude session in any
-repo knows the tool exists and how to bootstrap it. It is a deliberate command
-rather than a postinstall hook: nothing should write into your home directory as
-a side effect of `npm install`.
+**4. Open the result.**
 
-Requirements: Node 18+. Chromium is optional and only used for verifying a lens
-renders before you share it.
-
-## Coverage is the honesty signal
-
-```
-metatron · nous
-  142 files · 345 imports · 71 directories · 14 modules
-  28 endpoints · 95 traced hops
-  6 layer-skipping links · 6 deviations · 1 rules upheld
-  coverage 137/142 (96.5%)
+```bash
+open .metatron/index.html
 ```
 
-`coverage` is the share of files that matched a configured pattern. Below 90% it
-warns and prints the unmatched suffixes so you know exactly what to add:
+That's it. Five views, self-contained HTML, no server. You don't need Claude or
+any login to look at them — they're just files.
+
+You can also run it without `cd`-ing anywhere:
+
+```bash
+metatron ~/code/my-api/backend
+```
+
+---
+
+## If it says coverage is low
+
+This is the only step that needs your judgement. metatron prints how much of
+your code it understood:
+
+```
+coverage 119/121 (98.3%)          good — carry on
+coverage 125/142 (88.0%)  !       needs a few more lines
+```
+
+When it warns, it tells you exactly what it didn't recognise:
 
 ```
   17 files matched no pattern. Add them to `addPatterns` in arch.config.js:
-    .exception.ts   4x   e.g. articles/domain/exceptions/no-article-links-found.exception.ts
-    .validator.ts   3x   e.g. articles/domain/services/validators/non-empty.validator.ts
+    .exception.ts   4x   e.g. articles/domain/exceptions/no-links-found.exception.ts
+    .validator.ts   3x   e.g. articles/domain/services/non-empty.validator.ts
 ```
+
+Copy those into your config, saying which layer each belongs to:
 
 ```js
 addPatterns: [
@@ -77,9 +83,61 @@ addPatterns: [
 ],
 ```
 
-A tool that quietly classifies half your code as "other" and then draws a
-confident picture of it is worse than one that fails. This is why the number is
-printed first.
+Re-run. Two or three rounds gets most projects past 95%.
+
+**Why this matters:** a tool that quietly files half your code under "other" and
+then draws a confident picture of it is worse than one that fails. The number is
+printed first so you always know whether to trust the rest.
+
+---
+
+## On a new machine
+
+```bash
+git clone https://github.com/daedalus1215/metatron-nestjs
+cd metatron-nestjs
+npm link          # puts `metatron` on your PATH
+metatron skill    # lets Claude sessions use it without being told how
+```
+
+`metatron skill` copies the bundled skill to
+`~/.claude/skills/metatron/SKILL.md`. After that, a new Claude session in **any**
+repo already knows this tool exists — you can say "set up metatron here" or "map
+this backend" and it knows the whole procedure. Without it, you'd have to say
+"read the README in metatron-nestjs and use it", which also works.
+
+It's a command rather than something `npm install` does automatically, because
+installing a package shouldn't write into your home directory.
+
+Needs Node 18+. Chromium is optional, only for checking a view renders before
+you share it.
+
+---
+
+## What you get
+
+| view | answers |
+|------|---------|
+| `atlas` | Where does everything live, and which of its own rules does the code break? |
+| `traffic` | What happens when a request arrives? Every endpoint as an animated trace with the real payload at each hop. |
+| `isometric` | What shape is each module? One tower per module, one floor per directory. |
+| `flyover` | Let me walk around it. Fly to any module; copy a text digest to paste into a chat. |
+| `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
+
+## Commands
+
+```bash
+metatron [path]           scan and build everything
+metatron scan [path]      model only, no views
+metatron views [path]     rebuild views from the cached model
+metatron views layers     just one view
+metatron skill            install the Claude skill
+metatron --help
+```
+
+---
+
+# Reference
 
 ## Config
 
@@ -87,22 +145,18 @@ printed first.
 |-----|---------|
 | `extends` | base profile. `nestjs` is the only one so far. |
 | `root` | scanned directory, relative to the config file. |
-| `name` | shown in the lenses. Defaults to the directory name. |
-| `outDir` | where the model and lenses land. Default `.metatron`. |
-| `addPatterns` | patterns *prepended* to the profile — refine without restating. |
+| `name` | shown in the views. Defaults to the directory name. |
+| `outDir` | where output lands. Default `.metatron`. |
+| `addPatterns` | patterns *prepended* to the profile — refine without restating everything. |
 | `patterns` | replace the profile's list wholesale. |
 | `tiers` | the architectural layers, ordered as a request travels. |
-| `flow` | the intended call path. Skip rules are derived from it. |
+| `flow` | the intended call path. Violation rules are derived from it. |
 | `flowAliases` | other patterns that count as the same station. |
 | `forbidden` | imports that must never go a given direction. |
 | `noSameLevel` | patterns that must not inject their own kind. |
-| `infraModules` | modules that are infrastructure, not bounded contexts. |
+| `infraModules` | modules that are plumbing, not bounded contexts. |
 | `crossDomainGateways` | the only patterns a cross-context import may land on. |
-| `moduleOf` | `(rel) => string`, if the first path segment is not the module. |
-
-**Shape beats location.** A `*.converter.ts` inside a services folder is a
-converter. Patterns are tested in order, so put shape-specific names first —
-including in `addPatterns`, which prepends.
+| `moduleOf` | `(rel) => string`, if the first path segment isn't the module. |
 
 **Declare the flow, get the rules.** Write
 
@@ -110,29 +164,20 @@ including in `addPatterns`, which prepends.
 flow: ['action', 'service', 'transaction-script', 'repository'],
 ```
 
-and metatron derives the violations: an import that jumps one station is a
-warning, two or more is critical. You do not hand-list them.
+and metatron derives the violations: jumping one station is a warning, two or
+more is critical. You never hand-list them.
 
-## Lenses
+**Shape beats location.** A `*.converter.ts` inside a services folder is a
+converter. Patterns are tested in order, so put shape-specific names first —
+including in `addPatterns`, which prepends.
 
-| lens | answers |
-|------|---------|
-| `atlas` | Where does everything live, and which of its own rules does the code break? |
-| `traffic` | What happens when a request arrives? Every endpoint as an animated trace with the real payload at each hop. |
-| `isometric` | What shape is each module? One tower per module, one floor per directory, 2:1 axonometric. |
-| `flyover` | Let me walk around it. Perspective camera, fly to any module, copyable digest for pasting to an LLM. |
-| `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
+## Adding a view
 
-Each output is a single self-contained HTML file. No server, no CDN, no build
-step. Open it, or publish it wherever you like.
-
-## Adding a lens
-
-One file. `templates/<name>.html`, containing exactly one `__DATA__` token inside
-a JSON script tag:
+One file: `templates/<name>.html`, containing exactly one `__DATA__` token
+inside a JSON script tag.
 
 ```html
-<!-- metatron: One line describing what this lens answers. -->
+<!-- metatron: One line describing what this view answers. -->
 <title>{{project}} Whatever</title>
 <script id="data" type="application/json">__DATA__</script>
 <script>
@@ -140,30 +185,28 @@ a JSON script tag:
 </script>
 ```
 
-It is picked up automatically. Available tokens: `{{project}}`, `{{projectId}}`,
+It's picked up automatically. Tokens: `{{project}}`, `{{projectId}}`, `{{root}}`,
 `{{date}}`, `{{files}}`, `{{imports}}`, `{{endpoints}}`, `{{modules}}`.
 
-Add `adapters/<name>.js` exporting `(model) => object` if the lens wants a
-smaller payload — worth doing, it took one lens from 453 KB to 84 KB:
+Add `adapters/<name>.js` exporting `(model) => object` to trim the payload —
+worth doing, it took one view from 453 KB to 84 KB. To see what a template
+actually reads:
 
 ```bash
 grep -oE '\bD\.[a-zA-Z_]+' templates/<name>.html | sort -u
 ```
 
-### Never write findings into a template
+**Never type a finding into a template.** Use `<p data-narr="layering"></p>` and
+the sentence is generated at build time; slots with nothing to say are removed.
+Available: `scale`, `flow`, `layering`, `crossDomain`, `absent`, `skyline`,
+`cycles`, `upheld`, `deviations`, `endpoints`, `provenance`, `caveats`. Add more
+in `src/narrate.js`.
 
-Put `<p data-narr="layering"></p>` and the generated sentence is filled in at
-build time. Slots with nothing to say are removed. Available:
-`scale`, `flow`, `layering`, `crossDomain`, `absent`, `skyline`, `cycles`,
-`upheld`, `deviations`, `endpoints`, `provenance`, `caveats`.
+This rule exists because the first version had its findings typed into the HTML.
+The charts updated for a new project and the paragraphs kept confidently
+describing the old one.
 
-This exists because the first version had its findings typed into the HTML. The
-charts updated for a new project and the paragraphs kept confidently describing
-the old one.
-
-## Verifying a lens before you share it
-
-Headless Chromium renders these correctly, canvas included:
+## Checking a view renders
 
 ```bash
 chromium --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
@@ -171,40 +214,37 @@ chromium --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
   --screenshot=shot.png "file://$PWD/.metatron/layers.html"
 ```
 
-The large `--virtual-time-budget` is required: canvas lenses draw on
+The large `--virtual-time-budget` is required — the canvas views draw on
 `requestAnimationFrame`, and a short budget screenshots a blank canvas. Static
-checks do not catch mirrored text, washed-out blends, clipped content or tofu
-glyphs. Look at it.
+checks won't catch mirrored text, washed-out blends, clipped content or missing
+glyphs. Look at the picture.
 
-## What it can and cannot see
+## What it can't see
 
-- **Imports are not calls.** The folder and file graphs count imports, type-only
-  ones included. Only `endpoints[].flat` follows real `this.x.y()` chains through
-  method bodies against constructor injections.
+- **Imports are not calls.** The graphs count imports, type-only ones included.
+  Only `endpoints[].flat` follows real `this.x.y()` chains through method bodies.
 - **DI tokens are invisible.** Anything Nest resolves through a string token
-  rather than an imported symbol leaves no edge, so coupling is understated.
-- **Structure, not quality.** It can tell you where a transaction script sits and
-  what it touches, never whether it is any good.
-- **Filenames, not ASTs.** This suits projects whose conventions live in
-  filenames. A codebase that carries its architecture in decorators or nothing at
-  all needs a different front end.
+  instead of an imported symbol leaves no edge, so coupling is understated.
+- **Structure, not quality.** It knows where a transaction script sits and what
+  it touches, never whether it's any good.
+- **Filenames, not ASTs.** Suits projects whose conventions live in filenames. A
+  codebase carrying its architecture in decorators needs a different front end.
 
 ## Model
 
 `.metatron/model.json`:
 
-`stats` · `coverage` · `tiers` · `flow` · `skipRules` · `nodes` / `edges`
-(folder graph) · `fileNodes` / `fileLinks` (file graph, links tagged with the
-rule they break) · `modules`, `domainModules`, `platformModules` ·
-`allModuleEdges`, `domainEdges` · `cycles` (Tarjan SCCs with sanctioned
-carve-outs applied progressively) · `crossDomain` · `ports` · `endpoints` ·
-`shape` · `findings`.
+`stats` · `coverage` · `tiers` · `flow` · `skipRules` · `nodes` / `edges` (folder
+graph) · `fileNodes` / `fileLinks` (file graph, links tagged with the rule they
+break) · `modules`, `domainModules`, `platformModules` · `allModuleEdges`,
+`domainEdges` · `cycles` (Tarjan SCCs with sanctioned carve-outs applied
+progressively) · `crossDomain` · `ports` · `endpoints` · `shape` · `findings`.
 
 ## Prior art
 
 Software cities go back to Wettel and Lanza's CodeCity (2007). "Fitness
-functions" is from *Building Evolutionary Architectures*. The stacked-plane lens
-borrows its geometry from Purdue-model ICS diagrams. What is here is the
-coupling: your rules, your code, measured on every run, rendered five ways.
+functions" is from *Building Evolutionary Architectures*. The stacked-plane view
+borrows its geometry from Purdue-model ICS diagrams. What's here is the coupling:
+your rules, your code, measured on every run, rendered five ways.
 
 MIT.
