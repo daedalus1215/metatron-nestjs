@@ -7,6 +7,39 @@ const scan = require('../src/scan');
 const { build } = require('../src/build');
 
 const args = process.argv.slice(2);
+
+if (args[0] === '--help' || args[0] === '-h') {
+  console.log(`metatron — compile a NestJS backend into an architecture model and visual lenses
+
+  metatron [path]           scan and build every lens
+  metatron scan [path]      model only
+  metatron views [path]     re-render from the cached model
+  metatron views layers     one lens by name
+  metatron skill            install the Claude skill into ~/.claude/skills
+  metatron skill --where    print where the skill would be installed
+
+Config lives in arch.config.js next to the src/ you want scanned.
+Docs: https://github.com/daedalus1215/metatron-nestjs`);
+  process.exit(0);
+}
+
+// Installs the bundled skill so a Claude session in any repo knows this tool
+// exists. Kept explicit rather than a postinstall hook — nothing should write
+// into a user's home directory as a side effect of npm install.
+if (args[0] === 'skill') {
+  const home = process.env.HOME || require('os').homedir();
+  const dest = path.join(home, '.claude', 'skills', 'metatron', 'SKILL.md');
+  if (args.includes('--where')) { console.log(dest); process.exit(0); }
+  const srcSkill = path.resolve(__dirname, '..', 'skill', 'SKILL.md');
+  if (!fs.existsSync(srcSkill)) { console.error('bundled skill missing at ' + srcSkill); process.exit(1); }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const existed = fs.existsSync(dest);
+  fs.copyFileSync(srcSkill, dest);
+  console.log(`${existed ? 'updated' : 'installed'} ${dest}`);
+  console.log('Start a new Claude session to pick it up.');
+  process.exit(0);
+}
+
 const cmd = ['scan', 'views', 'all'].includes(args[0]) ? args.shift() : 'all';
 
 // A path argument lets you point metatron at a project instead of cd-ing into it.

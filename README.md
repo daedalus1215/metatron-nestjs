@@ -33,6 +33,24 @@ module.exports = {
 
 That is usually the whole config. Run `npx metatron` and read the coverage line.
 
+### On a new machine
+
+```bash
+git clone https://github.com/daedalus1215/metatron-nestjs
+cd metatron-nestjs && npm link      # puts `metatron` on PATH
+metatron skill                      # teach Claude sessions about it
+```
+
+`npm link` is optional — `npm i -D github:daedalus1215/metatron-nestjs` inside a
+project works too, and `npx metatron` then resolves. `metatron skill` copies the
+bundled skill to `~/.claude/skills/metatron/SKILL.md` so a Claude session in any
+repo knows the tool exists and how to bootstrap it. It is a deliberate command
+rather than a postinstall hook: nothing should write into your home directory as
+a side effect of `npm install`.
+
+Requirements: Node 18+. Chromium is optional and only used for verifying a lens
+renders before you share it.
+
 ## Coverage is the honesty signal
 
 ```
