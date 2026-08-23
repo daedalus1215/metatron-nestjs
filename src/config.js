@@ -16,6 +16,28 @@ function find(from) {
   }
 }
 
+/**
+ * A sensible project name from the config's location. `backend/` and friends are
+ * containers, not project names, so we climb past them.
+ */
+const GENERIC = new Set(['backend', 'src', 'api', 'server', 'app', 'apps', 'packages', 'services']);
+function inferName(dir) {
+  let d = path.resolve(dir);
+  for (let i = 0; i < 3; i++) {
+    const base = path.basename(d);
+    if (!GENERIC.has(base.toLowerCase())) return base;
+    d = path.dirname(d);
+  }
+  return path.basename(path.resolve(dir));
+}
+
+/** Loose match, so `chronus` is happy inside `chronus-react-nestjs`. */
+function looselyMatches(a, b) {
+  const norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const A = norm(a), B = norm(b);
+  return !A || !B || A.includes(B) || B.includes(A);
+}
+
 function load(from = process.cwd()) {
   const file = find(from);
   if (!file) {
@@ -35,6 +57,16 @@ function load(from = process.cwd()) {
   if (user.addPatterns) cfg.patterns = user.addPatterns.concat(base.patterns);
   cfg.__dir = path.dirname(file);
   cfg.__file = file;
+
+  const inferred = inferName(cfg.__dir);
+  if (!cfg.name) {
+    cfg.name = inferred;
+  } else if (!looselyMatches(cfg.name, inferred)) {
+    // Almost always a config copied from another project with the name left behind
+    cfg.__nameWarning =
+      `config name is "${cfg.name}" but it sits in "${inferred}" — copied from another project?\n` +
+      `  ${cfg.__file}`;
+  }
   return cfg;
 }
 

@@ -2,11 +2,31 @@
   "name": "metatron-nestjs",
   "version": "0.1.0",
   "description": "Compile a NestJS/TypeScript backend into a measured architecture model, then render it through interchangeable visual lenses.",
-  "bin": { "metatron": "bin/metatron.js" },
+  "bin": {
+    "metatron": "bin/metatron.js"
+  },
   "main": "src/scan.js",
-  "files": ["bin", "src", "templates", "adapters", "examples", "skill", "README.md"],
-  "scripts": { "demo": "node bin/metatron.js" },
+  "files": [
+    "bin",
+    "src",
+    "templates",
+    "adapters",
+    "examples",
+    "skill",
+    "README.md"
+  ],
+  "scripts": {
+    "demo": "node bin/metatron.js"
+  },
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/daedalus1215/metatron-nestjs.git" },
-  "engines": { "node": ">=18" }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daedalus1215/metatron-nestjs.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "metatron-nestjs": "github:daedalus1215/metatron-nestjs"
+  }
 }
