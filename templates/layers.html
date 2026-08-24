@@ -136,7 +136,7 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--edge); co
   <p class="dek">Every file in the backend, placed on the plane of the architectural layer it belongs to and clustered by its module. The layers are the whole point: <strong>a link that skips a plane is a layering violation you can see as geometry</strong>. Flatten the stack to read it as one graph, or drill into any single layer.</p>
 </header>
 
-<div class="app">
+<div class="app" data-fullscreen>
   <div class="topbar">
     <span class="brand">{{project}}</span>
     <div class="seg" role="group" aria-label="View mode">
@@ -151,7 +151,7 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--edge); co
     <button class="tb" id="home">reset</button>
   </div>
 
-  <div class="body">
+  <div class="body" data-fs-grow>
     <nav class="rail" id="rail"></nav>
     <div class="stage" id="stage">
       <canvas id="cv" tabindex="0" aria-label="Interactive stacked-layer view of the {{project}} backend"></canvas>

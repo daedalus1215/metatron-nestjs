@@ -176,6 +176,29 @@ module.exports = function narrate(m) {
     }
   }
 
+  // ---------- hotspots ----------
+  if (m.churnMeta && m.churnMeta.available) {
+    const fanIn = {};
+    for (const l of m.fileLinks) fanIn[l[1]] = (fanIn[l[1]] || 0) + 1;
+    const pts = m.fileNodes.map((n, i) => {
+      const c = m.churn[n.f];
+      if (!c) return null;
+      return { f: n.f, p: n.p, commits: c.commits, deps: fanIn[i] || 0 };
+    }).filter(Boolean).filter((x) => !['spec', 'test-util', 'migration'].includes(x.p));
+    pts.forEach((x) => { x.score = x.commits * (1 + x.deps); });
+    pts.sort((a, b) => b.score - a.score);
+    const top = pts[0];
+    if (top) {
+      const busiest = pts.slice().sort((a, b) => b.commits - a.commits)[0];
+      const central = pts.slice().sort((a, b) => b.deps - a.deps)[0];
+      N.hotspots = `Across ${num(m.churnMeta.commits)} commits, the file scoring highest on both axes is ` +
+        `${mono(top.f)} — ${strong(top.commits + ' ' + plural(top.commits, 'commit') + ' and ' + top.deps + ' ' + plural(top.deps, 'dependent'))}. ` +
+        (busiest.f !== top.f ? `${mono(busiest.f)} changes most often (${busiest.commits}), ` : '') +
+        `${mono(central.f)} is depended on by the most files (${central.deps}). ` +
+        `A file high on one axis alone is usually fine; it is the overlap that costs.`;
+    }
+  }
+
   // ---------- provenance, shown on every lens ----------
   N.provenance = `Generated from ${mono(m.project)} by metatron. Every box is a directory that exists and every line is an ` +
     `${mono('import')} that a file actually writes. ${m.coverage.classified} of ${m.coverage.files} files ` +
