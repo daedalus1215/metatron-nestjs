@@ -1,0 +1,336 @@
+<!-- metatron: What does the data actually look like? Every entity, every column, and the references between them — including the ones the ORM never hears about. -->
+<title>{{project}} Schema</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400&display=swap">
+
+<style>
+:root {
+  --paper:#F2F4F8; --surface:#FFFFFF; --surface2:#E7ECF3; --sunk:#DEE5EF;
+  --ink:#151E29; --ink2:#485A6F; --ink3:#7A8B9F;
+  --rule:#D2DAE4; --rule2:#B9C4D2;
+  --blue:#2B5CA8; --amber:#A85B06; --rose:#A31C39; --green:#1B6448; --violet:#54479A;
+  --declared:#1B6448; --implicit:#A85B06; --pk:#54479A;
+  --shadow:0 1px 2px rgba(21,30,41,.06), 0 8px 24px rgba(21,30,41,.07);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:#0E141B; --surface:#151D26; --surface2:#1C2631; --sunk:#111922;
+    --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
+    --rule:#28343F; --rule2:#36454F;
+    --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6;
+    --declared:#4FC195; --implicit:#E0A04A; --pk:#A093E6;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"] {
+  --paper:#0E141B; --surface:#151D26; --surface2:#1C2631; --sunk:#111922;
+  --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
+  --rule:#28343F; --rule2:#36454F;
+  --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6;
+  --declared:#4FC195; --implicit:#E0A04A; --pk:#A093E6;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+}
+
+* { box-sizing:border-box; }
+body { margin:0; background:var(--paper); color:var(--ink);
+  font-family:'Archivo',ui-sans-serif,system-ui,sans-serif; font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; }
+.mono { font-family:'IBM Plex Mono',ui-monospace,monospace; }
+.wrap { max-width:1560px; margin:0 auto; padding:0 26px 80px; }
+
+.mast { padding:48px 0 24px; border-bottom:2px solid var(--ink); }
+.eyebrow { font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--ink3); margin:0 0 16px; }
+h1 { font-size:clamp(34px,5.2vw,58px); line-height:1.03; letter-spacing:-.03em; font-weight:700; margin:0; text-wrap:balance; }
+.dek { font-family:'Source Serif 4',Georgia,serif; font-size:18px; line-height:1.6; color:var(--ink2);
+  max-width:64ch; margin:18px 0 0; }
+.statrow { display:grid; grid-template-columns:repeat(auto-fit,minmax(122px,1fr)); gap:1px;
+  background:var(--rule); border:1px solid var(--rule); margin-top:32px; }
+.stat { background:var(--paper); padding:13px 15px; }
+.stat b { display:block; font-family:'IBM Plex Mono',monospace; font-size:24px; font-weight:600;
+  letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.stat span { display:block; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-top:3px; }
+.stat.imp b { color:var(--implicit); } .stat.dec b { color:var(--declared); }
+
+.bar { display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin:26px 0 12px; }
+.btn { font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:.04em;
+  border:1px solid var(--rule2); background:var(--surface); color:var(--ink2); padding:6px 11px; cursor:pointer; }
+.btn:hover { border-color:var(--ink3); color:var(--ink); }
+.btn.on { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.btn:focus-visible, input:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+#q { font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:6px 11px;
+  border:1px solid var(--rule2); background:var(--surface); color:var(--ink); min-width:180px; }
+.sep { width:1px; height:20px; background:var(--rule2); margin:0 3px; }
+
+.plate { border:1px solid var(--rule2); background:var(--surface); box-shadow:var(--shadow); }
+.canvas { overflow:auto; max-height:min(78vh,900px); }
+svg.er { display:block; }
+svg.er text { font-family:'IBM Plex Mono',monospace; }
+.etbl { fill:var(--surface); stroke:var(--rule2); stroke-width:1; }
+.ehead { fill:var(--surface2); }
+.ename { font-size:12px; font-weight:600; fill:var(--ink); }
+.etable { font-size:9px; fill:var(--ink3); }
+.emod { font-size:8.5px; fill:var(--ink3); letter-spacing:.05em; }
+.col { font-size:10px; fill:var(--ink2); }
+.coltype { font-size:9px; fill:var(--ink3); }
+.colpk { fill:var(--pk); font-weight:600; }
+.colfk { fill:var(--implicit); font-weight:600; }
+.colfk.dec { fill:var(--declared); }
+.rowline { stroke:var(--rule); stroke-width:.75; }
+.rel { fill:none; stroke:var(--implicit); stroke-width:1.6; }
+.rel.declared { stroke:var(--declared); stroke-dasharray:none; }
+.rel.implicit { stroke-dasharray:5 3; }
+.rel.dim { opacity:.12; }
+.relcap { font-size:9px; fill:var(--ink3); }
+.eg { cursor:pointer; }
+.eg:hover .etbl { stroke:var(--ink); stroke-width:1.8; }
+.eg.sel .etbl { stroke:var(--blue); stroke-width:2.2; }
+.eg.dim { opacity:.25; }
+.crossbadge { font-size:8px; fill:var(--implicit); font-weight:600; }
+
+.legend { display:flex; flex-wrap:wrap; gap:12px 20px; padding:12px 16px; border-top:1px solid var(--rule);
+  background:var(--surface2); }
+.lg { display:flex; align-items:center; gap:7px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink2); }
+
+section { margin-top:52px; }
+.shead { display:flex; align-items:baseline; gap:13px; border-bottom:1px solid var(--rule2);
+  padding-bottom:9px; margin-bottom:18px; flex-wrap:wrap; }
+.shead h2 { font-size:21px; font-weight:600; letter-spacing:-.015em; margin:0; }
+.shead .num { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink3); letter-spacing:.1em; }
+.note { font-family:'Source Serif 4',Georgia,serif; font-size:16.5px; line-height:1.65; color:var(--ink2); max-width:68ch; }
+.note + .note { margin-top:12px; }
+.note strong { color:var(--ink); font-weight:400; box-shadow:inset 0 -0.5em 0 color-mix(in srgb, var(--amber) 18%, transparent); }
+.tblwrap { overflow-x:auto; border:1px solid var(--rule2); background:var(--surface); box-shadow:var(--shadow); }
+table { border-collapse:collapse; width:100%; font-size:13px; }
+th,td { text-align:left; padding:8px 13px; border-bottom:1px solid var(--rule); white-space:nowrap; }
+th { font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink3); font-weight:500; background:var(--surface2); }
+td.m { font-family:'IBM Plex Mono',monospace; font-size:11.5px; }
+tbody tr:hover { background:var(--surface2); }
+.pill { font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  padding:2px 7px; border:1px solid currentColor; }
+.pill.dec { color:var(--declared); } .pill.imp { color:var(--implicit); }
+footer { margin-top:60px; padding-top:20px; border-top:2px solid var(--ink); color:var(--ink3); }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Entities · columns · references, declared and inferred</p>
+  <h1>{{project}} Schema</h1>
+  <p class="dek">Every entity in the codebase with its real columns, and every reference between them. Declaring a relation to the ORM couples two contexts, so many are stored as a bare id column instead — <strong>those still exist, they are just invisible to the ORM</strong>. Both kinds are drawn here.</p>
+  <div class="statrow" id="statrow"></div>
+</header>
+
+<div class="bar">
+  <button class="btn on" id="tImplicit">implicit references</button>
+  <button class="btn on" id="tDeclared">declared references</button>
+  <button class="btn" id="tCross">only cross-context</button>
+  <span class="sep"></span>
+  <input id="q" type="search" placeholder="filter entities…" aria-label="Filter entities">
+  <button class="btn" id="reset">reset</button>
+</div>
+
+<div class="plate">
+  <div class="canvas" id="canvas"></div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<section>
+  <div class="shead"><span class="num">01</span><h2>Declared and implicit</h2></div>
+  <p class="note" data-narr="schema"></p>
+  <p class="note">A <strong>declared</strong> reference is a TypeORM relation decorator: the ORM knows about it, can join through it, and will generate a foreign key. An <strong>implicit</strong> one is a plain <span class="mono">someId</span> column that happens to hold another table's primary key. The database has no constraint, the ORM cannot join it, and no schema tool will draw it — but the dependency is just as real, and application code has to honour it by hand.</p>
+</section>
+
+<section>
+  <div class="shead"><span class="num">02</span><h2>Every reference</h2></div>
+  <div class="tblwrap">
+    <table id="reltable"><thead><tr><th>From</th><th>Via</th><th>To</th><th>Kind</th><th>Crosses</th></tr></thead><tbody></tbody></table>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><span class="num">03</span><h2>How references were found</h2></div>
+  <p class="note">Declared ones are read from <span class="mono">@ManyToOne</span>, <span class="mono">@OneToMany</span>, <span class="mono">@OneToOne</span> and <span class="mono">@ManyToMany</span> decorators. Implicit ones are inferred from column names: a column ending <span class="mono">Id</span> or <span class="mono">_id</span> whose stem matches an entity class or table name, singular or plural. <span class="mono">parentId</span> is read as a self-reference.</p>
+  <p class="note">Where a relation is written both ways — the decorator plus the id column beside it — that is one relationship, and it is folded into a single declared edge keeping the column name. <strong>An id column that matches no entity is not guessed at</strong>: a <span class="mono">stripeCustomerId</span> naming something outside the codebase is left alone rather than invented.</p>
+</section>
+
+<footer>
+  <p class="note" style="font-size:14px" data-narr="provenance"></p>
+</footer>
+
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function(){
+"use strict";
+var D = JSON.parse(document.getElementById('data').textContent);
+var M = D.dataModel;
+var E = M.entities, R = M.relations;
+
+document.getElementById('statrow').innerHTML = [
+  ['entities', M.stats.entities, ''],
+  ['columns', M.stats.columns, ''],
+  ['references', R.length, ''],
+  ['declared', M.stats.declared, 'dec'],
+  ['implicit', M.stats.inferred, 'imp'],
+  ['cross-context', M.stats.crossContext, 'imp']
+].map(function(s){ return '<div class="stat '+s[2]+'"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>'; }).join('');
+
+var state = { implicit:true, declared:true, crossOnly:false, q:'', sel:null };
+
+/* which columns are references, so they can be marked in the table */
+var fkCols = {};
+R.forEach(function(r){
+  fkCols[r.from + '|' + r.via] = r.declared ? 'dec' : 'imp';
+});
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function relVisible(r){
+  if (r.declared && !state.declared) return false;
+  if (!r.declared && !state.implicit) return false;
+  if (state.crossOnly && !r.cross) return false;
+  return true;
+}
+function entVisible(e){
+  if (!state.q) return true;
+  return (e.cls + ' ' + (e.table||'') + ' ' + e.module).toLowerCase().indexOf(state.q) >= 0;
+}
+
+/* ---- layout: columns of tables, most-referenced in the middle ---- */
+var W = 230, ROW = 15, HEAD = 34, PAD = 9, GAPX = 92, GAPY = 34;
+
+function layout(){
+  var inbound = {};
+  E.forEach(function(e){ inbound[e.cls] = 0; });
+  R.forEach(function(r){ if (inbound[r.to] !== undefined && !r.self) inbound[r.to]++; });
+
+  // most-referenced entities go in the middle column, their referrers either side
+  var sorted = E.slice().sort(function(a,b){ return inbound[b.cls] - inbound[a.cls]; });
+  var hubs = sorted.filter(function(e){ return inbound[e.cls] >= 2; });
+  var leaves = sorted.filter(function(e){ return inbound[e.cls] < 2; });
+  var cols = [[], [], []];
+  hubs.forEach(function(e, i){ cols[1].push(e); });
+  leaves.forEach(function(e, i){ cols[i % 2 === 0 ? 0 : 2].push(e); });
+
+  var pos = {}, colX = [0, W + GAPX, (W + GAPX) * 2];
+  var maxH = 0;
+  cols.forEach(function(list, ci){
+    var y = 0;
+    list.forEach(function(e){
+      var h = HEAD + e.columns.length * ROW + PAD;
+      pos[e.cls] = { x: colX[ci], y: y, w: W, h: h, e: e };
+      y += h + GAPY;
+    });
+    if (y > maxH) maxH = y;
+  });
+  // centre each column vertically
+  cols.forEach(function(list, ci){
+    var tot = list.reduce(function(a, e){ return a + pos[e.cls].h + GAPY; }, 0) - GAPY;
+    var off = (maxH - GAPY - tot) / 2;
+    list.forEach(function(e){ pos[e.cls].y += off; });
+  });
+  return { pos: pos, w: colX[2] + W, h: maxH };
+}
+
+function rowY(p, colIndex){ return p.y + HEAD + colIndex * ROW + ROW * 0.72; }
+
+function render(){
+  var L = layout(), pos = L.pos;
+  var PADL = 28, PADT = 22;
+  var s = [];
+  s.push('<svg class="er" width="' + (L.w + PADL*2) + '" height="' + (L.h + PADT*2) + '" viewBox="0 0 ' + (L.w + PADL*2) + ' ' + (L.h + PADT*2) + '" role="img" aria-label="Entity relationship diagram">');
+  s.push('<g transform="translate(' + PADL + ',' + PADT + ')">');
+
+  // relations behind the tables
+  R.forEach(function(r, i){
+    var a = pos[r.from], b = pos[r.to];
+    if (!a || !b) return;
+    var show = relVisible(r) && entVisible(a.e) && entVisible(b.e);
+    var dim = !show || (state.sel && state.sel !== r.from && state.sel !== r.to);
+    if (!show) return;
+    var ci = a.e.columns.findIndex(function(c){ return c.name === r.via; });
+    var ay = ci >= 0 ? rowY(a, ci) : a.y + a.h / 2;
+    var by = b.y + HEAD / 2;
+    var ax, bx, c1, c2;
+    if (r.self) {
+      ax = a.x + a.w; bx = a.x + a.w;
+      s.push('<path class="rel ' + (r.declared ? 'declared' : 'implicit') + (dim ? ' dim' : '') +
+        '" d="M' + ax + ',' + ay + ' C' + (ax + 46) + ',' + ay + ' ' + (ax + 46) + ',' + (a.y + 12) + ' ' + (a.x + a.w) + ',' + (a.y + 12) + '"/>');
+      return;
+    }
+    if (b.x >= a.x + a.w) { ax = a.x + a.w; bx = b.x; c1 = ax + 44; c2 = bx - 44; }
+    else if (a.x >= b.x + b.w) { ax = a.x; bx = b.x + b.w; c1 = ax - 44; c2 = bx + 44; }
+    else { ax = a.x + a.w; bx = b.x + b.w; c1 = ax + 60; c2 = bx + 60; }
+    s.push('<path class="rel ' + (r.declared ? 'declared' : 'implicit') + (dim ? ' dim' : '') +
+      '" d="M' + ax + ',' + ay + ' C' + c1 + ',' + ay + ' ' + c2 + ',' + by + ' ' + bx + ',' + by + '"/>');
+  });
+
+  // entity tables
+  E.forEach(function(e){
+    var p = pos[e.cls];
+    if (!p) return;
+    var vis = entVisible(e);
+    var sel = state.sel === e.cls;
+    s.push('<g class="eg' + (sel ? ' sel' : '') + (vis ? '' : ' dim') + '" data-e="' + esc(e.cls) + '" tabindex="0" role="button" aria-label="' + esc(e.cls) + '">');
+    s.push('<rect class="etbl" x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h + '" rx="2"/>');
+    s.push('<rect class="ehead" x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + HEAD + '"/>');
+    s.push('<line class="rowline" x1="' + p.x + '" y1="' + (p.y + HEAD) + '" x2="' + (p.x + p.w) + '" y2="' + (p.y + HEAD) + '"/>');
+    s.push('<text class="ename" x="' + (p.x + 9) + '" y="' + (p.y + 15) + '">' + esc(e.cls) + '</text>');
+    s.push('<text class="etable" x="' + (p.x + 9) + '" y="' + (p.y + 27) + '">' + esc(e.table || 'no @Entity name') + '</text>');
+    s.push('<text class="emod" x="' + (p.x + p.w - 9) + '" y="' + (p.y + 15) + '" text-anchor="end">' + esc(e.module) + '</text>');
+    e.columns.forEach(function(c, i){
+      var y = rowY(p, i);
+      var fk = fkCols[e.cls + '|' + c.name];
+      var cls = c.pk ? 'col colpk' : (fk ? 'col colfk' + (fk === 'dec' ? ' dec' : '') : 'col');
+      s.push('<text class="' + cls + '" x="' + (p.x + 9) + '" y="' + y + '">' + esc(c.name) + (c.pk ? ' *' : '') + '</text>');
+      s.push('<text class="coltype" x="' + (p.x + p.w - 9) + '" y="' + y + '" text-anchor="end">' + esc(c.type.length > 20 ? c.type.slice(0, 19) + '…' : c.type) + '</text>');
+    });
+    s.push('</g>');
+  });
+
+  s.push('</g></svg>');
+  document.getElementById('canvas').innerHTML = s.join('');
+  document.querySelectorAll('.eg').forEach(function(g){
+    var id = g.getAttribute('data-e');
+    g.addEventListener('click', function(){ state.sel = state.sel === id ? null : id; render(); });
+    g.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); g.click(); } });
+  });
+}
+
+document.getElementById('legend').innerHTML =
+  '<span class="lg"><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--declared)" stroke-width="1.8"/></svg>declared to the ORM</span>' +
+  '<span class="lg"><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--implicit)" stroke-width="1.8" stroke-dasharray="5 3"/></svg>implicit — a bare id column</span>' +
+  '<span class="lg"><b style="color:var(--pk)">name *</b>&nbsp;primary key</span>' +
+  '<span class="lg"><b style="color:var(--implicit)">name</b>&nbsp;holds a reference</span>';
+
+document.querySelector('#reltable tbody').innerHTML = R.slice().sort(function(a, b){
+  return (a.declared === b.declared ? 0 : a.declared ? 1 : -1) || a.from.localeCompare(b.from);
+}).map(function(r){
+  return '<tr><td class="m">' + esc(r.from) + '</td><td class="m" style="color:var(--' + (r.declared ? 'declared' : 'implicit') + ')">' + esc(r.via) + '</td>' +
+    '<td class="m">' + esc(r.to) + '</td>' +
+    '<td><span class="pill ' + (r.declared ? 'dec' : 'imp') + '">' + (r.declared ? 'declared' : 'implicit') + '</span></td>' +
+    '<td class="m" style="color:var(--ink3)">' + (r.self ? 'self' : (r.cross ? esc(r.fromModule + ' → ' + r.toModule) : '—')) + '</td></tr>';
+}).join('');
+
+function tog(id, key){
+  var b = document.getElementById(id);
+  b.addEventListener('click', function(){ state[key] = !state[key]; b.classList.toggle('on', state[key]); render(); });
+}
+tog('tImplicit', 'implicit'); tog('tDeclared', 'declared'); tog('tCross', 'crossOnly');
+document.getElementById('q').addEventListener('input', function(e){ state.q = e.target.value.trim().toLowerCase(); render(); });
+document.getElementById('reset').addEventListener('click', function(){
+  state = { implicit:true, declared:true, crossOnly:false, q:'', sel:null };
+  document.getElementById('q').value = '';
+  document.getElementById('tImplicit').classList.add('on');
+  document.getElementById('tDeclared').classList.add('on');
+  document.getElementById('tCross').classList.remove('on');
+  render();
+});
+
+render();
+window.__schema = { M:M, layout:layout, state:state };
+})();
+</script>

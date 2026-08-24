@@ -155,6 +155,27 @@ module.exports = function narrate(m) {
         : '');
   }
 
+  // ---------- data model ----------
+  const dm = m.dataModel;
+  if (dm && dm.stats.entities) {
+    const t = dm.stats;
+    if (!dm.relations.length) {
+      N.schema = `${t.entities} ${plural(t.entities, 'entity', 'entities')} with ${t.columns} columns between them, and no references at all — every table stands alone.`;
+    } else {
+      N.schema = `${t.entities} ${plural(t.entities, 'entity', 'entities')}, ${t.columns} columns, ` +
+        `${dm.relations.length} ${plural(dm.relations.length, 'reference')} between them. ` +
+        (t.inferred
+          ? `${strong(t.declared + ' ' + plural(t.declared, 'is', 'are') + ' declared to the ORM; ' + t.inferred + ' exist only as a bare id column')}. ` +
+            (t.crossContext
+              ? `${t.crossContext} cross a bounded context — which is usually the reason the relation was left undeclared, since declaring it would couple the two contexts. The dependency is still there; it is just the application's job to honour it rather than the database's.`
+              : 'None of them crosses a bounded context.')
+          : `All ${t.declared} are declared to the ORM.`);
+      if (t.untabled) {
+        N.schema += ` ${t.untabled} ${plural(t.untabled, 'entity', 'entities')} ${plural(t.untabled, 'does', 'do')} not name ${plural(t.untabled, 'its', 'their')} table in ${mono('@Entity()')}, so the name comes from the class.`;
+      }
+    }
+  }
+
   // ---------- provenance, shown on every lens ----------
   N.provenance = `Generated from ${mono(m.project)} by metatron. Every box is a directory that exists and every line is an ` +
     `${mono('import')} that a file actually writes. ${m.coverage.classified} of ${m.coverage.files} files ` +

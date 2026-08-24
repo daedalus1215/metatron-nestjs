@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 // ------------------------------------------------------------------ helpers
 
@@ -518,6 +519,177 @@ module.exports = function scan(cfg, opts = {}) {
   for (const e of endpoints) e.flat = flatten(trace(e.file, e.handler, new Set([e.file + '#' + e.handler]), 0), [], 1);
   endpoints.sort((a, b) => a.module.localeCompare(b.module) || a.route.localeCompare(b.route) || a.verb.localeCompare(b.verb));
 
+  // ---- churn, from git history
+  //
+  // How often a file changes, crossed with how much depends on it, is the
+  // classic argument for where refactoring pays. Silently skipped outside a
+  // git repo, or when `since` finds no commits.
+
+  const churn = {};
+  let churnMeta = { available: false, commits: 0, since: cfg.churnSince || null, reason: null };
+  try {
+    const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'],
+      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const args = ['log', '--no-merges', '--numstat', '--format=%x01%H%x02%at%x02%an'];
+    if (cfg.churnSince) args.push('--since=' + cfg.churnSince);
+    args.push('--', ROOT);
+    const out = execFileSync('git', args, { cwd: gitRoot, encoding: 'utf8', maxBuffer: 96 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+
+    let when = 0, who = null, commits = 0;
+    for (const line of out.split('\n')) {
+      if (line.startsWith('\u0001')) {
+        const parts = line.slice(1).split('\u0002');
+        when = Number(parts[1]) * 1000;
+        who = parts[2];
+        commits++;
+        continue;
+      }
+      const m = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+      if (!m) continue;
+      let file = m[3];
+      // renames arrive as "old => new" or "dir/{old => new}/x"
+      if (file.includes(' => ')) {
+        file = file.replace(/\{([^}]*) => ([^}]*)\}/, '$2').replace(/^.* => /, '');
+      }
+      const abs = path.resolve(gitRoot, file);
+      const rel = path.relative(ROOT, abs).split(path.sep).join('/');
+      if (!fileSet.has(rel)) continue;
+      const c = churn[rel] || (churn[rel] = { commits: 0, added: 0, removed: 0, last: 0, first: Infinity, authors: {} });
+      c.commits++;
+      c.added += m[1] === '-' ? 0 : Number(m[1]);
+      c.removed += m[2] === '-' ? 0 : Number(m[2]);
+      if (when > c.last) c.last = when;
+      if (when < c.first) c.first = when;
+      if (who) c.authors[who] = (c.authors[who] || 0) + 1;
+    }
+    for (const k of Object.keys(churn)) {
+      churn[k].authorCount = Object.keys(churn[k].authors).length;
+      delete churn[k].authors;
+      if (churn[k].first === Infinity) churn[k].first = 0;
+    }
+    churnMeta = { available: Object.keys(churn).length > 0, commits, since: cfg.churnSince || null, reason: null };
+    if (!churnMeta.available) churnMeta.reason = 'git history touched none of the scanned files';
+  } catch (err) {
+    churnMeta = { available: false, commits: 0, since: cfg.churnSince || null, reason: 'not a git repository, or git unavailable' };
+  }
+
+  // ---- data model: entities, their columns, and the references between them
+  //
+  // Declaring a TypeORM relation across a bounded context couples the two
+  // contexts, so plenty of codebases deliberately store a bare `<thing>Id`
+  // column instead. Those references are real but invisible to the ORM, so we
+  // infer them from column names as well as reading the decorators.
+
+  const COL_RE = /@(Column|PrimaryGeneratedColumn|PrimaryColumn|CreateDateColumn|UpdateDateColumn|DeleteDateColumn)\(([^)]*)\)\s*(?:@\w+\([^)]*\)\s*)*\n?\s*(\w+)([?!])?\s*:\s*([^;]+);/g;
+  const REL_RE = /@(ManyToOne|OneToMany|OneToOne|ManyToMany)\(\s*(?:\(\s*\)|\w+)\s*=>\s*(\w+)/g;
+  const TABLE_RE = /@Entity\(\s*['"`]([^'"`]+)['"`]/;
+
+  const singular = (w) => w.replace(/ies$/, 'y').replace(/ses$/, 's').replace(/s$/, '');
+  const norm = (w) => singular(String(w).toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+  const entities = files.filter((f) => info[f].pattern === 'entity').map((f) => {
+    const src = text[f];
+    const cls = className(f);
+    const table = (src.match(TABLE_RE) || [])[1] || null;
+    const columns = [];
+    COL_RE.lastIndex = 0;
+    let m;
+    while ((m = COL_RE.exec(src))) {
+      columns.push({
+        name: m[3], type: m[5].trim().replace(/\s+/g, ' '),
+        deco: m[1], nullable: m[4] === '?' || /\bnull\b/.test(m[5]),
+        pk: /Primary/.test(m[1]),
+      });
+    }
+    return { file: f, cls, table, module: info[f].module, columns };
+  });
+
+  // every name an entity might be referred to by
+  const byName = {};
+  for (const e of entities) {
+    byName[norm(e.cls)] = e;
+    if (e.table) byName[norm(e.table)] = e;
+  }
+
+  const relations = [];
+  const seenRel = new Set();
+  function addRel(from, to, via, declared, kind) {
+    if (!from || !to) return;
+    const key = from.cls + '|' + to.cls + '|' + via;
+    if (seenRel.has(key)) return;
+    seenRel.add(key);
+    relations.push({
+      from: from.cls, fromModule: from.module, to: to.cls, toModule: to.module,
+      via, declared, kind: kind || null,
+      cross: from.module !== to.module,
+      self: from.cls === to.cls,
+    });
+  }
+
+  for (const e of entities) {
+    // declared, from the decorators
+    REL_RE.lastIndex = 0;
+    let m;
+    while ((m = REL_RE.exec(text[e.file]))) {
+      const target = entities.find((x) => x.cls === m[2]);
+      if (target) addRel(e, target, m[1], true, m[1]);
+    }
+    // inferred, from `<thing>Id` columns
+    for (const c of e.columns) {
+      const stem = c.name.match(/^(.*?)(?:Id|_id)$/);
+      if (!stem || !stem[1]) continue;
+      const target = byName[norm(stem[1])] ||
+        (/^parent$/i.test(stem[1]) ? e : null);   // parentId is a self-reference
+      if (!target) continue;
+      addRel(e, target, c.name, false, 'implicit');
+    }
+  }
+
+  // A TypeORM relation is normally written twice: the decorator and the id
+  // column beside it. That is one relationship, so fold the implicit reading
+  // into the declared one when the column plainly names the same target.
+  const merged = [];
+  for (const r of relations) {
+    if (r.declared) { merged.push(r); continue; }
+    const stem = (r.via.match(/^(.*?)(?:Id|_id)$/) || [])[1];
+    const twin = relations.find((d) =>
+      d.declared && d.from === r.from && d.to === r.to && stem && norm(stem) === norm(d.to));
+    if (twin) { twin.via = r.via; continue; }   // keep the column name, it is the useful half
+    merged.push(r);
+  }
+  relations.length = 0;
+  relations.push(...merged);
+
+  const dataModel = {
+    entities,
+    relations,
+    stats: {
+      entities: entities.length,
+      columns: entities.reduce((a, e) => a + e.columns.length, 0),
+      declared: relations.filter((r) => r.declared).length,
+      inferred: relations.filter((r) => !r.declared).length,
+      crossContext: relations.filter((r) => r.cross).length,
+      untabled: entities.filter((e) => !e.table).length,
+    },
+  };
+
+  // ---- orphans: nothing reaches these from a route or a module registration
+  const reach = new Set();
+  const stack = [];
+  const adjOut = {};
+  for (const e of fileEdges) (adjOut[e.from] = adjOut[e.from] || []).push(e.to);
+  for (const f of files) {
+    if (info[f].pattern === 'module' || endpoints.some((e) => e.file === f)) {
+      if (!reach.has(f)) { reach.add(f); stack.push(f); }
+    }
+  }
+  while (stack.length) {
+    const cur = stack.pop();
+    for (const nb of adjOut[cur] || []) if (!reach.has(nb)) { reach.add(nb); stack.push(nb); }
+  }
+  const IGNORE_ORPHAN = new Set(['spec', 'test-util', 'migration', 'bootstrap', 'module']);
+  const orphans = files.filter((f) => !reach.has(f) && !IGNORE_ORPHAN.has(info[f].pattern));
+
   // ---- findings
   const pairs = (fp, tp) => fileEdges.filter((e) => info[e.from] && info[e.to] && info[e.from].pattern === fp && info[e.to].pattern === tp);
   const findings = [];
@@ -610,6 +782,48 @@ module.exports = function scan(cfg, opts = {}) {
     });
   }
 
+  if (orphans.length) {
+    findings.push({
+      id: 'orphans', tone: 'warn',
+      title: `${orphans.length} files are unreachable from any route or module`,
+      detail: 'Walking imports outward from every HTTP handler and every *.module.ts registration never arrives at these. Likely dead.',
+      items: orphans,
+    });
+  }
+
+  if (dataModel.stats.inferred) {
+    findings.push({
+      id: 'implicit-fk', tone: 'note',
+      title: `${dataModel.stats.inferred} entity references are implicit`,
+      detail: `The data model has ${relations.length} references between entities; ${dataModel.stats.declared} are declared to the ORM and ${dataModel.stats.inferred} exist only as a bare id column. ${dataModel.stats.crossContext} of them cross a bounded context.`,
+      items: relations.filter((r) => !r.declared).map((r) => `${r.from}.${r.via} -> ${r.to}${r.cross ? '  (crosses ' + r.fromModule + ' -> ' + r.toModule + ')' : ''}`),
+    });
+  }
+
+  if (churnMeta.available) {
+    const fanIn = {};
+    for (const l of fileLinks) fanIn[l[1]] = (fanIn[l[1]] || 0) + 1;
+    const scored = fileNodes.map((n, i) => {
+      const c = churn[n.f];
+      if (!c) return null;
+      const deps = fanIn[i] || 0;
+      // both factors matter, so multiply rather than add; +1 keeps a leaf scoreable
+      return { f: n.f, p: n.p, commits: c.commits, deps, authors: c.authorCount,
+               score: c.commits * (1 + deps) };
+    }).filter(Boolean)
+      .filter((x) => !['spec', 'test-util', 'migration'].includes(x.p))
+      .sort((a, b) => b.score - a.score);
+    const top = scored.slice(0, 15);
+    if (top.length) {
+      findings.push({
+        id: 'hotspots', tone: 'note',
+        title: 'Files that change often and are widely depended on',
+        detail: `Across ${churnMeta.commits} commits. Score is commits multiplied by dependents: a file high on both is where a refactor pays for itself, and where a mistake spreads furthest.`,
+        items: top.map((x) => `${x.f}  —  ${x.commits} commits, ${x.deps} dependents, ${x.authors} author${x.authors === 1 ? '' : 's'}`),
+      });
+    }
+  }
+
   if (cycles.files.length) {
     findings.push({
       id: 'circular', tone: 'warn', title: 'Circular imports between files',
@@ -650,6 +864,6 @@ module.exports = function scan(cfg, opts = {}) {
     domainModules: modules.map((m) => m.id).filter((m) => !INFRA.has(m) && m !== '(root)'),
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
-    fileNodes, fileLinks,
+    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta,
   };
 };
