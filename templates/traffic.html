@@ -63,6 +63,23 @@ h1 { font-size:clamp(34px,5.4vw,60px); line-height:1.03; letter-spacing:-.028em;
 #q { font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:6px 11px;
   border:1px solid var(--rule2); background:var(--surface); color:var(--ink); min-width:200px; }
 .sep { width:1px; height:20px; background:var(--rule2); margin:0 4px; }
+.seg { display:flex; border:1px solid var(--rule2); }
+.seg button { font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.04em;
+  padding:6px 10px; background:transparent; color:var(--ink3); border:0; cursor:pointer; }
+.seg button.on { background:var(--ink); color:var(--paper); }
+.seg button:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+/* Filling the screen is the point of the board, so the plate takes the whole
+   viewport and the surrounding page furniture gets out of the way. */
+.plate.full { position:fixed; inset:0; z-index:99; margin:0; border:0;
+  display:flex; flex-direction:column; background:var(--paper); }
+.plate.full .grid { flex:1; min-height:0; border:0; grid-template-columns:minmax(0,1fr) 330px; }
+.plate.full .board, .plate.full .insp { max-height:none; height:100%; }
+.plate.full .fullbar { display:flex; }
+.fullbar { display:none; align-items:center; gap:8px; padding:8px 12px;
+  border-bottom:1px solid var(--rule2); background:var(--surface2); }
+.fullbar .t { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink3); }
+body.locked { overflow:hidden; }
 .vb { font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.06em;
   padding:2px 6px; border:1px solid currentColor; }
 .v-GET{color:var(--blue)} .v-POST{color:var(--green)} .v-PATCH{color:var(--amber)}
@@ -173,13 +190,33 @@ footer { margin-top:64px; padding-top:20px; border-top:2px solid var(--ink); col
   <span id="verbs"></span>
   <span class="sep"></span>
   <input id="q" type="search" placeholder="filter routes…" aria-label="Filter routes">
+  <span class="sep"></span>
+  <div class="seg" role="group" aria-label="Row density">
+    <button id="dCompact" title="Fit more rows on screen">compact</button>
+    <button id="dComfortable" class="on">comfortable</button>
+    <button id="dRoomy" title="Larger rows, easier to read">roomy</button>
+  </div>
+  <button class="btn" id="expand" title="Fill the screen (Esc to leave)">⤢ full screen</button>
   <button class="btn" id="clear">reset</button>
   <span class="count" id="count"></span>
 </div>
 
-<div class="grid">
-  <div class="board" id="board"></div>
-  <aside class="insp" id="insp"></aside>
+<div class="plate" id="plate">
+  <div class="fullbar" id="fullbar">
+    <span class="t" id="fullTitle"></span>
+    <span style="margin-left:auto"></span>
+    <button class="btn" id="fullPlay">⏸ pause</button>
+    <div class="seg" role="group" aria-label="Row density">
+      <button id="fCompact">compact</button>
+      <button id="fComfortable" class="on">comfortable</button>
+      <button id="fRoomy">roomy</button>
+    </div>
+    <button class="btn" id="fullExit">✕ exit full screen</button>
+  </div>
+  <div class="grid">
+    <div class="board" id="board"></div>
+    <aside class="insp" id="insp"></aside>
+  </div>
 </div>
 <div class="legend" id="legend" style="border:1px solid var(--rule2);border-top:0;background:var(--surface2)"></div>
 
@@ -221,7 +258,17 @@ var LANES = [
   { i:5, name:'Persistence',sub:'repository' },
   { i:6, name:'Response',   sub:'responder' }
 ];
-var V = { gut:262, laneW:132, rowH:30, headH:46, pad:10 };
+var DENSITY = {
+  compact:     { rowH:20, laneW:112, gut:236, route:9.5,  cls:0,   dot:2.8 },
+  comfortable: { rowH:30, laneW:132, gut:262, route:10.5, cls:8.5, dot:3.6 },
+  roomy:       { rowH:44, laneW:158, gut:300, route:12.5, cls:10,  dot:4.6 }
+};
+var V = { gut:262, laneW:132, rowH:30, headH:46, pad:10, route:10.5, cls:8.5, dot:3.6 };
+function applyDensity(name){
+  var d = DENSITY[name] || DENSITY.comfortable;
+  V.rowH = d.rowH; V.laneW = d.laneW; V.gut = d.gut;
+  V.route = d.route; V.cls = d.cls; V.dot = d.dot;
+}
 
 // stations per endpoint: lane -> nodes
 EP.forEach(function(e){
@@ -233,6 +280,7 @@ EP.forEach(function(e){
 });
 
 var state = { play:true, speed:1, q:'', verbs:{}, sel:null };
+applyDensity('comfortable');
 ['GET','POST','PATCH','PUT','DELETE'].forEach(function(v){ state.verbs[v] = true; });
 
 document.getElementById('verbs').innerHTML = ['GET','POST','PATCH','PUT','DELETE'].map(function(v){
@@ -273,18 +321,27 @@ function render(){
     var sel = state.sel === e.id;
     s.push('<g class="rowg'+(sel?' sel':'')+'" data-id="'+esc(e.id)+'" tabindex="0" role="button" aria-label="'+esc(e.verb+' '+e.route)+'">');
     s.push('<rect class="rowbg'+(i%2?' alt':'')+(sel?' sel':'')+'" x="0" y="'+y+'" width="'+w+'" height="'+V.rowH+'"/>');
-    s.push('<text class="route" x="10" y="'+(cy-1)+'"><tspan class="v-'+e.verb+'" style="font-weight:600">'+e.verb+'</tspan> '+esc(e.route)+'</text>');
-    s.push('<text class="rcls" x="10" y="'+(cy+10)+'">'+esc(e.cls)+'</text>');
+    var ty = V.cls ? cy - 1 : cy + V.route*0.36;
+    // the gutter is fixed, so clip the route rather than letting it run into the lanes
+    var avail = V.gut - 22 - (e.verb.length + 1) * V.route * 0.62;
+    var maxChars = Math.max(6, Math.floor(avail / (V.route * 0.60)));
+    var routeTxt = e.route.length > maxChars ? '…' + e.route.slice(-(maxChars - 1)) : e.route;
+    s.push('<text class="route" style="font-size:'+V.route+'px" x="10" y="'+ty+'"><tspan class="v-'+e.verb+'" style="font-weight:600">'+e.verb+'</tspan> '+esc(routeTxt)+'<title>'+esc(e.verb+' '+e.route)+'</title></text>');
+    if (V.cls) {
+      var clsMax = Math.max(8, Math.floor((V.gut - 22) / (V.cls * 0.60)));
+      var clsTxt = e.cls.length > clsMax ? e.cls.slice(0, clsMax - 1) + '…' : e.cls;
+      s.push('<text class="rcls" style="font-size:'+V.cls+'px" x="10" y="'+(cy+10)+'">'+esc(clsTxt)+'</text>');
+    }
 
     var xs = e.stations.map(function(st){ return laneX(st.lane); });
     if (xs.length > 1) s.push('<line class="track" x1="'+xs[0]+'" y1="'+cy+'" x2="'+xs[xs.length-1]+'" y2="'+cy+'"/>');
     e.stations.forEach(function(st, k){
       var x = xs[k], n = st.nodes.length;
-      var r = n > 1 ? 8 : 6;
+      var r = (n > 1 ? 8 : 6) * (V.rowH/30 < 0.8 ? 0.75 : (V.rowH/30 > 1.2 ? 1.15 : 1));
       s.push('<circle class="st l'+st.lane+' s'+st.lane+'" cx="'+x+'" cy="'+cy+'" r="'+r+'" fill-opacity="'+(n>1?'1':'.85')+'"/>');
       if (n > 1) s.push('<text class="stn" x="'+x+'" y="'+(cy+3)+'" text-anchor="middle">'+n+'</text>');
     });
-    s.push('<circle class="dot" r="3.6" fill="var(--dot)" cx="'+xs[0]+'" cy="'+cy+'" data-row="'+i+'"/>');
+    s.push('<circle class="dot" r="'+V.dot+'" fill="var(--dot)" cx="'+xs[0]+'" cy="'+cy+'" data-row="'+i+'"/>');
     s.push('</g>');
   });
   s.push('</svg>');
@@ -299,6 +356,8 @@ function render(){
     g.addEventListener('keydown', function(ev){ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); g.click(); } });
   });
   document.getElementById('count').textContent = rows.length + ' of ' + EP.length + ' endpoints';
+  var ft = document.getElementById('fullTitle');
+  if (ft) ft.textContent = rows.length + ' of ' + EP.length + ' endpoints · ' + densityName;
 }
 
 function select(id){
@@ -439,6 +498,56 @@ document.getElementById('clear').addEventListener('click', function(){
   document.querySelectorAll('.vfilter').forEach(function(b){ b.classList.add('on'); b.setAttribute('aria-pressed','true'); });
   render(); inspect(null);
 });
+
+/* ---------- density ---------- */
+var densityName = 'comfortable';
+function setDensity(name){
+  if (!DENSITY[name]) return;
+  densityName = name;
+  applyDensity(name);
+  ['Compact','Comfortable','Roomy'].forEach(function(k){
+    var lower = k.toLowerCase();
+    ['d'+k, 'f'+k].forEach(function(id){
+      var b = document.getElementById(id);
+      if (b) b.classList.toggle('on', lower === name);
+    });
+  });
+  render();
+}
+['Compact','Comfortable','Roomy'].forEach(function(k){
+  ['d'+k, 'f'+k].forEach(function(id){
+    var b = document.getElementById(id);
+    if (b) b.addEventListener('click', function(){ setDensity(k.toLowerCase()); });
+  });
+});
+
+/* ---------- full screen ---------- */
+var plate = document.getElementById('plate');
+function isFull(){ return plate.classList.contains('full'); }
+function setFull(on){
+  plate.classList.toggle('full', on);
+  document.body.classList.toggle('locked', on);
+  // native full screen where the browser allows it; the CSS fallback already
+  // covers the viewport, so this is best-effort and never load-bearing
+  try {
+    if (on && plate.requestFullscreen) plate.requestFullscreen().catch(function(){});
+    else if (!on && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function(){});
+  } catch (e) {}
+  render();
+}
+document.getElementById('expand').addEventListener('click', function(){ setFull(!isFull()); });
+document.getElementById('fullExit').addEventListener('click', function(){ setFull(false); });
+document.addEventListener('keydown', function(ev){
+  if (ev.key === 'Escape' && isFull()) { ev.preventDefault(); setFull(false); }
+});
+document.addEventListener('fullscreenchange', function(){
+  if (!document.fullscreenElement && isFull()) setFull(false);
+});
+document.getElementById('fullPlay').addEventListener('click', function(){
+  document.getElementById('play').click();
+  this.textContent = state.play ? '⏸ pause' : '▶ play';
+});
+window.addEventListener('resize', function(){ if (isFull()) render(); });
 
 inspect(null);
 render();
