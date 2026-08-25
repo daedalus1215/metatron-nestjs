@@ -116,6 +116,70 @@ form metatron does not read, and routes in that file are reported relative to
 
 ---
 
+## Holding the line
+
+metatron observes by default. To make it *enforce*, record today's violations as
+accepted and fail the build when a new one appears:
+
+```bash
+metatron baseline     # writes arch.baseline.json
+metatron check        # exit 0 clean, 1 new violations, 2 tool/config error
+```
+
+```
+metatron check · chronus
+
+  new violations        1
+    action>repository     notes/apps/actions/log-time/log-time.action.ts
+                          -> time-tracks/infra/repositories/time-track.repository.ts
+
+  fixed since baseline  2
+
+  known, unchanged      42
+
+FAIL — 1 new violation. Fix it, or run `metatron baseline --update` to accept it.
+```
+
+The baseline sits **beside `arch.config.js`**, not in the output directory —
+output is generated and usually gitignored, and a ratchet that is not committed
+cannot hold a line. Commit it.
+
+Each violation is stored by a fingerprint of `rule|from|to`, so `check` can name
+the offender and catch a swap — one violation fixed and another introduced in
+the same change, which a per-rule count nets to zero and passes. A rename shows
+up as one removed plus one added, which is noise, but metatron cannot know a
+rename preserved intent and guessing would let a real violation ride in on one.
+
+Add a `note` to any entry to record *why* it is tolerated. `--update` preserves
+notes; if a noted violation no longer exists, its note goes with it and the tool
+says so.
+
+```json
+"a3f19c4b2e01": {
+  "rule": "action>repository",
+  "from": "notes/apps/actions/create-note/create-note.action.ts",
+  "to": "notes/infra/repositories/note.repository.ts",
+  "note": "legacy, pre-dates the aggregator"
+}
+```
+
+Adopting mid-stream on a codebase you do not want to clean up first:
+
+```bash
+metatron check --allow-new 3      # ratchet the number down over time
+metatron check --rule orphans     # or gate one rule, everything else advisory
+```
+
+Violations that are **fixed** are reported but never removed automatically. A
+scan that temporarily fails to parse a file would otherwise quietly retire a
+real debt, and it would come back later as a "new" violation with no history.
+
+Aggregate findings — `dag` reports cycle totals, `app-apps` reports a spelling
+split — carry `gate: false` and never become violations. They are worth printing
+and meaningless to ratchet. `metatron baseline` lists which ones are excluded.
+
+---
+
 ## On a new machine
 
 ```bash
@@ -205,6 +269,9 @@ metatron [path]           scan and build everything
 metatron scan [path]      model only, no views
 metatron views [path]     rebuild views from the cached model
 metatron views layers     just one view
+metatron baseline         record today's violations as accepted
+metatron baseline --update   rewrite it, keeping hand-written notes
+metatron check            fail if new violations appeared
 metatron skill            install the Claude skill
 metatron --help
 ```
@@ -320,7 +387,8 @@ break) · `modules`, `domainModules`, `platformModules` · `allModuleEdges`,
 `domainEdges` · `cycles` (Tarjan SCCs with sanctioned carve-outs applied
 progressively) · `crossDomain` · `ports` · `endpoints` · `shape` · `findings` · `dataModel` (entities, columns, declared and inferred
 relations) · `orphans` · `churn` / `churnMeta` · `diagnostics` (routes that
-could not be parsed, rather than silently dropped).
+could not be parsed, rather than silently dropped) · `violations` (warn findings
+flattened one per instance, each with a stable fingerprint).
 
 ## Prior art
 

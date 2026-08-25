@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { violationsOf } = require('./violations');
 
 // ------------------------------------------------------------------ helpers
 
@@ -814,10 +815,11 @@ module.exports = function scan(cfg, opts = {}) {
       : 'Every cross-domain edge goes through an allowed gateway',
     detail: `${crossDomain.length} dependencies cross a bounded context. Allowed landing points: ${(cfg.crossDomainGateways || []).join(', ') || '(none configured)'}.`,
     items: (nonGateway.length ? nonGateway : crossDomain).map((e) => `${e.fm}/${e.fp} -> ${e.t}`),
+    instances: nonGateway.map((e) => ({ from: e.f, to: e.t })),
   });
 
   findings.push({
-    id: 'dag', tone: cycles.domain.length ? 'warn' : 'good',
+    id: 'dag', tone: cycles.domain.length ? 'warn' : 'good', gate: false,
     title: cycles.domain.length ? 'Domain dependency graph has cycles' : 'Domain dependency graph is acyclic',
     detail: 'Strongly-connected components as sanctioned carve-outs are removed in turn.',
     items: [
@@ -846,17 +848,21 @@ module.exports = function scan(cfg, opts = {}) {
     detail: `Checked among ${(cfg.noSameLevel || []).join(', ')}.` +
       (sameInFolder.length ? ` ${sameInFolder.length} same-pattern import(s) sit inside one folder and are treated as a helper split, not a violation.` : ''),
     items: (same.length ? same : sameInFolder).map((e) => `[${info[e.from].pattern}] ${e.from} -> ${e.to}`),
+    instances: same.map((e) => ({ from: e.from, to: e.to })),
   });
 
   const upward = [];
   for (const r of cfg.forbidden || []) {
-    for (const e of pairs(r.from, r.to)) upward.push(`${r.why}: ${e.from} -> ${e.to}`);
+    for (const e of pairs(r.from, r.to)) upward.push({ from: e.from, to: e.to, why: r.why });
   }
   findings.push({
     id: 'no-upward', tone: upward.length ? 'warn' : 'good',
     title: upward.length ? `${upward.length} upward calls` : 'No upward calls',
     detail: 'Layering holds in the direction the rules require.',
-    items: upward.length ? upward : (cfg.forbidden || []).map((r) => `${r.from} -> ${r.to}: 0`),
+    items: upward.length
+      ? upward.map((u) => `${u.why}: ${u.from} -> ${u.to}`)
+      : (cfg.forbidden || []).map((r) => `${r.from} -> ${r.to}: 0`),
+    instances: upward.map((u) => ({ from: u.from, to: u.to })),
   });
 
   for (const r of skipRules) {
@@ -866,19 +872,23 @@ module.exports = function scan(cfg, opts = {}) {
       id: r.id, tone: 'warn', title: r.why,
       detail: `Intended flow is ${flow.join(' -> ')}.`,
       items: hits.map((e) => `${e.from}  ->  ${e.to}`),
+      instances: hits.map((e) => ({ from: e.from, to: e.to })),
     });
   }
 
   for (const n of cfg.naming || []) {
     const hits = files.filter((f) => (typeof n.test === 'function' ? n.test(f) : n.test.test(f)));
     if (!hits.length) continue;
-    findings.push({ id: 'naming-' + n.id, tone: 'warn', title: n.title, detail: n.why || '', items: hits });
+    findings.push({
+      id: 'naming-' + n.id, tone: 'warn', title: n.title, detail: n.why || '', items: hits,
+      instances: hits.map((f) => ({ from: f, to: '' })),
+    });
   }
 
   const appDirs = [...new Set(files.map((f) => f.split('/').slice(0, 2).join('/')).filter((p) => /\/apps?$/.test(p)))].sort();
   if (appDirs.some((d) => d.endsWith('/app')) && appDirs.some((d) => d.endsWith('/apps'))) {
     findings.push({
-      id: 'app-apps', tone: 'warn', title: 'app/ and apps/ used interchangeably',
+      id: 'app-apps', tone: 'warn', gate: false, title: 'app/ and apps/ used interchangeably',
       detail: 'Tooling that globs one spelling silently misses the other.', items: appDirs,
     });
   }
@@ -891,6 +901,7 @@ module.exports = function scan(cfg, opts = {}) {
     findings.push({
       id: 'dead-shims', tone: 'warn', title: 'Dead re-export files',
       detail: 'Single-line re-exports that nothing imports.', items: deadShims,
+      instances: deadShims.map((f) => ({ from: f, to: '' })),
     });
   }
 
@@ -900,6 +911,7 @@ module.exports = function scan(cfg, opts = {}) {
       title: `${orphans.length} files are unreachable from any route or module`,
       detail: 'Walking imports outward from every HTTP handler and every *.module.ts registration never arrives at these. Likely dead.',
       items: orphans,
+      instances: orphans.map((f) => ({ from: f, to: '' })),
     });
   }
 
@@ -941,6 +953,7 @@ module.exports = function scan(cfg, opts = {}) {
       id: 'circular', tone: 'warn', title: 'Circular imports between files',
       detail: 'Mutually importing files — genuine runtime cycles.',
       items: cycles.files.map((c) => c.join('  <->  ')),
+      instances: cycles.files.map((c) => ({ from: c[0], to: c.slice(1).join(',') })),
     });
   }
 
@@ -960,7 +973,7 @@ module.exports = function scan(cfg, opts = {}) {
     shape[info[f].module][info[f].pattern] = (shape[info[f].module][info[f].pattern] || 0) + 1;
   }
 
-  return {
+  const model = {
     generatedAt: new Date().toISOString(),
     project: cfg.name || path.basename(path.resolve(cfg.__dir)),
     root: cfg.root,
@@ -978,4 +991,7 @@ module.exports = function scan(cfg, opts = {}) {
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
     fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, diagnostics,
   };
+  // Derived, so it costs nothing extra and travels with a cached model.
+  model.violations = violationsOf(model);
+  return model;
 };

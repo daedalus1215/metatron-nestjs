@@ -80,6 +80,21 @@ Static checks cannot catch mirrored text transforms, washed-out colour blends,
 content clipped outside the viewport, or tofu glyphs in the chosen font. All four
 have happened.
 
+## Gating a build on the architecture
+
+If the project has `arch.baseline.json` beside its config, it is enforcing:
+
+```bash
+npx metatron check              # 0 clean · 1 new violations · 2 tool/config error
+npx metatron baseline --update  # accept the current state, keeping `note` fields
+```
+
+Never run `baseline --update` to make a failing check pass unless the user has
+decided to accept that violation. The whole point is that the number does not
+drift upward quietly. Report what `check` said and let them choose.
+
+`--allow-new <n>` and `--rule <id>` exist for adopting the gate mid-stream.
+
 ## Tests
 
 `npm test` runs the fixture suite in `test/`. Add a fixture whenever you fix a
