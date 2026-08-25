@@ -81,6 +81,20 @@ console.log(`  ${model.stats.endpoints} endpoints · ${model.stats.hops} traced 
 console.log(`  ${skips} layer-skipping links · ${model.findings.filter((f) => f.tone === 'warn').length} deviations · ${model.findings.filter((f) => f.tone === 'good').length} rules upheld`);
 console.log(`  coverage ${c.classified}/${c.files} (${(100 - c.unclassifiedPct).toFixed(1)}%)${c.unclassifiedPct > 25 ? '  !!' : c.unclassifiedPct > 10 ? '  !' : ''}`);
 
+// A route we could not parse must be visible. Dropping it silently is how the
+// two-space-indentation bug survived four projects unnoticed.
+const D = model.diagnostics || [];
+if (D.length) {
+  console.log(`  ${D.length} scan diagnostic${D.length === 1 ? '' : 's'}  !`);
+  const byKind = {};
+  for (const d of D) (byKind[d.kind] = byKind[d.kind] || []).push(d);
+  for (const [kind, list] of Object.entries(byKind).sort((a, b) => b[1].length - a[1].length)) {
+    console.log(`    ${kind}  ${list.length}x`);
+    for (const d of list.slice(0, 3)) console.log(`      ${d.file}:${d.line}  ${d.detail}`);
+    if (list.length > 3) console.log(`      ... ${list.length - 3} more`);
+  }
+}
+
 if (c.unclassifiedPct > 10) {
   console.log(`\n  ${c.unclassifiedCount} files matched no pattern. Add them to \`addPatterns\` in ${path.relative(process.cwd(), cfg.__file)}:`);
   const bySuffix = {};

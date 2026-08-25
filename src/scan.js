@@ -70,6 +70,76 @@ function splitTop(s) {
   return out.map((x) => x.trim()).filter(Boolean);
 }
 
+/** 1-based line number of a character offset, for diagnostics. */
+function lineOf(src, idx) {
+  let n = 1;
+  for (let i = 0; i < idx && i < src.length; i++) if (src[i] === '\n') n++;
+  return n;
+}
+
+/**
+ * The first method declaration at or after `from`, skipping comments and any
+ * number of further decorators — whose arguments may contain arbitrary nesting,
+ * so they are brace-matched rather than pattern-matched.
+ *
+ * Indentation is never consulted. The previous implementation scanned for a
+ * two-space-indented method shape, and because `String.match` runs forward
+ * until something matches, a four-space file bound the route to an unrelated
+ * method further down instead of failing.
+ */
+function nextMethodAfter(src, from) {
+  let i = from;
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '/' && src[i + 1] === '/') { const nl = src.indexOf('\n', i); if (nl < 0) return null; i = nl + 1; continue; }
+    if (c === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); if (e < 0) return null; i = e + 2; continue; }
+    if (c === '@') {
+      i++;
+      while (i < src.length && /[\w$.]/.test(src[i])) i++;
+      let j = i;
+      while (j < src.length && /\s/.test(src[j])) j++;
+      if (src[j] === '(') { const e = matchParen(src, j); if (e < 0) return null; i = e + 1; }
+      continue;
+    }
+    const rest = src.slice(i, i + 400);
+    const mod = rest.match(/^(public|private|protected|readonly|static|async|override|abstract)\b/);
+    if (mod) { i += mod[1].length; continue; }
+    const nm = rest.match(/^([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>)?\s*\(/);
+    if (!nm) return null;   // a property, a closing brace, anything that is not a method
+    return { name: nm[1], open: i + nm[0].length - 1 };
+  }
+  return null;
+}
+
+/** @Controller(), @Controller('notes') and @Controller({ path: 'notes' }). */
+function controllerPrefix(src) {
+  const m = src.match(/@Controller\s*\(/);
+  if (!m) return { prefix: '', at: 0 };
+  const open = src.indexOf('(', m.index);
+  const close = matchParen(src, open);
+  if (close < 0) return { prefix: '', at: m.index, unresolved: true };
+  const raw = src.slice(open + 1, close).trim();
+  if (!raw) return { prefix: '', at: m.index };
+  const str = raw.match(/^['"`]([^'"`]*)['"`]$/);
+  if (str) return { prefix: str[1], at: m.index };
+  const obj = raw.match(/(?:^|[{,\s])path\s*:\s*['"`]([^'"`]*)['"`]/);
+  if (obj) return { prefix: obj[1], at: m.index };
+  return { prefix: '', at: m.index, unresolved: true };
+}
+
+/**
+ * A route argument we are willing to interpret: nothing, or one plain string.
+ * An array (`@Get(['a','b'])`) or a computed value is reported, not guessed at.
+ */
+function routeArg(raw) {
+  const t = raw.trim();
+  if (!t) return { sub: '', ok: true };
+  const str = t.match(/^['"`]([^'"`]*)['"`]$/);
+  if (str) return { sub: str[1], ok: true };
+  return { sub: null, ok: false };
+}
+
 function tarjan(nodeList, adj) {
   let idx = 0;
   const index = {}, low = {}, onstack = {}, stack = [], sccs = [];
@@ -399,26 +469,68 @@ module.exports = function scan(cfg, opts = {}) {
   }
 
   // ---- endpoints + traces
+  //
+  // A route decorator binds to the first method declaration that follows it.
+  // Anything we cannot bind is recorded in `diagnostics` rather than dropped —
+  // a route that vanishes silently is how the indentation bug stayed hidden.
+  const diagnostics = [];
   const endpoints = [];
-  const VERB_RE = /@(Get|Post|Put|Patch|Delete)\(\s*(?:['"`]([^'"`]*)['"`])?\s*\)/g;
+  const VERB_SCAN = /@(Get|Post|Put|Patch|Delete|All|Head|Options)\s*\(/g;
   const entryPatterns = new Set(['action', 'controller', 'resolver'].filter((p) => cfg.patterns.some((x) => x.id === p)));
   for (const rel of files) {
     if (!entryPatterns.has(info[rel].pattern)) continue;
     const src = text[rel];
-    const cm = src.match(/@Controller\(\s*['"`]([^'"`]*)['"`]?\s*\)/);
-    const prefix = cm ? cm[1] : '';
+    const ctrl = controllerPrefix(src);
+    if (ctrl.unresolved) {
+      diagnostics.push({
+        kind: 'controller-prefix-unresolved', file: rel, line: lineOf(src, ctrl.at),
+        detail: 'unrecognised @Controller() argument — routes in this file may be reported at the wrong path',
+      });
+    }
+    const prefix = ctrl.prefix;
     const cls = className(rel);
-    VERB_RE.lastIndex = 0;
+    VERB_SCAN.lastIndex = 0;
     let m;
-    while ((m = VERB_RE.exec(src))) {
-      const verb = m[1].toUpperCase(), sub = m[2] || '';
-      const after = src.slice(m.index + m[0].length);
-      const hm = after.match(/\n\s{2}(?:public\s+|private\s+)?(?:async\s+)?(\w+)\s*\(/);
-      if (!hm) continue;
-      const handler = hm[1];
-      const openIdx = m.index + m[0].length + hm.index + hm[0].length - 1;
+    while ((m = VERB_SCAN.exec(src))) {
+      const verb = m[1].toUpperCase();
+      const decoOpen = m.index + m[0].length - 1;
+      const decoClose = matchParen(src, decoOpen);
+      if (decoClose < 0) {
+        diagnostics.push({
+          kind: 'route-arg-unrecognised', file: rel, line: lineOf(src, m.index),
+          detail: `@${m[1]}( has no matching close paren — endpoint skipped`,
+        });
+        continue;
+      }
+      VERB_SCAN.lastIndex = decoClose + 1;   // never re-enter the decorator's own arguments
+      const raw = src.slice(decoOpen + 1, decoClose);
+      const arg = routeArg(raw);
+      if (!arg.ok) {
+        diagnostics.push({
+          kind: 'route-arg-unrecognised', file: rel, line: lineOf(src, m.index),
+          detail: `@${m[1]}(${raw.trim().slice(0, 40)}) is not a plain string — endpoint skipped`,
+        });
+        continue;
+      }
+      const sub = arg.sub;
+      const meth = nextMethodAfter(src, decoClose + 1);
+      if (!meth) {
+        diagnostics.push({
+          kind: 'handler-unresolved', file: rel, line: lineOf(src, m.index),
+          detail: `@${m[1]}(${sub ? "'" + sub + "'" : ''}) is not followed by a method declaration`,
+        });
+        continue;
+      }
+      const handler = meth.name;
+      const openIdx = meth.open;
       const closeIdx = matchParen(src, openIdx);
-      if (closeIdx < 0) continue;
+      if (closeIdx < 0) {
+        diagnostics.push({
+          kind: 'handler-unresolved', file: rel, line: lineOf(src, m.index),
+          detail: `parameter list of ${handler}() is unbalanced`,
+        });
+        continue;
+      }
       const bStart = bodyStart(src, closeIdx);
       const retM = bStart > 0 ? src.slice(closeIdx + 1, bStart).match(/:\s*([\s\S]+)/) : null;
       const ret = retM ? retM[1].trim().replace(/\s+/g, ' ') : 'void';
@@ -864,6 +976,6 @@ module.exports = function scan(cfg, opts = {}) {
     domainModules: modules.map((m) => m.id).filter((m) => !INFRA.has(m) && m !== '(root)'),
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
-    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta,
+    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, diagnostics,
   };
 };

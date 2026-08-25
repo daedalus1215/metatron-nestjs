@@ -1,10 +1,11 @@
 ---
 title: Handler Detection Robustness
-status: draft
+status: implemented
 project: metatron-nestjs
 location: specs/01-handler-detection-robustness.md
 created: 2026-08-24
 tags: [scanner, correctness, portability]
+implemented: 2026-08-24
 ---
 
 # Handler Detection Robustness
@@ -133,3 +134,40 @@ later two-space block does **not** bind to the later method.
   today, proving the rewrite is behaviour-preserving on the current corpus.
 - `diagnostics` is empty for all four existing projects, or every entry is
   explicable.
+
+---
+
+## Implementation notes (2026-08-24)
+
+Landed in `src/scan.js`. `nextMethodAfter()`, `controllerPrefix()`, `routeArg()`
+and `lineOf()` are module-level helpers next to the other parse primitives.
+
+**Behaviour-preserving on the existing corpus.** Chronus produces the same 63
+endpoints and 257 hops, and every endpoint payload is byte-identical to the
+previous model. All four projects scan with zero diagnostics.
+
+**The fixtures prove the bug.** Running `test/fixtures/indentation/` through the
+old scanner and the new one:
+
+```
+OLD   FourSpaceController   GET /notes/:id#decoyTwoSpace | POST /notes#decoyTwoSpace
+      (TabController, ObjectPrefixController, ExtraVerbsController: no endpoints at all)
+      total 4 endpoints, 0 diagnostics
+
+NEW   FourSpaceController   GET /notes/:id#findOne | POST /notes#create
+      TabController         GET /notes/:id#findOne | POST /notes#create
+      ObjectPrefixController GET /notes/:id#findOne | POST /notes#create
+      ExtraVerbsController  ALL /probe/any | HEAD /probe/h | OPTIONS /probe/o
+      total 11 endpoints, 2 diagnostics
+```
+
+The old scanner did not merely miss routes — it bound both four-space routes to
+`decoyTwoSpace`, a method six lines below, and reported nothing wrong.
+
+**Deviation from the spec:** an unbalanced route-decorator paren emits
+`route-arg-unrecognised` rather than a distinct kind. Same category — an
+argument we will not interpret — and it did not warrant a fourth kind.
+
+`npm test` (`node --test test/*.test.js`) runs 8 assertions. This is the repo's
+first test suite.
+

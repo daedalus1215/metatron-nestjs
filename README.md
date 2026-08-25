@@ -94,6 +94,28 @@ printed first so you always know whether to trust the rest.
 
 ---
 
+## If it prints diagnostics
+
+Coverage measures classification. It says nothing about whether a route was
+parsed correctly — so parsing failures get their own line:
+
+```
+  2 scan diagnostics  !
+    handler-unresolved  1x
+      notes/notes.controller.ts:41  @Get('lost') is not followed by a method declaration
+    route-arg-unrecognised  1x
+      notes/notes.controller.ts:52  @Get(['a', 'b']) is not a plain string - endpoint skipped
+```
+
+Each one is a route metatron chose **not** to report rather than guess at. An
+empty list means every route decorator in the codebase bound cleanly.
+
+If you see `controller-prefix-unresolved`, the `@Controller()` argument is a
+form metatron does not read, and routes in that file are reported relative to
+`/` instead of the real prefix.
+
+---
+
 ## On a new machine
 
 ```bash
@@ -186,6 +208,8 @@ metatron views layers     just one view
 metatron skill            install the Claude skill
 metatron --help
 ```
+
+Working on metatron itself: `npm test` runs the fixture suite.
 
 ---
 
@@ -280,6 +304,9 @@ glyphs. Look at the picture.
   instead of an imported symbol leaves no edge, so coupling is understated.
 - **Structure, not quality.** It knows where a transaction script sits and what
   it touches, never whether it's any good.
+- **Parsing, not compiling.** Route decorators bind to methods by walking
+  forward through decorators and comments, not via a TypeScript AST. Anything
+  that fails to bind is listed in `diagnostics` rather than dropped.
 - **Filenames, not ASTs.** Suits projects whose conventions live in filenames. A
   codebase carrying its architecture in decorators needs a different front end.
 
@@ -292,7 +319,8 @@ graph) · `fileNodes` / `fileLinks` (file graph, links tagged with the rule they
 break) · `modules`, `domainModules`, `platformModules` · `allModuleEdges`,
 `domainEdges` · `cycles` (Tarjan SCCs with sanctioned carve-outs applied
 progressively) · `crossDomain` · `ports` · `endpoints` · `shape` · `findings` · `dataModel` (entities, columns, declared and inferred
-relations) · `orphans` · `churn` / `churnMeta`.
+relations) · `orphans` · `churn` / `churnMeta` · `diagnostics` (routes that
+could not be parsed, rather than silently dropped).
 
 ## Prior art
 
