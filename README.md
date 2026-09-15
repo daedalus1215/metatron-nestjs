@@ -94,6 +94,92 @@ printed first so you always know whether to trust the rest.
 
 ---
 
+## If it prints diagnostics
+
+Coverage measures classification. It says nothing about whether a route was
+parsed correctly — so parsing failures get their own line:
+
+```
+  2 scan diagnostics  !
+    handler-unresolved  1x
+      notes/notes.controller.ts:41  @Get('lost') is not followed by a method declaration
+    route-arg-unrecognised  1x
+      notes/notes.controller.ts:52  @Get(['a', 'b']) is not a plain string - endpoint skipped
+```
+
+Each one is a route metatron chose **not** to report rather than guess at. An
+empty list means every route decorator in the codebase bound cleanly.
+
+If you see `controller-prefix-unresolved`, the `@Controller()` argument is a
+form metatron does not read, and routes in that file are reported relative to
+`/` instead of the real prefix.
+
+---
+
+## Holding the line
+
+metatron observes by default. To make it *enforce*, record today's violations as
+accepted and fail the build when a new one appears:
+
+```bash
+metatron baseline     # writes arch.baseline.json
+metatron check        # exit 0 clean, 1 new violations, 2 tool/config error
+```
+
+```
+metatron check · chronus
+
+  new violations        1
+    action>repository     notes/apps/actions/log-time/log-time.action.ts
+                          -> time-tracks/infra/repositories/time-track.repository.ts
+
+  fixed since baseline  2
+
+  known, unchanged      42
+
+FAIL — 1 new violation. Fix it, or run `metatron baseline --update` to accept it.
+```
+
+The baseline sits **beside `arch.config.js`**, not in the output directory —
+output is generated and usually gitignored, and a ratchet that is not committed
+cannot hold a line. Commit it.
+
+Each violation is stored by a fingerprint of `rule|from|to`, so `check` can name
+the offender and catch a swap — one violation fixed and another introduced in
+the same change, which a per-rule count nets to zero and passes. A rename shows
+up as one removed plus one added, which is noise, but metatron cannot know a
+rename preserved intent and guessing would let a real violation ride in on one.
+
+Add a `note` to any entry to record *why* it is tolerated. `--update` preserves
+notes; if a noted violation no longer exists, its note goes with it and the tool
+says so.
+
+```json
+"a3f19c4b2e01": {
+  "rule": "action>repository",
+  "from": "notes/apps/actions/create-note/create-note.action.ts",
+  "to": "notes/infra/repositories/note.repository.ts",
+  "note": "legacy, pre-dates the aggregator"
+}
+```
+
+Adopting mid-stream on a codebase you do not want to clean up first:
+
+```bash
+metatron check --allow-new 3      # ratchet the number down over time
+metatron check --rule orphans     # or gate one rule, everything else advisory
+```
+
+Violations that are **fixed** are reported but never removed automatically. A
+scan that temporarily fails to parse a file would otherwise quietly retire a
+real debt, and it would come back later as a "new" violation with no history.
+
+Aggregate findings — `dag` reports cycle totals, `app-apps` reports a spelling
+split — carry `gate: false` and never become violations. They are worth printing
+and meaningless to ratchet. `metatron baseline` lists which ones are excluded.
+
+---
+
 ## On a new machine
 
 ```bash
@@ -183,9 +269,14 @@ metatron [path]           scan and build everything
 metatron scan [path]      model only, no views
 metatron views [path]     rebuild views from the cached model
 metatron views layers     just one view
+metatron baseline         record today's violations as accepted
+metatron baseline --update   rewrite it, keeping hand-written notes
+metatron check            fail if new violations appeared
 metatron skill            install the Claude skill
 metatron --help
 ```
+
+Working on metatron itself: `npm test` runs the fixture suite.
 
 ---
 
@@ -280,6 +371,9 @@ glyphs. Look at the picture.
   instead of an imported symbol leaves no edge, so coupling is understated.
 - **Structure, not quality.** It knows where a transaction script sits and what
   it touches, never whether it's any good.
+- **Parsing, not compiling.** Route decorators bind to methods by walking
+  forward through decorators and comments, not via a TypeScript AST. Anything
+  that fails to bind is listed in `diagnostics` rather than dropped.
 - **Filenames, not ASTs.** Suits projects whose conventions live in filenames. A
   codebase carrying its architecture in decorators needs a different front end.
 
@@ -292,7 +386,9 @@ graph) · `fileNodes` / `fileLinks` (file graph, links tagged with the rule they
 break) · `modules`, `domainModules`, `platformModules` · `allModuleEdges`,
 `domainEdges` · `cycles` (Tarjan SCCs with sanctioned carve-outs applied
 progressively) · `crossDomain` · `ports` · `endpoints` · `shape` · `findings` · `dataModel` (entities, columns, declared and inferred
-relations) · `orphans` · `churn` / `churnMeta`.
+relations) · `orphans` · `churn` / `churnMeta` · `diagnostics` (routes that
+could not be parsed, rather than silently dropped) · `violations` (warn findings
+flattened one per instance, each with a stable fingerprint).
 
 ## Prior art
 

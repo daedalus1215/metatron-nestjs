@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { violationsOf } = require('./violations');
 
 // ------------------------------------------------------------------ helpers
 
@@ -68,6 +69,76 @@ function splitTop(s) {
   }
   if (cur.trim()) out.push(cur);
   return out.map((x) => x.trim()).filter(Boolean);
+}
+
+/** 1-based line number of a character offset, for diagnostics. */
+function lineOf(src, idx) {
+  let n = 1;
+  for (let i = 0; i < idx && i < src.length; i++) if (src[i] === '\n') n++;
+  return n;
+}
+
+/**
+ * The first method declaration at or after `from`, skipping comments and any
+ * number of further decorators — whose arguments may contain arbitrary nesting,
+ * so they are brace-matched rather than pattern-matched.
+ *
+ * Indentation is never consulted. The previous implementation scanned for a
+ * two-space-indented method shape, and because `String.match` runs forward
+ * until something matches, a four-space file bound the route to an unrelated
+ * method further down instead of failing.
+ */
+function nextMethodAfter(src, from) {
+  let i = from;
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '/' && src[i + 1] === '/') { const nl = src.indexOf('\n', i); if (nl < 0) return null; i = nl + 1; continue; }
+    if (c === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); if (e < 0) return null; i = e + 2; continue; }
+    if (c === '@') {
+      i++;
+      while (i < src.length && /[\w$.]/.test(src[i])) i++;
+      let j = i;
+      while (j < src.length && /\s/.test(src[j])) j++;
+      if (src[j] === '(') { const e = matchParen(src, j); if (e < 0) return null; i = e + 1; }
+      continue;
+    }
+    const rest = src.slice(i, i + 400);
+    const mod = rest.match(/^(public|private|protected|readonly|static|async|override|abstract)\b/);
+    if (mod) { i += mod[1].length; continue; }
+    const nm = rest.match(/^([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>)?\s*\(/);
+    if (!nm) return null;   // a property, a closing brace, anything that is not a method
+    return { name: nm[1], open: i + nm[0].length - 1 };
+  }
+  return null;
+}
+
+/** @Controller(), @Controller('notes') and @Controller({ path: 'notes' }). */
+function controllerPrefix(src) {
+  const m = src.match(/@Controller\s*\(/);
+  if (!m) return { prefix: '', at: 0 };
+  const open = src.indexOf('(', m.index);
+  const close = matchParen(src, open);
+  if (close < 0) return { prefix: '', at: m.index, unresolved: true };
+  const raw = src.slice(open + 1, close).trim();
+  if (!raw) return { prefix: '', at: m.index };
+  const str = raw.match(/^['"`]([^'"`]*)['"`]$/);
+  if (str) return { prefix: str[1], at: m.index };
+  const obj = raw.match(/(?:^|[{,\s])path\s*:\s*['"`]([^'"`]*)['"`]/);
+  if (obj) return { prefix: obj[1], at: m.index };
+  return { prefix: '', at: m.index, unresolved: true };
+}
+
+/**
+ * A route argument we are willing to interpret: nothing, or one plain string.
+ * An array (`@Get(['a','b'])`) or a computed value is reported, not guessed at.
+ */
+function routeArg(raw) {
+  const t = raw.trim();
+  if (!t) return { sub: '', ok: true };
+  const str = t.match(/^['"`]([^'"`]*)['"`]$/);
+  if (str) return { sub: str[1], ok: true };
+  return { sub: null, ok: false };
 }
 
 function tarjan(nodeList, adj) {
@@ -399,26 +470,68 @@ module.exports = function scan(cfg, opts = {}) {
   }
 
   // ---- endpoints + traces
+  //
+  // A route decorator binds to the first method declaration that follows it.
+  // Anything we cannot bind is recorded in `diagnostics` rather than dropped —
+  // a route that vanishes silently is how the indentation bug stayed hidden.
+  const diagnostics = [];
   const endpoints = [];
-  const VERB_RE = /@(Get|Post|Put|Patch|Delete)\(\s*(?:['"`]([^'"`]*)['"`])?\s*\)/g;
+  const VERB_SCAN = /@(Get|Post|Put|Patch|Delete|All|Head|Options)\s*\(/g;
   const entryPatterns = new Set(['action', 'controller', 'resolver'].filter((p) => cfg.patterns.some((x) => x.id === p)));
   for (const rel of files) {
     if (!entryPatterns.has(info[rel].pattern)) continue;
     const src = text[rel];
-    const cm = src.match(/@Controller\(\s*['"`]([^'"`]*)['"`]?\s*\)/);
-    const prefix = cm ? cm[1] : '';
+    const ctrl = controllerPrefix(src);
+    if (ctrl.unresolved) {
+      diagnostics.push({
+        kind: 'controller-prefix-unresolved', file: rel, line: lineOf(src, ctrl.at),
+        detail: 'unrecognised @Controller() argument — routes in this file may be reported at the wrong path',
+      });
+    }
+    const prefix = ctrl.prefix;
     const cls = className(rel);
-    VERB_RE.lastIndex = 0;
+    VERB_SCAN.lastIndex = 0;
     let m;
-    while ((m = VERB_RE.exec(src))) {
-      const verb = m[1].toUpperCase(), sub = m[2] || '';
-      const after = src.slice(m.index + m[0].length);
-      const hm = after.match(/\n\s{2}(?:public\s+|private\s+)?(?:async\s+)?(\w+)\s*\(/);
-      if (!hm) continue;
-      const handler = hm[1];
-      const openIdx = m.index + m[0].length + hm.index + hm[0].length - 1;
+    while ((m = VERB_SCAN.exec(src))) {
+      const verb = m[1].toUpperCase();
+      const decoOpen = m.index + m[0].length - 1;
+      const decoClose = matchParen(src, decoOpen);
+      if (decoClose < 0) {
+        diagnostics.push({
+          kind: 'route-arg-unrecognised', file: rel, line: lineOf(src, m.index),
+          detail: `@${m[1]}( has no matching close paren — endpoint skipped`,
+        });
+        continue;
+      }
+      VERB_SCAN.lastIndex = decoClose + 1;   // never re-enter the decorator's own arguments
+      const raw = src.slice(decoOpen + 1, decoClose);
+      const arg = routeArg(raw);
+      if (!arg.ok) {
+        diagnostics.push({
+          kind: 'route-arg-unrecognised', file: rel, line: lineOf(src, m.index),
+          detail: `@${m[1]}(${raw.trim().slice(0, 40)}) is not a plain string — endpoint skipped`,
+        });
+        continue;
+      }
+      const sub = arg.sub;
+      const meth = nextMethodAfter(src, decoClose + 1);
+      if (!meth) {
+        diagnostics.push({
+          kind: 'handler-unresolved', file: rel, line: lineOf(src, m.index),
+          detail: `@${m[1]}(${sub ? "'" + sub + "'" : ''}) is not followed by a method declaration`,
+        });
+        continue;
+      }
+      const handler = meth.name;
+      const openIdx = meth.open;
       const closeIdx = matchParen(src, openIdx);
-      if (closeIdx < 0) continue;
+      if (closeIdx < 0) {
+        diagnostics.push({
+          kind: 'handler-unresolved', file: rel, line: lineOf(src, m.index),
+          detail: `parameter list of ${handler}() is unbalanced`,
+        });
+        continue;
+      }
       const bStart = bodyStart(src, closeIdx);
       const retM = bStart > 0 ? src.slice(closeIdx + 1, bStart).match(/:\s*([\s\S]+)/) : null;
       const ret = retM ? retM[1].trim().replace(/\s+/g, ' ') : 'void';
@@ -702,10 +815,11 @@ module.exports = function scan(cfg, opts = {}) {
       : 'Every cross-domain edge goes through an allowed gateway',
     detail: `${crossDomain.length} dependencies cross a bounded context. Allowed landing points: ${(cfg.crossDomainGateways || []).join(', ') || '(none configured)'}.`,
     items: (nonGateway.length ? nonGateway : crossDomain).map((e) => `${e.fm}/${e.fp} -> ${e.t}`),
+    instances: nonGateway.map((e) => ({ from: e.f, to: e.t })),
   });
 
   findings.push({
-    id: 'dag', tone: cycles.domain.length ? 'warn' : 'good',
+    id: 'dag', tone: cycles.domain.length ? 'warn' : 'good', gate: false,
     title: cycles.domain.length ? 'Domain dependency graph has cycles' : 'Domain dependency graph is acyclic',
     detail: 'Strongly-connected components as sanctioned carve-outs are removed in turn.',
     items: [
@@ -734,17 +848,21 @@ module.exports = function scan(cfg, opts = {}) {
     detail: `Checked among ${(cfg.noSameLevel || []).join(', ')}.` +
       (sameInFolder.length ? ` ${sameInFolder.length} same-pattern import(s) sit inside one folder and are treated as a helper split, not a violation.` : ''),
     items: (same.length ? same : sameInFolder).map((e) => `[${info[e.from].pattern}] ${e.from} -> ${e.to}`),
+    instances: same.map((e) => ({ from: e.from, to: e.to })),
   });
 
   const upward = [];
   for (const r of cfg.forbidden || []) {
-    for (const e of pairs(r.from, r.to)) upward.push(`${r.why}: ${e.from} -> ${e.to}`);
+    for (const e of pairs(r.from, r.to)) upward.push({ from: e.from, to: e.to, why: r.why });
   }
   findings.push({
     id: 'no-upward', tone: upward.length ? 'warn' : 'good',
     title: upward.length ? `${upward.length} upward calls` : 'No upward calls',
     detail: 'Layering holds in the direction the rules require.',
-    items: upward.length ? upward : (cfg.forbidden || []).map((r) => `${r.from} -> ${r.to}: 0`),
+    items: upward.length
+      ? upward.map((u) => `${u.why}: ${u.from} -> ${u.to}`)
+      : (cfg.forbidden || []).map((r) => `${r.from} -> ${r.to}: 0`),
+    instances: upward.map((u) => ({ from: u.from, to: u.to })),
   });
 
   for (const r of skipRules) {
@@ -754,19 +872,23 @@ module.exports = function scan(cfg, opts = {}) {
       id: r.id, tone: 'warn', title: r.why,
       detail: `Intended flow is ${flow.join(' -> ')}.`,
       items: hits.map((e) => `${e.from}  ->  ${e.to}`),
+      instances: hits.map((e) => ({ from: e.from, to: e.to })),
     });
   }
 
   for (const n of cfg.naming || []) {
     const hits = files.filter((f) => (typeof n.test === 'function' ? n.test(f) : n.test.test(f)));
     if (!hits.length) continue;
-    findings.push({ id: 'naming-' + n.id, tone: 'warn', title: n.title, detail: n.why || '', items: hits });
+    findings.push({
+      id: 'naming-' + n.id, tone: 'warn', title: n.title, detail: n.why || '', items: hits,
+      instances: hits.map((f) => ({ from: f, to: '' })),
+    });
   }
 
   const appDirs = [...new Set(files.map((f) => f.split('/').slice(0, 2).join('/')).filter((p) => /\/apps?$/.test(p)))].sort();
   if (appDirs.some((d) => d.endsWith('/app')) && appDirs.some((d) => d.endsWith('/apps'))) {
     findings.push({
-      id: 'app-apps', tone: 'warn', title: 'app/ and apps/ used interchangeably',
+      id: 'app-apps', tone: 'warn', gate: false, title: 'app/ and apps/ used interchangeably',
       detail: 'Tooling that globs one spelling silently misses the other.', items: appDirs,
     });
   }
@@ -779,6 +901,7 @@ module.exports = function scan(cfg, opts = {}) {
     findings.push({
       id: 'dead-shims', tone: 'warn', title: 'Dead re-export files',
       detail: 'Single-line re-exports that nothing imports.', items: deadShims,
+      instances: deadShims.map((f) => ({ from: f, to: '' })),
     });
   }
 
@@ -788,6 +911,7 @@ module.exports = function scan(cfg, opts = {}) {
       title: `${orphans.length} files are unreachable from any route or module`,
       detail: 'Walking imports outward from every HTTP handler and every *.module.ts registration never arrives at these. Likely dead.',
       items: orphans,
+      instances: orphans.map((f) => ({ from: f, to: '' })),
     });
   }
 
@@ -829,6 +953,7 @@ module.exports = function scan(cfg, opts = {}) {
       id: 'circular', tone: 'warn', title: 'Circular imports between files',
       detail: 'Mutually importing files — genuine runtime cycles.',
       items: cycles.files.map((c) => c.join('  <->  ')),
+      instances: cycles.files.map((c) => ({ from: c[0], to: c.slice(1).join(',') })),
     });
   }
 
@@ -848,7 +973,7 @@ module.exports = function scan(cfg, opts = {}) {
     shape[info[f].module][info[f].pattern] = (shape[info[f].module][info[f].pattern] || 0) + 1;
   }
 
-  return {
+  const model = {
     generatedAt: new Date().toISOString(),
     project: cfg.name || path.basename(path.resolve(cfg.__dir)),
     root: cfg.root,
@@ -864,6 +989,9 @@ module.exports = function scan(cfg, opts = {}) {
     domainModules: modules.map((m) => m.id).filter((m) => !INFRA.has(m) && m !== '(root)'),
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
-    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta,
+    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, diagnostics,
   };
+  // Derived, so it costs nothing extra and travels with a cached model.
+  model.violations = violationsOf(model);
+  return model;
 };

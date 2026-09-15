@@ -16,7 +16,8 @@
     "README.md"
   ],
   "scripts": {
-    "demo": "node bin/metatron.js"
+    "demo": "node bin/metatron.js",
+    "test": "node --test test/*.test.js"
   },
   "license": "MIT",
   "repository": {
