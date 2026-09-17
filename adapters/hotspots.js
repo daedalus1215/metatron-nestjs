@@ -15,5 +15,8 @@ module.exports = (D) => ({
   fileLinks: D.fileLinks,
   churn: D.churn,
   churnMeta: D.churnMeta,
+  // Only when the reverse check passed — an unreliable locator must not draw
+  // rings it cannot stand behind.
+  tests: D.tests && D.tests.meta && D.tests.meta.reliable ? D.tests : null,
   findings: D.findings.filter((f) => f.id === 'hotspots'),
 });

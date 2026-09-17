@@ -228,7 +228,7 @@ you share it.
 | `city` | What shape is each module, and can I walk around it? One tower per module, one floor per directory, with a projection toggle — see below. |
 | `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
 | `schema` | What does the data look like? Entities, columns, and references — including the ones the ORM never hears about. |
-| `hotspots` | Where does refactoring pay? Every file plotted by change frequency against how much depends on it. Needs git history. |
+| `hotspots` | Where does refactoring pay? Every file plotted by change frequency against how much depends on it. Files with no test carry a dashed ring, so the corner doubles as a test backlog. Needs git history. |
 
 ### Isometric or perspective?
 
@@ -278,6 +278,16 @@ which.
 The `hotspots` finding ranks files by commits multiplied by dependents. High on
 both is where refactoring pays for itself and where a mistake travels furthest.
 
+Test presence is crossed with the same score. A file that changes often, is
+widely depended on, and has no test is `untested-risk`; the `test-ratio`
+finding reports tested/total per pattern. This is **presence, not quality** —
+a file with one smoke test counts as tested.
+
+The test locator is configurable (`testLocators`) and self-checking. Every spec
+file must be claimed by exactly one source file; when too many are unmatched
+the locator does not fit the project and both findings suppress themselves
+rather than report a confident wrong number. The CLI says so.
+
 ## Commands
 
 ```bash
@@ -317,6 +327,7 @@ Working on metatron itself: `npm test` runs the fixture suite.
 | `crossDomainGateways` | the only patterns a cross-context import may land on. |
 | `moduleOf` | `(rel) => string`, if the first path segment isn't the module. |
 | `churnSince` | git revision-range date, e.g. `'2 years ago'`, to bound history. |
+| `testLocators` | ordered `(relPath) => relPath` strategies that locate a source file's test. First hit wins; see Churn and hotspots. |
 
 **Declare the flow, get the rules.** Write
 
