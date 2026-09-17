@@ -140,3 +140,76 @@ untrustworthy in exactly the cases people care about.
   as a new violation plus a fixed one in the *diff* report, even though the
   baseline fingerprints legitimately change.
 - Runs with no network access.
+
+## Implementation notes (2026-09-17)
+
+Landed in `src/diff.js` (new: the change set, the base-side scan, reverse
+reachability, the endpoint and risk crossings, the violation delta with
+rename folding, and the three renderers), `bin/metatron.js` (the `diff`
+command, `--staged`/`--format`/`--json`, help text), `src/scan.js` (two
+additions only: `opts.files` accepts a pre-read `{ relPath: content }` map so
+the base-side scan runs against git objects, and `opts.churnAt` bounds the
+base-side churn to that commit), and `test/diff.test.js` with
+`test/fixtures/diff/`.
+
+**Acceptance, on the real projects, 2026-09-17:**
+
+| project | commit | files | direct | transitive | affected | removed |
+|---|---|---|---|---|---|---|
+| chronus | `acf6126` checklist search | 6 | 24 | 51 (14.1% of 362) | 18 | 0 |
+| nous | `80c3a44` deletes `database.service` | 4 | 12 | 45 (31.7%) | 4 | 0 |
+| nous | `b3a64c7` renames + deletes controller | 7 | 1 | 2 (1.4%) | 4 | 1 |
+| nous | `4480ecc` deletes `email.controller` | 8 | — | — | 5 | 5 |
+
+- Chronus's 18 affected endpoints were traced by hand: the seven check-items
+  routes go action → transaction script → repository directly (the scripts
+  import the repository, not the aggregator), and `GET /notes/search` walks
+  `note.service.search()` into both `searchNotesTransactionScript` and
+  `checkItemsAggregator` — the reported `via` lists match. The blast numbers
+  match an independent reverse BFS over `fileLinks`.
+- The deletion commit's blast is non-zero entirely from the base-side scan:
+  the deleted service's importers (`email.repository`,
+  `sender-rule.repository`, …) exist only in the base tree.
+- The rename commit reports 1.4% of the tree — near-zero, as the acceptance
+  asks — and the deleted controller's endpoint appears under removed, not the
+  renamed service's fingerprints under added/fixed.
+- The controller deletion names all five of its routes as removed; checked
+  against the decorators in the file at the base commit.
+
+`npm test` runs 58 tests, 8 of them new, over the fixture's synthetic git
+history: one-file range, deletion, pure rename (asserts `folded === 2`,
+`added === 0`, `fixed === 0`), action deletion, staged isolation, default
+range, scan-difference labelling, outside-a-repository failure, and CLI
+rendering in all three formats.
+
+Scanned nous and chronus with this branch and with `main` in a worktree: the
+models are byte-identical outside `generatedAt`, so the `scan.js` additions
+are inert on the ordinary path. All six local projects run a `diff` on a real
+commit without error.
+
+**Deviations from the spec:**
+
+- The change set is filtered with a repo-root pathspec and paths are reported
+  relative to the *scanned root*, so they join the model's keys directly.
+  The base-side `git ls-tree` applies the same prefix, which is where a naive
+  implementation silently drops every file (and reports zero blast) whenever
+  the config sits below the repository root.
+- Without `arch.baseline.json` there is no delta to compute; the report lists
+  the current violations that touch changed files and says "no delta", which
+  is the graceful degradation the dependencies section allows. Rename folding
+  applies only in baseline mode — with no baseline there is nothing to fold
+  against, and the renamed file's moved violations simply appear as current
+  violations touching the change.
+- Affected endpoints name their `via` files (which changed files the traced
+  path runs through); the spec's example showed only the endpoint list.
+- A rename's churn identity survives in the current model — `scan` credits
+  `git log`'s `old => new` entries to the new path — so a moved file keeps its
+  hotspot rank on the current side and the base side only sees files that
+  truly left.
+
+**Known limit inherited from the trace engine.** Affected endpoints follow
+`endpoints[].flat`, and the tracer reads method declarations, not
+arrow-function properties. Where a service declares its methods as arrow
+properties (Kairos's `MeetingService`), traces stop at the constructor, so
+the endpoint list is understated for that code; the blast radius is
+import-based and is not affected.

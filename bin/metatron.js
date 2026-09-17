@@ -20,6 +20,10 @@ if (args[0] === '--help' || args[0] === '-h') {
   metatron baseline [path]  record today's violations as accepted
   metatron baseline --update   rewrite it, keeping hand-written notes
   metatron check [path]     fail if new violations appeared since the baseline
+  metatron diff [range]     blast radius of a change set
+  metatron diff main...HEAD     explicit range
+  metatron diff                 the default branch's merge base ... HEAD
+  metatron diff --staged        what is about to be committed
   metatron skill            install the Claude skill into ~/.claude/skills
   metatron skill --where    print where the skill would be installed
 
@@ -29,7 +33,12 @@ check flags:
   --no-fixed         do not list violations fixed since the baseline
   --json             machine-readable result
 
+diff flags:
+  --format <name>    terminal (default), markdown, or json
+  --json             shorthand for --format json
+
 check exits 0 clean, 1 when new violations appeared, 2 on a tool or config error.
+diff writes to stdout and exits 0; it is a report, not a gate.
 The baseline lives beside arch.config.js as arch.baseline.json and is meant to
 be committed - the output directory is generated and usually gitignored.
 
@@ -55,11 +64,11 @@ if (args[0] === 'skill') {
   process.exit(0);
 }
 
-const cmd = ['scan', 'views', 'baseline', 'check', 'all'].includes(args[0]) ? args.shift() : 'all';
+const cmd = ['scan', 'views', 'baseline', 'check', 'diff', 'all'].includes(args[0]) ? args.shift() : 'all';
 
 // A path argument lets you point metatron at a project instead of cd-ing into it.
 // Anything else is treated as a lens-name filter.
-const flags = { rule: [], allowNew: 0, fixed: true, json: false, update: false };
+const flags = { rule: [], allowNew: 0, fixed: true, json: false, update: false, staged: false, format: null };
 let where = process.cwd();
 const rest = [];
 for (let i = 0; i < args.length; i++) {
@@ -71,6 +80,9 @@ for (let i = 0; i < args.length; i++) {
   if (a === '--no-fixed') { flags.fixed = false; continue; }
   if (a === '--json') { flags.json = true; continue; }
   if (a === '--update') { flags.update = true; continue; }
+  if (a === '--staged') { flags.staged = true; continue; }
+  if (a.startsWith('--format=')) { flags.format = a.slice(9); continue; }
+  if (a === '--format') { flags.format = args[++i]; continue; }
   if (a.startsWith('-')) continue;
   if (!fs.existsSync(a)) { rest.push(a); continue; }
   const st = fs.statSync(a);
@@ -84,6 +96,24 @@ let cfg;
 try { cfg = load(where); } catch (e) { console.error(e.message); process.exit(1); }
 
 if (cfg.__nameWarning) console.warn('warning: ' + cfg.__nameWarning + '\n');
+
+if (cmd === 'diff') {
+  // A report, not a gate: nothing is written, and the exit code is not a
+  // signal a pipeline should branch on.
+  const D = require('../src/diff');
+  const format = flags.json ? 'json' : (flags.format || 'terminal');
+  if (!['terminal', 'markdown', 'json'].includes(format)) {
+    console.error('unknown --format: ' + format + ' (use terminal, markdown or json)');
+    process.exit(2);
+  }
+  let report;
+  try { report = D.analyze(cfg, { range: filter[0] || null, staged: flags.staged }); }
+  catch (e) { console.error('diff failed: ' + e.message); process.exit(2); }
+  console.log(format === 'json' ? D.renderJson(report)
+    : format === 'markdown' ? D.renderMarkdown(report)
+    : D.renderTerminal(report));
+  process.exit(0);
+}
 
 const outDir = path.resolve(cfg.__dir, cfg.outDir || '.metatron');
 fs.mkdirSync(outDir, { recursive: true });
