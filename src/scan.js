@@ -1035,9 +1035,11 @@ module.exports = function scan(cfg, opts = {}) {
     });
   }
 
+  // fan-in per file, shared by the hotspots ranking and the test crossing below
+  const fanIn = {};
+  for (const l of fileLinks) fanIn[l[1]] = (fanIn[l[1]] || 0) + 1;
+
   if (churnMeta.available) {
-    const fanIn = {};
-    for (const l of fileLinks) fanIn[l[1]] = (fanIn[l[1]] || 0) + 1;
     const scored = fileNodes.map((n, i) => {
       const c = churn[n.f];
       if (!c) return null;
@@ -1056,6 +1058,86 @@ module.exports = function scan(cfg, opts = {}) {
         detail: `Across ${churnMeta.commits} commits. Score is commits multiplied by dependents: a file high on both is where a refactor pays for itself, and where a mistake spreads furthest.`,
         items: top.map((x) => `${x.f}  —  ${x.commits} commits, ${x.deps} dependents, ${x.authors} author${x.authors === 1 ? '' : 's'}`),
       });
+    }
+  }
+
+  // ---- test presence crossed with risk (spec 06)
+  //
+  // The forward pass attributes each source file to a test. It cannot tell
+  // whether the locator fits this project, so the reverse pass asks the
+  // question that can: every spec must be claimed by exactly one source. When
+  // too many specs are unmatched the locator is misconfigured and the test
+  // findings suppress themselves — a confident wrong coverage report is worse
+  // than none.
+  const locators = cfg.testLocators || [];
+  const specSet = new Set(files.filter((f) => info[f].pattern === 'spec'));
+  const testClaims = {};
+  const strategyHits = {};
+  const bySource = {};
+  for (const f of files) {
+    if (specSet.has(f)) continue;
+    let hit = null;
+    for (let i = 0; i < locators.length; i++) {
+      let cand;
+      try { cand = locators[i](f); } catch { continue; }
+      if (typeof cand !== 'string' || !specSet.has(cand)) continue;
+      hit = cand;
+      strategyHits[i] = (strategyHits[i] || 0) + 1;
+      break;
+    }
+    bySource[f] = hit;
+    if (hit) testClaims[hit] = (testClaims[hit] || 0) + 1;
+  }
+  const unmatchedSpecs = [...specSet].filter((s) => testClaims[s] !== 1).sort();
+  const specFiles = specSet.size;
+  const reliable = specFiles === 0 || unmatchedSpecs.length / specFiles <= 0.25;
+  const byPattern = {};
+  for (const f of files) {
+    const p = info[f].pattern;
+    if (SKIP_PAT.has(p)) continue;
+    const e = byPattern[p] || (byPattern[p] = { total: 0, tested: 0 });
+    e.total++;
+    if (bySource[f]) e.tested++;
+  }
+  const dominant = Object.keys(strategyHits).sort((a, b) =>
+    strategyHits[b] - strategyHits[a] || Number(a) - Number(b))[0];
+  const tests = {
+    bySource, unmatchedSpecs, byPattern,
+    meta: { specFiles, matched: specFiles - unmatchedSpecs.length,
+            strategy: dominant !== undefined ? 'index ' + dominant : 'none', reliable },
+  };
+
+  if (tests.meta.reliable) {
+    if (Object.keys(byPattern).length) {
+      const rows = Object.entries(byPattern)
+        .sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0]));
+      findings.push({
+        id: 'test-ratio', tone: 'note',
+        title: 'Test presence by pattern',
+        detail: `Tested / total source files, pattern by pattern. This is presence, not quality — a file with one smoke test counts as tested.` +
+          (unmatchedSpecs.length
+            ? ` ${unmatchedSpecs.length} of ${specFiles} spec files matched no source by name and count as testing nothing.`
+            : ''),
+        items: rows.map(([p, e]) => `${p} ${e.tested}/${e.total}`),
+      });
+    }
+    if (churnMeta.available) {
+      const untested = fileNodes.map((n, i) => {
+        if (SKIP_PAT.has(n.p) || bySource[n.f]) return null;
+        const c = churn[n.f];
+        if (!c) return null;
+        const deps = fanIn[i] || 0;
+        return { f: n.f, commits: c.commits, deps, score: c.commits * (1 + deps) };
+      }).filter(Boolean).sort((a, b) => b.score - a.score);
+      const top = untested.slice(0, 15);
+      if (top.length) {
+        findings.push({
+          id: 'untested-risk', tone: 'warn',
+          title: `${top.length} high-risk file${top.length === 1 ? '' : 's'} ${top.length === 1 ? 'has' : 'have'} no test`,
+          detail: `Ranked by commits multiplied by dependents — the same score the hotspots lens uses. A file that changes often, is widely depended on, and is unverified is where a regression is both most likely and most costly.`,
+          items: top.map((x) => `${x.f} — ${x.commits} commits, ${x.deps} dependents, no test`),
+        });
+      }
     }
   }
 
@@ -1100,7 +1182,7 @@ module.exports = function scan(cfg, opts = {}) {
     domainModules: modules.map((m) => m.id).filter((m) => !INFRA.has(m) && m !== '(root)'),
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
-    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, diagnostics, bindings,
+    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, diagnostics, bindings, tests,
   };
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);

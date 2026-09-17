@@ -80,6 +80,7 @@ svg.sc text { font-family:'IBM Plex Mono',monospace; }
 .pt circle { stroke:var(--surface); stroke-width:1; }
 .pt.dim { opacity:.16; }
 .pt.sel circle { stroke:var(--ink); stroke-width:2; }
+.pt .ring { fill:none; stroke:var(--rose); stroke-width:1.3; stroke-dasharray:3 2; }
 .ptlab { font-size:9.5px; fill:var(--ink2); }
 .insp { border-left:1px solid var(--rule2); padding:16px 18px; overflow:auto; max-height:min(74vh,820px); }
 @media (max-width:1100px){ .insp { border-left:0; border-top:1px solid var(--rule2); max-height:520px; } }
@@ -94,6 +95,7 @@ svg.sc text { font-family:'IBM Plex Mono',monospace; }
 .legend { display:flex; flex-wrap:wrap; gap:11px 18px; padding:11px 16px; border-top:1px solid var(--rule); background:var(--surface2); }
 .lg { display:flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--ink2); }
 .lg i { width:10px; height:10px; border-radius:50%; display:block; }
+.lg i.ringlg { background:transparent; border:1.3px dashed var(--rose); }
 
 section { margin-top:52px; }
 .shead { display:flex; align-items:baseline; gap:13px; border-bottom:1px solid var(--rule2);
@@ -121,7 +123,7 @@ footer { margin-top:60px; padding-top:20px; border-top:2px solid var(--ink); col
 <header class="mast">
   <p class="eyebrow">Change frequency × coupling · from git history</p>
   <h1>{{project}} Hotspots</h1>
-  <p class="dek">Every file placed by how often it has changed against how much of the codebase depends on it. <strong>The top-right corner is where refactoring pays for itself</strong> — code that churns constantly and that everything else leans on. Quiet code, however ugly, costs you nothing.</p>
+  <p class="dek">Every file placed by how often it has changed against how much of the codebase depends on it. <strong>The top-right corner is where refactoring pays for itself</strong> — code that churns constantly and that everything else leans on. Quiet code, however ugly, costs you nothing. Files with no test carry a dashed ring, so the corner doubles as a test backlog: a ringed dot up there is the file to test first.</p>
   <div class="statrow" id="statrow"></div>
 </header>
 
@@ -137,6 +139,7 @@ footer { margin-top:60px; padding-top:20px; border-top:2px solid var(--ink); col
   </label>
   <span class="sep"></span>
   <button class="btn" id="tLabels">labels</button>
+  <button class="btn on" id="tUntested">untested</button>
   <button class="btn" id="tTests">include specs</button>
   <span class="sep"></span>
   <input id="q" type="search" placeholder="filter files…" aria-label="Filter files">
@@ -183,6 +186,9 @@ footer { margin-top:60px; padding-top:20px; border-top:2px solid var(--ink); col
 "use strict";
 var D = JSON.parse(document.getElementById('data').textContent);
 var CH = D.churn || {}, META = D.churnMeta || { available:false };
+// Test presence, only when the reverse check passed; null otherwise.
+var TT = D.tests || null;
+if (!TT) document.getElementById('tUntested').remove();
 
 /* ---- assemble points ---- */
 var fanIn = {};
@@ -197,12 +203,13 @@ var PTS = D.fileNodes.map(function(n, i){
     f:n.f, p:n.p, m:n.m, t:n.t, cls:n.cls, loc:n.loc,
     commits:c.commits, deps:deps, lines:c.added + c.removed,
     authors:c.authorCount || 0, last:c.last, first:c.first,
-    score:c.commits * (1 + deps)
+    score:c.commits * (1 + deps),
+    untested: !!(TT && n.f in TT.bySource && !TT.bySource[n.f])
   };
 }).filter(Boolean);
 
 var TESTY = { spec:1, 'test-util':1, migration:1 };
-var state = { labels:false, tests:false, q:'', sel:null, mode:'score' };
+var state = { labels:false, untested:true, tests:false, q:'', sel:null, mode:'score' };
 
 function visible(){
   var q = state.q;
@@ -224,13 +231,17 @@ function metric(p){
 function renderStats(){
   var v = visible();
   var top = v.slice().sort(function(a,b){ return b.score - a.score; })[0];
-  document.getElementById('statrow').innerHTML = [
+  var stats = [
     ['files with history', v.length, ''],
     ['commits scanned', META.commits || 0, ''],
     ['busiest file', top ? top.commits + ' commits' : '—', 'hot'],
     ['most depended on', v.length ? Math.max.apply(null, v.map(function(p){ return p.deps; })) + ' importers' : '—', ''],
     ['total lines moved', v.reduce(function(a,p){ return a + p.lines; }, 0).toLocaleString('en-US'), '']
-  ].map(function(s){ return '<div class="stat '+s[2]+'"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>'; }).join('');
+  ];
+  if (TT) stats.push(['untested in view', v.filter(function(p){ return p.untested; }).length, 'hot']);
+  document.getElementById('statrow').innerHTML = stats.map(function(s){
+    return '<div class="stat '+s[2]+'"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>';
+  }).join('');
 }
 
 /* ---- scatter ---- */
@@ -287,7 +298,8 @@ function render(){
     var dim = state.sel && state.sel !== p.f;
     s.push('<g class="pt'+(dim?' dim':'')+(state.sel===p.f?' sel':'')+'" data-f="'+esc(p.f)+'" tabindex="0" role="button" aria-label="'+esc(p.f)+'">');
     s.push('<circle cx="'+X(p).toFixed(1)+'" cy="'+Y(p).toFixed(1)+'" r="'+r.toFixed(1)+'" fill="'+col+'" fill-opacity=".62"/>');
-    s.push('<title>'+esc(p.f)+' — '+p.commits+' commits, '+p.deps+' dependents, '+p.lines+' lines</title>');
+    if (state.untested && p.untested) s.push('<circle class="ring" cx="'+X(p).toFixed(1)+'" cy="'+Y(p).toFixed(1)+'" r="'+(r+2.6).toFixed(1)+'"/>');
+    s.push('<title>'+esc(p.f)+' — '+p.commits+' commits, '+p.deps+' dependents, '+p.lines+' lines'+(p.untested ? ', no test' : '')+'</title>');
     s.push('</g>');
   });
 
@@ -338,7 +350,10 @@ function inspect(f){
     '<p class="ilab">Coupling</p><ul class="kv">' +
       '<li>files importing this<b>' + p.deps + '</b></li>' +
       '<li>score<b>' + p.score + '</b></li>' +
-    '</ul>';
+    '</ul>' +
+    (TT ? '<p class="ilab">Test</p><ul class="kv">' +
+      '<li>test file<b>' + esc(TT.bySource[p.f] || 'none') + '</b></li>' +
+    '</ul>' : '');
   el.scrollTop = 0;
 }
 function select(f){ state.sel = f; render(); inspect(f); renderTable(); }
@@ -364,20 +379,24 @@ document.getElementById('legend').innerHTML =
   '<span class="lg"><i style="background:var(--hot)"></i>changes often and widely depended on</span>' +
   '<span class="lg"><i style="background:var(--warm)"></i>moderate</span>' +
   '<span class="lg"><i style="background:var(--calm)"></i>quiet</span>' +
+  (TT ? '<span class="lg"><i class="ringlg"></i>no test file</span>' : '') +
   '<span class="lg" style="color:var(--ink3)">dot size = lines added + removed · both axes are log scaled</span>';
 
 function tog(id, key){
   var b = document.getElementById(id);
   b.addEventListener('click', function(){ state[key] = !state[key]; b.classList.toggle('on', state[key]); render(); renderStats(); renderTable(); });
 }
-tog('tLabels','labels'); tog('tTests','tests');
+tog('tLabels','labels');
+if (TT) tog('tUntested','untested');
+tog('tTests','tests');
 document.getElementById('mode').addEventListener('change', function(e){ state.mode = e.target.value; renderTable(); });
 document.getElementById('q').addEventListener('input', function(e){ state.q = e.target.value.trim().toLowerCase(); render(); renderStats(); renderTable(); });
 document.getElementById('reset').addEventListener('click', function(){
-  state = { labels:false, tests:false, q:'', sel:null, mode:'score' };
+  state = { labels:false, untested:true, tests:false, q:'', sel:null, mode:'score' };
   document.getElementById('q').value = '';
   document.getElementById('mode').value = 'score';
   document.getElementById('tLabels').classList.remove('on');
+  if (TT) document.getElementById('tUntested').classList.add('on');
   document.getElementById('tTests').classList.remove('on');
   render(); renderStats(); renderTable(); inspect(null);
 });

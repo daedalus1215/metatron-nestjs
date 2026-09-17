@@ -120,6 +120,25 @@ module.exports = {
     return head.endsWith('.ts') ? '(root)' : head;
   },
 
+  /**
+   * Test locators: (rel) => the candidate spec path for a source file. Tried in
+   * order; the first one that resolves to a file the scan classified as `spec`
+   * wins. A locator can also be a RegExp-free function returning null.
+   *
+   * The forward pass alone cannot prove the locator fits the project, so the
+   * scan also resolves backwards — every spec must be claimed by exactly one
+   * source. When too many specs are unmatched the findings suppress
+   * themselves (see specs/06-test-coverage-crossing.md).
+   */
+  testLocators: [
+    // `__specs__/` subdirectory, one spec per source file (Chronus layout)
+    (rel) => rel.replace(/\/([^/]+)\.ts$/, '/__specs__/$1.spec.ts'),
+    // sibling `foo.spec.ts` next to `foo.ts`
+    (rel) => rel.replace(/\.ts$/, '.spec.ts'),
+    // mirrored `test/` tree
+    (rel) => rel.replace(/^src\//, 'test/').replace(/\.ts$/, '.spec.ts'),
+  ],
+
   /** Naming conventions to flag when a file deviates. */
   naming: [
     {
