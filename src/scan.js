@@ -751,6 +751,13 @@ module.exports = function scan(cfg, opts = {}) {
 
   const churn = {};
   let churnMeta = { available: false, commits: 0, since: cfg.churnSince || null, reason: null };
+  // Co-change (spec 03) needs the per-commit file sets the churn totals used
+  // to discard. Commits touching more files than `couplingMaxFiles` are mass
+  // renames or formatting sweeps — they couple everything to everything — so
+  // they are counted and then ignored.
+  const maxFiles = cfg.couplingMaxFiles || 25;
+  let cleanCommits = [];
+  let excludedCommits = 0;
   try {
     const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'],
       { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -760,8 +767,16 @@ module.exports = function scan(cfg, opts = {}) {
     const out = execFileSync('git', args, { cwd: gitRoot, encoding: 'utf8', maxBuffer: 96 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
 
     let when = 0, who = null, commits = 0;
+    let cur = null;
+    const flush = (list) => {
+      if (!list || !list.length) return;
+      if (list.length > maxFiles) excludedCommits++;
+      else cleanCommits.push(list);
+    };
     for (const line of out.split('\n')) {
       if (line.startsWith('\u0001')) {
+        flush(cur);
+        cur = [];
         const parts = line.slice(1).split('\u0002');
         when = Number(parts[1]) * 1000;
         who = parts[2];
@@ -778,6 +793,7 @@ module.exports = function scan(cfg, opts = {}) {
       const abs = path.resolve(gitRoot, file);
       const rel = path.relative(ROOT, abs).split(path.sep).join('/');
       if (!fileSet.has(rel)) continue;
+      cur.push(rel);
       const c = churn[rel] || (churn[rel] = { commits: 0, added: 0, removed: 0, last: 0, first: Infinity, authors: {} });
       c.commits++;
       c.added += m[1] === '-' ? 0 : Number(m[1]);
@@ -786,6 +802,7 @@ module.exports = function scan(cfg, opts = {}) {
       if (when < c.first) c.first = when;
       if (who) c.authors[who] = (c.authors[who] || 0) + 1;
     }
+    flush(cur);
     for (const k of Object.keys(churn)) {
       churn[k].authorCount = Object.keys(churn[k].authors).length;
       delete churn[k].authors;
@@ -795,6 +812,61 @@ module.exports = function scan(cfg, opts = {}) {
     if (!churnMeta.available) churnMeta.reason = 'git history touched none of the scanned files';
   } catch (err) {
     churnMeta = { available: false, commits: 0, since: cfg.churnSince || null, reason: 'not a git repository, or git unavailable' };
+  }
+
+  // ---- logical coupling: co-change crossed against the import graph (spec 03)
+  //
+  // Two files with no import edge that land in the same commit again and
+  // again are a duplicated rule or a missing abstraction. The import graph
+  // cannot see that; the history can. Pairs are scored by Jaccard degree over
+  // the trusted commits and flagged when no import edge explains them.
+
+  const minChanges = cfg.couplingMinChanges || 5;
+  const minDegree = cfg.couplingMinDegree || 0.3;
+  const coupling = { pairs: [], eligible: [], meta: { commits: 0, excludedCommits: 0, eligibleFiles: 0,
+    maxFiles, minChanges, minDegree, reason: null } };
+  if (churnMeta.available) {
+    coupling.meta.commits = churnMeta.commits;
+    coupling.meta.excludedCommits = excludedCommits;
+    // Per-file support over the trusted commits only — a file dragged along
+    // by an ignored sweep should not earn pair eligibility.
+    const clean = {};
+    for (const list of cleanCommits) for (const f of list) clean[f] = (clean[f] || 0) + 1;
+    const eligible = Object.keys(clean).filter((f) => clean[f] >= minChanges);
+    const elig = new Set(eligible);
+    coupling.eligible = eligible;
+    coupling.meta.eligibleFiles = eligible.length;
+    const co = new Map();
+    for (const list of cleanCommits) {
+      const els = list.filter((f) => elig.has(f));
+      for (let i = 0; i < els.length; i++) {
+        for (let j = i + 1; j < els.length; j++) {
+          const a = els[i] < els[j] ? els[i] : els[j];
+          const b = els[i] < els[j] ? els[j] : els[i];
+          const k = a + '\u0000' + b;
+          co.set(k, (co.get(k) || 0) + 1);
+        }
+      }
+    }
+    const importEdge = new Set();
+    for (const l of fileLinks) importEdge.add(fileNodes[l[0]].f + '\u0000' + fileNodes[l[1]].f);
+    for (const [k, c] of co) {
+      const sep = k.indexOf('\u0000');
+      const a = k.slice(0, sep), b = k.slice(sep + 1);
+      const ca = clean[a], cb = clean[b];
+      const degree = c / (ca + cb - c);
+      if (degree < minDegree) continue;
+      coupling.pairs.push({
+        a, b, co: c, changesA: ca, changesB: cb,
+        degree: Math.round(degree * 1000) / 1000,
+        aThenB: Math.round((c / ca) * 1000) / 1000,
+        bThenA: Math.round((c / cb) * 1000) / 1000,
+        imports: importEdge.has(a + '\u0000' + b) || importEdge.has(b + '\u0000' + a) ? 1 : 0,
+      });
+    }
+    coupling.pairs.sort((x, y) => y.degree - x.degree || y.co - x.co);
+  } else {
+    coupling.meta.reason = churnMeta.reason;
   }
 
   // ---- data model: entities, their columns, and the references between them
@@ -1059,6 +1131,20 @@ module.exports = function scan(cfg, opts = {}) {
         items: top.map((x) => `${x.f}  —  ${x.commits} commits, ${x.deps} dependents, ${x.authors} author${x.authors === 1 ? '' : 's'}`),
       });
     }
+    // The signal is co-change the import graph does not explain. Coupling
+    // that agrees with an import edge is expected and stays in the lens only.
+    const unexplained = coupling.pairs.filter((p) => p.imports === 0 && p.degree >= 0.6);
+    findings.push({
+      id: 'logical-coupling', tone: 'note',
+      title: unexplained.length
+        ? 'Files that change together but do not reference each other'
+        : 'No files change together without an import edge',
+      detail: unexplained.length
+        ? `Across ${churnMeta.commits} commits (${coupling.meta.excludedCommits} ignored for touching more than ${coupling.meta.maxFiles} files), ${unexplained.length} ${unexplained.length === 1 ? 'pair co-changes' : 'pairs co-change'} above 60% with no import edge between them. Usually a duplicated rule or a missing abstraction.`
+        : `Across ${churnMeta.commits} commits (${coupling.meta.excludedCommits} ignored for touching more than ${coupling.meta.maxFiles} files), no pair of files co-changes above 60% without an import edge. The history either agrees with the import graph, or it is too young to disagree yet.`,
+      items: unexplained.slice(0, 10).map((p) =>
+        `${p.a}  ~  ${p.b}   (${p.co} of ${p.changesA + p.changesB - p.co}, ${Math.round(p.degree * 100)}%)`),
+    });
   }
 
   // ---- test presence crossed with risk (spec 06)
@@ -1182,7 +1268,7 @@ module.exports = function scan(cfg, opts = {}) {
     domainModules: modules.map((m) => m.id).filter((m) => !INFRA.has(m) && m !== '(root)'),
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
-    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, diagnostics, bindings, tests,
+    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, coupling, diagnostics, bindings, tests,
   };
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);
