@@ -196,6 +196,59 @@ and meaningless to ratchet. `metatron baseline` lists which ones are excluded.
 
 ---
 
+## Blast radius
+
+`check` answers "did the code break the rules?" `diff` answers "what does this
+change touch?":
+
+```bash
+metatron diff               # <merge-base with the default branch>...HEAD
+metatron diff main...HEAD   # an explicit range
+metatron diff --staged      # what is about to be committed
+```
+
+```
+metatron · chronus · acf6126~1...acf6126
+6 files changed (1 added, 5 modified)
+
+blast radius: 24 direct dependents, 51 transitively reachable (14.1% of 362 files)
+
+endpoints affected: 18
+  GET /check-items/items/:id
+  GET /notes/search
+  … (16 more)
+
+architecture: no arch.baseline.json — no delta
+
+worth a look
+  `notes/domain/services/note.service.ts` is hotspot #9 of 362 (12 commits, 14 dependents)
+  `check-items.repository.ts` co-changes with `create-check-item.transaction.script.ts` 30% of the time — not in this diff
+  4 of 5 changed source files have no test
+```
+
+The range is local git only: it works offline, on any branch, before a PR
+exists — which is when the answer is most useful. The report goes to stdout
+and exits 0; nothing is posted anywhere, and the exit code is not a gate a
+pipeline should branch on. `--format=markdown` is pasteable into a PR
+description, `--json` is for tooling.
+
+Three things the report refuses to do:
+
+- **Count imports as calls.** An endpoint is listed as affected only when a
+  changed file sits in its traced call path or owns it. A changed repository
+  no request actually reaches through the traced path is not an affected
+  endpoint.
+- **Report a deleted file as having no impact.** A deleted file has no node in
+  the current model, so `diff` scans twice: once at the base of the range, with
+  the file contents resolved from git objects. The working tree is never
+  checked out or stashed, so the command is safe to run mid-edit. A rename is
+  one change, not a deletion plus an addition: a violation that merely moved
+  with a renamed file is folded, not reported as one new and one fixed.
+- **Blame the diff for a new violation in untouched code.** That is labelled a
+  scan difference, not the diff's doing.
+
+---
+
 ## On a new machine
 
 ```bash
@@ -321,6 +374,9 @@ metatron views layers     just one view
 metatron baseline         record today's violations as accepted
 metatron baseline --update   rewrite it, keeping hand-written notes
 metatron check            fail if new violations appeared
+metatron diff             what does this change touch? (report on stdout)
+metatron diff main...HEAD   an explicit range
+metatron diff --staged      what is about to be committed
 metatron skill            install the Claude skill
 metatron --help
 ```
