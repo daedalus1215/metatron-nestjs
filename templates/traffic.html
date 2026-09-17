@@ -1,4 +1,4 @@
-<!-- arch-views: What happens when a request arrives. All 63 endpoints as animated traces, with the real payload at each hop. -->
+<!-- arch-views: What happens when a request arrives. Every endpoint as an animated trace, with the real payload at each hop. -->
 <title>{{project}} Request Traffic</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,7 +10,8 @@
   --ink:#151E29; --ink2:#485A6F; --ink3:#7A8B9F;
   --rule:#D2DAE4; --rule2:#B9C4D2;
   --blue:#2B5CA8; --amber:#A85B06; --rose:#A31C39; --green:#1B6448; --violet:#54479A; --teal:#136A80;
-  --l0:#2B5CA8; --l1:#54479A; --l2:#A85B06; --l3:#1B6448; --l4:#7E6E4E; --l5:#136A80; --l6:#84406F;
+  --l0:#2B5CA8; --l1:#7A8B9F; --l2:#54479A; --l3:#A85B06; --l4:#1B6448;
+  --l5:#7E6E4E; --l6:#136A80; --l7:#84406F; --l8:#8B98A8; --l9:#8B98A8; --l10:#8B98A8;
   --track:#C9D3DF; --dot:#A85B06;
   --shadow:0 1px 2px rgba(21,30,41,.06), 0 8px 24px rgba(21,30,41,.06);
   --code:#F5F7FA;
@@ -21,7 +22,8 @@
     --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
     --rule:#28343F; --rule2:#36454F;
     --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6; --teal:#4FB6CE;
-    --l0:#79A4E6; --l1:#A093E6; --l2:#E0A04A; --l3:#4FC195; --l4:#C0AC7F; --l5:#4FB6CE; --l6:#D28BBC;
+    --l0:#79A4E6; --l1:#8496A9; --l2:#A093E6; --l3:#E0A04A; --l4:#4FC195;
+    --l5:#C0AC7F; --l6:#4FB6CE; --l7:#D28BBC; --l8:#7D8C9C; --l9:#7D8C9C; --l10:#7D8C9C;
     --track:#2F3B47; --dot:#E0A04A;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
     --code:#101821;
@@ -32,7 +34,8 @@
   --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
   --rule:#28343F; --rule2:#36454F;
   --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6; --teal:#4FB6CE;
-  --l0:#79A4E6; --l1:#A093E6; --l2:#E0A04A; --l3:#4FC195; --l4:#C0AC7F; --l5:#4FB6CE; --l6:#D28BBC;
+  --l0:#79A4E6; --l1:#8496A9; --l2:#A093E6; --l3:#E0A04A; --l4:#4FC195;
+  --l5:#C0AC7F; --l6:#4FB6CE; --l7:#D28BBC; --l8:#7D8C9C; --l9:#7D8C9C; --l10:#7D8C9C;
   --track:#2F3B47; --dot:#E0A04A;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
   --code:#101821;
@@ -110,10 +113,12 @@ svg.board text { font-family:'IBM Plex Mono',monospace; }
 .rowg:hover .rowbg { fill:color-mix(in srgb, var(--ink) 6%, transparent); }
 svg.board.solo .rowg { opacity:.2; }
 svg.board.solo .rowg.sel { opacity:1; }
-.l0{fill:var(--l0)} .l1{fill:var(--l1)} .l2{fill:var(--l2)} .l3{fill:var(--l3)}
-.l4{fill:var(--l4)} .l5{fill:var(--l5)} .l6{fill:var(--l6)}
-.s0{stroke:var(--l0)} .s1{stroke:var(--l1)} .s2{stroke:var(--l2)} .s3{stroke:var(--l3)}
-.s4{stroke:var(--l4)} .s5{stroke:var(--l5)} .s6{stroke:var(--l6)}
+.l0{fill:var(--l0)} .l1{fill:var(--l1)} .l2{fill:var(--l2)} .l3{fill:var(--l3)} .l4{fill:var(--l4)}
+.l5{fill:var(--l5)} .l6{fill:var(--l6)} .l7{fill:var(--l7)} .l8{fill:var(--l8)} .l9{fill:var(--l9)}
+.l10{fill:var(--l10)}
+.s0{stroke:var(--l0)} .s1{stroke:var(--l1)} .s2{stroke:var(--l2)} .s3{stroke:var(--l3)} .s4{stroke:var(--l4)}
+.s5{stroke:var(--l5)} .s6{stroke:var(--l6)} .s7{stroke:var(--l7)} .s8{stroke:var(--l8)} .s9{stroke:var(--l9)}
+.s10{stroke:var(--l10)}
 
 /* inspector */
 .insp { border-left:1px solid var(--rule2); padding:18px 20px; overflow:auto; max-height:min(74vh,860px); }
@@ -140,10 +145,10 @@ pre .k { color:var(--violet); } pre .d { color:var(--amber); } pre .s { color:va
   border:1px solid currentColor; margin-right:6px; }
 .tree li .cls { color:var(--ink); font-weight:500; }
 .tree li .sig { display:block; color:var(--ink3); margin-top:2px; }
-.k-service{color:var(--l1)} .k-aggregator{color:var(--l2)} .k-transaction-script{color:var(--l3)}
-.k-port{color:var(--l4)} .k-converter{color:var(--l4)} .k-other{color:var(--l4)}
-.k-repository{color:var(--l5)} .k-hydrator{color:var(--l5)} .k-remote-caller{color:var(--l5)}
-.k-responder{color:var(--l6)}
+.k-service{color:var(--l2)} .k-aggregator{color:var(--l3)} .k-transaction-script{color:var(--l4)}
+.k-port{color:var(--l7)} .k-converter{color:var(--l5)} .k-other{color:var(--l8)}
+.k-repository{color:var(--l6)} .k-hydrator{color:var(--l6)} .k-remote-caller{color:var(--l6)}
+.k-responder{color:var(--l0)}
 table.fields { border-collapse:collapse; width:100%; font-family:'IBM Plex Mono',monospace; font-size:10.5px; }
 table.fields td { padding:3px 8px 3px 0; border-bottom:1px solid var(--rule); color:var(--ink2); vertical-align:top; }
 table.fields td.d { color:var(--amber); white-space:nowrap; }
@@ -233,11 +238,11 @@ footer { margin-top:64px; padding-top:20px; border-top:2px solid var(--ink); col
 <section>
   <div class="shead"><span class="num">02</span><h2>What the tracer can and cannot see</h2></div>
   <p class="note">Hops come from resolving <span class="mono">this.&lt;prop&gt;.&lt;method&gt;()</span> inside each method body against that class's constructor injections, recursively to a depth of five. That is a real call graph, not an import graph — <strong>a class the action injects but never calls does not appear</strong>.</p>
-  <p class="note">Three limits worth stating. Calls made through a local variable rather than <span class="mono">this</span>, or dispatched dynamically, are invisible — <strong>one endpoint (<span class="mono">GET /users/profile</span>) resolves to no calls at all</strong>, correctly, because it just returns <span class="mono">req.user</span>. Branching is flattened: if a method calls two collaborators, both appear, though a given request might only take one. And recursion past five levels is cut off, which affects nothing here — the deepest real trace is five.</p>
+  <p class="note">Three limits worth stating. Calls made through a local variable rather than <span class="mono">this</span>, or dispatched dynamically, are invisible — <strong><span id="noCalls"></span></strong>. Branching is flattened: if a method calls two collaborators, both appear, though a given request might only take one. And recursion past five levels is cut off — the deepest real trace here is <span id="maxDepth"></span> levels deep.</p>
 </section>
 
 <footer>
-  <p class="note" style="font-size:14.5px">Parsed from <span class="mono">{{projectId}}</span> · <span id="gen"></span> · 63 endpoints, 257 traced hops, 159 distinct classes.</p>
+  <p class="note" style="font-size:14.5px">Parsed from <span class="mono">{{projectId}}</span> · <span id="gen"></span> · <span id="footstats"></span>.</p>
 </footer>
 
 </div>
@@ -250,15 +255,10 @@ var D = JSON.parse(document.getElementById('flow').textContent);
 var EP = D.endpoints;
 document.getElementById('gen').textContent = new Date(D.generatedAt).toISOString().slice(0,10);
 
-var LANES = [
-  { i:0, name:'Entry',      sub:'action' },
-  { i:1, name:'Service',    sub:'orchestration' },
-  { i:2, name:'Aggregator', sub:'cross-domain' },
-  { i:3, name:'Tx Script',  sub:'use-case' },
-  { i:4, name:'Port',       sub:'inverted / convert' },
-  { i:5, name:'Persistence',sub:'repository' },
-  { i:6, name:'Response',   sub:'responder' }
-];
+// Lanes are the model's tiers, in the order a request travels. Typed here they
+// would drift from the config the model was scanned with (and drop any tier
+// beyond the seventh), so they come from the data instead.
+var LANES = D.tiers.map(function(t, i){ return { i:i, name:t.name, sub:t.sub || '' }; });
 var DENSITY = {
   compact:     { rowH:20, laneW:112, gut:236, route:9.5,  cls:0,   dot:2.8 },
   comfortable: { rowH:30, laneW:132, gut:262, route:10.5, cls:8.5, dot:3.6 },
@@ -386,6 +386,9 @@ function frame(now){
     if (xs.length === 1) { d.setAttribute('cx', xs[0]); continue; }
     var dur = 1400 + xs.length*900;
     var phase = ((acc + i*370) % dur) / dur;
+    // The first frame can be timestamped before t0, so acc can start negative;
+    // a negative phase floors k to -1 and xs[-1] is undefined, so cx goes NaN.
+    if (phase < 0) phase += 1;
     var seg = phase * (xs.length - 1);
     var k = Math.floor(seg); if (k > xs.length-2) k = xs.length-2;
     var t = ease(seg - k);
@@ -398,9 +401,11 @@ requestAnimationFrame(frame);
 
 /* ---------- inspector ---------- */
 function hl(code){
+  // Keywords before decorators: the decorator pass inserts class="d", and a
+  // keyword pass running after it would wrap that class attribute in a span.
   return esc(code)
-    .replace(/(@[A-Za-z]+)/g, '<span class="d">$1</span>')
     .replace(/\b(export|class|async|await|return|const|let|new|extends|implements|private|readonly|public|this|if|else)\b/g, '<span class="k">$1</span>')
+    .replace(/(@[A-Za-z]+)/g, '<span class="d">$1</span>')
     .replace(/('[^']*')/g, '<span class="s">$1</span>');
 }
 function inspect(e){
@@ -457,17 +462,46 @@ document.getElementById('legend').innerHTML = LANES.map(function(L){
   '<span class="lg"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle class="via" cx="7" cy="7" r="5"/></svg>reached through a port</span>' +
   '<span class="lg" style="color:var(--ink3)">numbered stop = more than one class at that lane</span>';
 
-var noService = EP.filter(function(e){ return !e.stations.some(function(s){return s.lane===1;}) && e.stations.some(function(s){return s.lane>1;}); });
+// Lane indices come from the model's tier names, so a project that renames or
+// drops a tier shifts or removes the card instead of miscounting it.
+function laneOf(name){ for (var i=0;i<D.tiers.length;i++) if (D.tiers[i].name===name) return i; return -1; }
+var serviceLane = laneOf('Service');
+var aggrLane = laneOf('Aggregator');
+var noService = serviceLane < 0 ? [] : EP.filter(function(e){
+  return !e.stations.some(function(s){ return s.lane===serviceLane; })
+      && e.stations.some(function(s){ return s.lane>serviceLane; });
+});
 var directRepo = EP.filter(function(e){ return e.flat.some(function(n){ return n.kind==='repository' && n.depth===1; }); });
-var crossers = EP.filter(function(e){ return e.stations.some(function(s){ return s.lane===2; }); });
-var obs = [
-  { tone:'warn', h:'Requests that never touch a Service', p:noService.length+' of 63 endpoints go from the action straight past the Service lane. Their rows have a visible gap in column two.',
-    items: noService.slice(0,10).map(function(e){ return e.verb+' '+e.route; }) },
-  { tone:'warn', h:'Actions holding a Repository themselves', p:directRepo.length+' endpoints call a repository as their very first hop — no service, no transaction script in between.',
-    items: directRepo.map(function(e){ return e.verb+' '+e.route; }) },
-  { tone:'good', h:'Requests that cross a bounded context', p:crossers.length+' endpoints reach an Aggregator, and every one of them does it through that Aggregator rather than touching the other domain directly.',
-    items: crossers.slice(0,10).map(function(e){ return e.verb+' '+e.route; }) }
-];
+var crossers = aggrLane < 0 ? [] : EP.filter(function(e){ return e.stations.some(function(s){ return s.lane===aggrLane; }); });
+var obs = [];
+if (serviceLane >= 0) obs.push({ tone:'warn', h:'Requests that never touch a Service',
+  p:noService.length+' of '+EP.length+' endpoints go from the action straight past the Service lane — their rows have no stop in it.',
+  items: noService.slice(0,10).map(function(e){ return e.verb+' '+e.route; }) });
+obs.push({ tone:'warn', h:'Actions holding a Repository themselves',
+  p:directRepo.length+' endpoints call a repository as their very first hop — no service, no transaction script in between.',
+  items: directRepo.map(function(e){ return e.verb+' '+e.route; }) });
+if (aggrLane >= 0) obs.push({ tone:'good', h:'Requests that cross a bounded context',
+  p:crossers.length+' endpoints reach an Aggregator, and every one of them does it through that Aggregator rather than touching the other domain directly.',
+  items: crossers.slice(0,10).map(function(e){ return e.verb+' '+e.route; }) });
+// Prose that used to be typed in: endpoints with no calls, the deepest trace,
+// and the footer totals, all measured from the model.
+var noCalls = EP.filter(function(e){ return e.flat.length === 0; });
+var maxDepth = 0;
+var hopTotal = 0;
+var clsSet = {};
+EP.forEach(function(e){
+  clsSet[e.cls] = 1;
+  e.flat.forEach(function(n){ hopTotal++; clsSet[n.cls] = 1; if (n.depth > maxDepth) maxDepth = n.depth; });
+});
+document.getElementById('noCalls').textContent = (function(){
+  if (!noCalls.length) return 'every endpoint resolves at least one call';
+  var list = noCalls.slice(0,3).map(function(e){ return e.verb+' '+e.route; }).join(', ');
+  if (noCalls.length > 3) list += ', …';
+  return noCalls.length + ' endpoint' + (noCalls.length===1 ? '' : 's') + ' — ' + list +
+    ' — resolve to no calls at all: the handler returns directly';
+})();
+document.getElementById('maxDepth').textContent = String(maxDepth);
+document.getElementById('footstats').textContent = EP.length + ' endpoints, ' + hopTotal + ' traced hops, ' + Object.keys(clsSet).length + ' distinct classes.';
 document.getElementById('obs').innerHTML = obs.map(function(o){
   return '<div class="card '+o.tone+'"><h3>'+esc(o.h)+'</h3><p>'+esc(o.p)+'</p>'+
     (o.items.length?'<ul>'+o.items.map(function(i){return '<li>'+esc(i)+'</li>';}).join('')+'</ul>':'')+'</div>';

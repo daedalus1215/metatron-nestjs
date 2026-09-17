@@ -226,7 +226,7 @@ methods as arrow-function properties (`startMeeting = async (...) => {}`), which
 adds it to the legend, and the inspector's trace says `through NoteWriterPort`,
 with the token and module in its tooltip. Screenshot-verified in both themes.
 
-**Found along the way, not fixed here:**
+**Found along the way (fixed 2026-09-16, see below):**
 
 - `traffic`'s lane labels are one tier off. The template hardcodes seven lanes;
   the profile's tiers are Entry, Contract, Service, Aggregator, Transaction
@@ -238,3 +238,37 @@ with the token and module in its tooltip. Screenshot-verified in both themes.
 - The animation loop logs `<circle> attribute cx: NaN` once on load (also on `main`).
 
 `npm test` runs 32 tests; 11 are new, over `test/fixtures/ports/`.
+
+## Traffic view fixes (2026-09-16)
+
+The three bugs above, fixed on `fix/traffic-lanes`:
+
+- **Lanes now come from the model.** `adapters/traffic.js` passes `tiers`, and
+  the template builds its lanes from `D.tiers` instead of a typed seven-lane
+  list. All eleven default tiers are drawn, so Domain Model (tier 7, where
+  ports live) has a lane, and every column is labelled with the tier that
+  actually sits there. The lane palette is the atlas's tier-to-colour mapping,
+  so a tier keeps its colour across views, and the inspector's hop chips are
+  recoloured to match the tier their kind belongs to.
+- **The observation cards key on tier names, not lane indices**, found by name
+  in `D.tiers`, and drop the card when the model has no tier of that name.
+  "of 63 endpoints" is now the model's own endpoint count.
+- **No typed numbers remain in the template.** The footer (endpoints, traced
+  hops, distinct classes), the section 02 prose (endpoints with no calls,
+  deepest trace) and the index blurb are all computed from the model.
+- **`hl()` runs keywords before decorators**, so the `class` in the inserted
+  `class="d"` attribute is no longer wrapped in its own keyword span.
+- **The NaN is the first frame's timestamp.** `t0` is `performance.now()` at
+  script time, but the first `requestAnimationFrame` callback can be
+  timestamped earlier — the frame's begin time, before the script ran within
+  that frame. `dt` and `acc` start negative, a negative `phase` floors `k` to
+  `-1`, `xs[-1]` is `undefined`, and the first dot's `cx` becomes `NaN` for
+  exactly one frame. Clamping `phase` back into `[0,1)` removes it; the first
+  frame simply starts the dots a few percent into their cycle.
+
+Verified on chronus, cereberus, omega and vereveil: scanned with the branch
+and with `main` in a worktree, every part of the model is byte-identical, so
+the fix is template and adapter only. Headless Chromium logs no console errors
+across repeated loads (the NaN previously logged once per load), and
+screenshots in both themes show the eleven lanes, port stops in the Domain
+Model lane, and clean decorators in the inspector.
