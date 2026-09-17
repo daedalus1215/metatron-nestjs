@@ -78,6 +78,16 @@ function lineOf(src, idx) {
   return n;
 }
 
+/** The `{` opening the object literal that encloses offset `idx`, or -1. */
+function enclosingBrace(src, idx) {
+  let d = 0;
+  for (let i = idx - 1; i >= 0; i--) {
+    if (src[i] === '}') d++;
+    else if (src[i] === '{') { if (d === 0) return i; d--; }
+  }
+  return -1;
+}
+
 /**
  * The first method declaration at or after `from`, skipping comments and any
  * number of further decorators — whose arguments may contain arbitrary nesting,
@@ -273,8 +283,98 @@ module.exports = function scan(cfg, opts = {}) {
     symbolIndex[rel] = map;
   }
 
+  // Anything we decline to interpret is recorded here rather than dropped. A
+  // route that vanished silently is how the indentation bug stayed hidden, and a
+  // port we cannot follow must say so rather than end a trace unannounced.
+  const diagnostics = [];
+
+  // ---- provider bindings
+  //
+  // A port is injected as an interface, which has no method bodies, so a trace
+  // that reaches one stops there. The class Nest actually binds to the token is
+  // named in a module file. The table is global rather than per-module, because
+  // a token is often injected in one module and provided in another.
+  const declaresClass = (rel, name) =>
+    new RegExp('(?:^|\\n)\\s*(?:export\\s+)?(?:abstract\\s+)?class\\s+' + name + '\\b').test(text[rel]);
+  const declaresConst = (rel, name) =>
+    new RegExp('(?:^|\\n)\\s*(?:export\\s+)?const\\s+' + name + '\\b').test(text[rel]);
+
+  /** A token as written in `rel`: a string literal, or a symbol resolved to the file declaring it. */
+  function tokenOf(rel, raw) {
+    const str = raw.match(/^['"]([^'"]*)['"]$/);
+    if (str) return { name: str[1], key: 'str:' + str[1], file: null };
+    const file = symbolIndex[rel][raw] || (declaresConst(rel, raw) || declaresClass(rel, raw) ? rel : null);
+    return { name: raw, key: file ? file + '#' + raw : 'ext:' + raw, file };
+  }
+
+  const bindings = [];
+  const bindingsByKey = {};
+  const PROVIDE_RE = /\bprovide\s*:\s*([A-Za-z_$][\w$]*|'[^']*'|"[^"]*")/g;
+  for (const rel of files) {
+    if (info[rel].pattern !== 'module') continue;
+    const src = text[rel];
+    PROVIDE_RE.lastIndex = 0;
+    let m;
+    while ((m = PROVIDE_RE.exec(src))) {
+      // Read the enclosing object literal rather than splitting the providers
+      // array: splitTop counts the `>` of a `useFactory: () =>` arrow as a
+      // closing bracket, and would lose every provider after it.
+      const open = enclosingBrace(src, m.index);
+      const close = open < 0 ? -1 : matchBrace(src, open);
+      if (close < 0) continue;
+      const use = src.slice(open, close + 1).match(/\b(useClass|useExisting|useValue|useFactory)\s*:\s*([A-Za-z_$][\w$]*)?/);
+      if (!use) continue;
+      const tok = tokenOf(rel, m[1]);
+      const cls = use[1] === 'useClass' || use[1] === 'useExisting' ? use[2] || null : null;
+      const impl = cls ? symbolIndex[rel][cls] || (declaresClass(rel, cls) ? rel : null) : null;
+      const b = { token: tok.name, tokenFile: tok.file, impl, cls, via: use[1], module: rel, line: lineOf(src, m.index) };
+      bindings.push(b);
+      (bindingsByKey[tok.key] = bindingsByKey[tok.key] || []).push(b);
+    }
+  }
+
+  /**
+   * Record where an `@Inject(TOKEN)` parameter is bound. `inj.file` keeps
+   * pointing at the declared type — the import of the port is real and stays in
+   * the graph — and `boundTo` is added knowledge, not a replacement.
+   */
+  function bindInjection(rel, inj, raw, line) {
+    const tok = tokenOf(rel, raw);
+    inj.token = tok.name;
+    const report = (kind, detail) => diagnostics.push({ kind, file: rel, line, token: tok.name, detail });
+    // Providing one token the same way in two modules is not a conflict.
+    const found = [...new Map((bindingsByKey[tok.key] || [])
+      .map((b) => [b.via + '|' + (b.impl || b.cls), b])).values()];
+    if (found.length > 1) {
+      // Nest settles this by module scope, which this scanner does not model,
+      // and a coin-flip would be worse than an admission.
+      report('port-ambiguous', `${tok.name} is bound differently in ${found.length} places (` +
+        found.map((b) => `${b.cls || b.via} in ${b.module}`).join(', ') + `) — trace stops at ${inj.type}`);
+      return;
+    }
+    const b = found[0];
+    if (b && b.impl) {
+      Object.assign(inj, { boundTo: b.impl, boundVia: b.via, boundIn: b.module });
+      return;
+    }
+    // useValue is data rather than an implementation: nothing to follow, and
+    // nothing worth reporting.
+    if (b && b.via === 'useFactory') {
+      // A factory can return anything; following it would be a guess.
+      report('port-unbound', `${tok.name} is provided by useFactory in ${b.module} — not followed, trace stops at ${inj.type}`);
+    } else if (b && b.cls) {
+      report('port-unbound', `${tok.name} is bound to ${b.cls}, which is outside the scanned tree`);
+    } else if (!b && tok.file && !declaresClass(tok.file, tok.name)) {
+      // Only a token declared in this tree can be known to be missing. A string
+      // or package token may be provided by a module we never see, and a class
+      // used as its own token is ordinary DI, already resolved by its type.
+      report('port-unbound', `no module provides ${tok.name} — trace stops at ${inj.type}`);
+    }
+  }
+
   // ---- constructor injections
   const injects = {};
+  const INJECT_RE = /@Inject\s*\(\s*([A-Za-z_$][\w$]*|'[^']*'|"[^"]*")\s*\)/;
   for (const rel of files) {
     const src = text[rel];
     const ci = src.indexOf('constructor(');
@@ -286,8 +386,10 @@ module.exports = function scan(cfg, opts = {}) {
       const clean = p.replace(/@\w+\([^)]*\)/g, ' ').replace(/@\w+/g, ' ').trim();
       const m = clean.match(/(?:private|public|protected|readonly|\s)*\s*(\w+)\s*:\s*([A-Za-z_]\w*)/);
       if (!m) return null;
-      if (EXTERNAL_TYPES.has(m[2])) return { prop: m[1], type: m[2], file: null };
-      return { prop: m[1], type: m[2], file: symbolIndex[rel][m[2]] || null };
+      const inj = { prop: m[1], type: m[2], file: EXTERNAL_TYPES.has(m[2]) ? null : symbolIndex[rel][m[2]] || null };
+      const tm = p.match(INJECT_RE);
+      if (tm) bindInjection(rel, inj, tm[1], lineOf(src, src.indexOf(p, open)));
+      return inj;
     }).filter(Boolean);
   }
 
@@ -472,9 +574,7 @@ module.exports = function scan(cfg, opts = {}) {
   // ---- endpoints + traces
   //
   // A route decorator binds to the first method declaration that follows it.
-  // Anything we cannot bind is recorded in `diagnostics` rather than dropped —
-  // a route that vanishes silently is how the indentation bug stayed hidden.
-  const diagnostics = [];
+  // Anything we cannot bind is recorded in `diagnostics` rather than dropped.
   const endpoints = [];
   const VERB_SCAN = /@(Get|Post|Put|Patch|Delete|All|Head|Options)\s*\(/g;
   const entryPatterns = new Set(['action', 'controller', 'resolver'].filter((p) => cfg.patterns.some((x) => x.id === p)));
@@ -596,35 +696,46 @@ module.exports = function scan(cfg, opts = {}) {
     const out = [];
     for (const c of calls) {
       const inj = mine.find((i) => i.prop === c.prop);
-      if (!inj || !inj.file) continue;
-      const key = inj.file + '#' + c.method;
+      // A port has no method bodies; continue into the class its module binds.
+      const tgt = inj && (inj.boundTo || inj.file);
+      if (!tgt) continue;
+      const key = tgt + '#' + c.method;
       if (seenKeys.has(key)) continue;
       seenKeys.add(key);
-      out.push({
-        file: inj.file, cls: className(inj.file), kind: info[inj.file].pattern,
-        tier: info[inj.file].tier, module: info[inj.file].module,
-        method: c.method, prop: c.prop, sig: methodSig(inj.file, c.method),
-        children: trace(inj.file, c.method, seenKeys, depth + 1),
-      });
+      out.push(Object.assign({
+        file: tgt, cls: className(tgt), kind: info[tgt].pattern,
+        tier: info[tgt].tier, module: info[tgt].module,
+        method: c.method, prop: c.prop, sig: methodSig(tgt, c.method),
+      }, viaPortOf(inj), {
+        children: trace(tgt, c.method, seenKeys, depth + 1),
+      }));
     }
     if (!out.length && depth === 0) {
       for (const inj of mine) {
-        if (!inj.file) continue;
-        const k = info[inj.file].pattern;
+        const tgt = inj.boundTo || inj.file;
+        if (!tgt) continue;
+        const k = info[tgt].pattern;
         if (k === 'dto' || k === 'entity') continue;
-        out.push({
-          file: inj.file, cls: className(inj.file), kind: k, tier: info[inj.file].tier,
-          module: info[inj.file].module, method: null, prop: inj.prop, sig: null,
-          children: [], inferred: true,
-        });
+        out.push(Object.assign({
+          file: tgt, cls: className(tgt), kind: k, tier: info[tgt].tier,
+          module: info[tgt].module, method: null, prop: inj.prop, sig: null,
+        }, viaPortOf(inj), { children: [], inferred: true }));
       }
     }
     return out;
   }
+  // The indirection is architecturally meaningful and must not be erased: a
+  // hop that crossed a binding says which port it went through. Only such hops
+  // carry these fields, so every other hop keeps its shape.
+  function viaPortOf(inj) {
+    return inj.boundTo ? { viaPort: inj.type, token: inj.token, boundIn: inj.boundIn } : {};
+  }
   const flatten = (list, acc, d) => {
     for (const n of list) {
-      acc.push({ file: n.file, cls: n.cls, kind: n.kind, tier: n.tier, module: n.module,
-        method: n.method, prop: n.prop, sig: n.sig, depth: d, inferred: !!n.inferred });
+      const hop = { file: n.file, cls: n.cls, kind: n.kind, tier: n.tier, module: n.module,
+        method: n.method, prop: n.prop, sig: n.sig, depth: d, inferred: !!n.inferred };
+      if (n.viaPort) Object.assign(hop, { viaPort: n.viaPort, token: n.token, boundIn: n.boundIn });
+      acc.push(hop);
       flatten(n.children, acc, d + 1);
     }
     return acc;
@@ -989,7 +1100,7 @@ module.exports = function scan(cfg, opts = {}) {
     domainModules: modules.map((m) => m.id).filter((m) => !INFRA.has(m) && m !== '(root)'),
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
-    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, diagnostics,
+    fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, diagnostics, bindings,
   };
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);

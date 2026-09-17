@@ -116,15 +116,19 @@ the sentence is generated from the model at build time. Slots:
 ## Reporting findings honestly
 
 - **Check `diagnostics` before trusting endpoint data.** A non-empty list means
-  routes were seen but could not be parsed; they are absent from `endpoints`.
-  Coverage does not cover this — coverage measures classification only.
+  routes were seen but could not be parsed (they are absent from `endpoints`),
+  or a trace stopped at a port metatron would not follow (`port-unbound`,
+  `port-ambiguous`). Coverage does not cover this — coverage measures
+  classification only.
 - `findings[].tone` is `good` (a rule the code upholds), `warn` (a deviation) or
   `note`. Report the upheld rules too — "zero upward calls across 1,047 imports"
   is a real result, not an absence of news.
 - Skip severity: `crit` jumps two or more stations, `warn` jumps one.
 - **Say that imports are not calls.** Only `endpoints[].flat` follows real call
-  chains. Anything resolved through a DI token string leaves no edge at all, so
-  coupling is understated.
+  chains. A call through `@Inject(TOKEN)` continues into the class a module binds
+  to it; those hops carry `viaPort` — describe them as crossing a port, never as
+  a direct call. A binding adds no import edge, so import-based coupling is
+  still understated.
 - Layout carries no meaning — positions and footprints are chosen so things do
   not overlap. Only heights, tiers, links and colours are data.
 - A finding may indict the *document* rather than the code: patterns configured

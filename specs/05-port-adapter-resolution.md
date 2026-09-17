@@ -1,10 +1,11 @@
 ---
 title: Port / Adapter Resolution Through Module Providers
-status: draft
+status: implemented
 project: metatron-nestjs
 location: specs/05-port-adapter-resolution.md
 created: 2026-08-24
 tags: [scanner, dependency-injection, call-graph, hexagonal]
+implemented: 2026-09-14
 ---
 
 # Port / Adapter Resolution Through Module Providers
@@ -166,3 +167,74 @@ than an admission.
   the source for at least `POST /notes/import`.
 - Total endpoints stays 63 and no existing trace gets shorter.
 - The traffic lens visibly marks a through-port hop; screenshot-verified.
+
+## Implementation notes (2026-09-14)
+
+Landed in `src/scan.js`: a global binding table built from every `provide:` in
+a `*.module.ts`, resolved when a constructor parameter carries `@Inject(TOKEN)`,
+and followed by `trace()`. `enclosingBrace()` joins the parse primitives.
+
+**Measured on Chronus**, against `main` at `2f66867`:
+
+```
+port hops that dead-end            15 -> 0
+endpoints with a truncated trace    4 -> 0
+endpoints                          64 -> 64
+hops                              260 -> 287
+bindings                            7    (all useExisting)
+port diagnostics                    0
+```
+
+Chronus has 64 endpoints now, not the 63 this spec was written against. 60 of
+them have byte-identical traces, and every part of the model outside
+`endpoints`, `bindings` and `diagnostics` is byte-identical. The four truncated
+endpoints are resolved; no hop was lost from any trace. `DELETE /folders/:id`
+stays at 5 hops: `NoteFolderAdapter` calls a TypeORM `Repository<Note>`, an
+external type, so the trace now ends at the real adapter instead of the
+interface.
+
+`POST /notes/import` checked by hand against the source: `ImportNote.apply`
+calls the four ports, and each bound aggregator's body calls exactly the
+repository methods the trace lists.
+
+nous, kairos and cereberus: traces unchanged, no diagnostics. kairos binds
+`PARTICIPANT_AGGREGATOR` with `useClass` and injects it in three transaction
+scripts, but no endpoint trace reaches them — `MeetingService` declares its
+methods as arrow-function properties (`startMeeting = async (...) => {}`), which
+`methodBody()` does not read. That gap predates this spec.
+
+**Deviations from the spec:**
+
+- The bound hop *replaces* the port hop rather than following it, so a hop
+  count is still a count of calls. `kind` is the implementation's own pattern —
+  five of Chronus's seven bindings land on aggregators, not adapters — and
+  `viaPort`, `token` and `boundIn` carry the port, so nothing is lost.
+- Diagnostics keep the existing `{ kind, file, line, detail }` shape plus
+  `token`, rather than `{ token, reason }`, so the CLI prints them unchanged.
+- `useValue` is recorded but never diagnosed: it is data, not an implementation.
+- "No provider found" is reported only for a token declared in the scanned tree
+  that is not a class. A string or package token may be provided by a module
+  metatron never sees, and a class used as its own token is ordinary DI.
+- Ambiguity is judged on distinct `via` + implementation, so one token provided
+  the same way in two modules is not reported.
+- Provider objects are found by walking back from each `provide:` to its
+  enclosing brace, not by splitting the `providers` array. `splitTop` counts the
+  `>` of a `useFactory: () =>` arrow as a closing bracket and would lose every
+  provider after it; the fixture puts one first on purpose.
+
+**Lens.** `traffic` rings any stop reached through a port with a dashed circle,
+adds it to the legend, and the inspector's trace says `through NoteWriterPort`,
+with the token and module in its tooltip. Screenshot-verified in both themes.
+
+**Found along the way, not fixed here:**
+
+- `traffic`'s lane labels are one tier off. The template hardcodes seven lanes;
+  the profile's tiers are Entry, Contract, Service, Aggregator, Transaction
+  Script, … so "Service" is drawn under a Contract heading, and Domain Model
+  (tier 7, where ports live) has no lane. The observation cards keyed on lanes 1
+  and 2 inherit the error, and one of them has "of 63 endpoints" typed in.
+- `hl()` in `traffic` highlights the keyword `class` inside the `<span
+  class="d">` it has just inserted, so decorators render as `class="d">@IsNumber()`.
+- The animation loop logs `<circle> attribute cx: NaN` once on load (also on `main`).
+
+`npm test` runs 32 tests; 11 are new, over `test/fixtures/ports/`.
