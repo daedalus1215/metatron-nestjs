@@ -204,6 +204,20 @@ module.exports = function narrate(m) {
     }
   }
 
+  // ---------- coupling ----------
+  const cp = m.coupling && m.coupling.meta && !m.coupling.meta.reason ? m.coupling : null;
+  if (cp) {
+    const t = cp.meta;
+    const unexplained = cp.pairs.filter((p) => p.imports === 0);
+    N.coupling = `Across ${num(t.commits)} commits (${num(t.excludedCommits)} ignored for touching more than ${t.maxFiles} files), ` +
+      `${num(cp.pairs.length)} pairs of files land in the same commit at least ${Math.round(t.minDegree * 100)}% of the time they move, ` +
+      `and ${num(unexplained.length)} of those pairs share no import edge — the ones worth reading. ` +
+      `Commits are a proxy for change, and one team's commit granularity is not another's: a squash-merge workflow and a ` +
+      `commit-per-thought workflow produce different numbers from identical work. Co-change is correlation, not mechanism — ` +
+      `two files dragged along by the same sweeping rename are not coupled in any meaningful sense, and the size cap only ` +
+      `blunts that, imperfectly. And the absence of coupling is not evidence of independence; it may just be young code.`;
+  }
+
   // ---------- provenance, shown on every lens ----------
   N.provenance = `Generated from ${mono(m.project)} by metatron. Every box is a directory that exists and every line is an ` +
     `${mono('import')} that a file actually writes. ${m.coverage.classified} of ${m.coverage.files} files ` +
