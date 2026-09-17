@@ -374,6 +374,11 @@ chromium --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
   --screenshot=shot.png "file://$PWD/.metatron/layers.html"
 ```
 
+For detail, add `--force-device-scale-factor=2` and crop with `magick`; for the
+dark theme add `--force-dark-mode --blink-settings=preferredColorScheme=0`
+(headless defaults to dark, so pass
+`--blink-settings=preferredColorScheme=1` to force light).
+
 The large `--virtual-time-budget` is required — the canvas views draw on
 `requestAnimationFrame`, and a short budget screenshots a blank canvas. Static
 checks won't catch mirrored text, washed-out blends, clipped content or missing
