@@ -2,7 +2,7 @@
 title: metatron specs — index and sequencing
 status: draft
 project: metatron-nestjs
-location: specs/README.md
+location: docs/specs/README.md
 created: 2026-08-24
 tags: [index, roadmap]
 ---
@@ -11,6 +11,13 @@ tags: [index, roadmap]
 
 Six changes, written 2026-08-24 against `4c9d87b`. Numbered by dependency, not
 by importance.
+
+## Layout
+
+Flat, numbered `NN-{kebab}.md` — this project has no tracker, so the number is
+the ordering, assigned when the spec is written. Frontmatter: `title`,
+`status`, `project`, `location`, `created`, `tags`, and `implemented` once the
+work lands. One spec per unit of work.
 
 | # | spec | kind | depends on |
 |---|------|------|-----------|

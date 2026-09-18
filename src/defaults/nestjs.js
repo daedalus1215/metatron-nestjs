@@ -128,7 +128,7 @@ module.exports = {
    * The forward pass alone cannot prove the locator fits the project, so the
    * scan also resolves backwards — every spec must be claimed by exactly one
    * source. When too many specs are unmatched the findings suppress
-   * themselves (see specs/06-test-coverage-crossing.md).
+   * themselves (see docs/specs/06-test-coverage-crossing.md).
    */
   testLocators: [
     // `__specs__/` subdirectory, one spec per source file (Chronus layout)

@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Spec 05 — a call through a port continues into the class a module binds to
- * it. See specs/05-port-adapter-resolution.md.
+ * it. See docs/specs/05-port-adapter-resolution.md.
  */
 const test = require('node:test');
 const assert = require('node:assert');

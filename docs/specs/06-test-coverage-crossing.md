@@ -2,7 +2,7 @@
 title: Test Presence Crossed With Risk
 status: implemented
 project: metatron-nestjs
-location: specs/06-test-coverage-crossing.md
+location: docs/specs/06-test-coverage-crossing.md
 created: 2026-08-24
 tags: [analysis, testing, hotspots, findings]
 implemented: 2026-09-16

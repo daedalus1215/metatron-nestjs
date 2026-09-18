@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Spec 02 — the ratchet. See specs/02-violation-baseline-and-check.md.
+ * Spec 02 — the ratchet. See docs/specs/02-violation-baseline-and-check.md.
  */
 const test = require('node:test');
 const assert = require('node:assert');

@@ -2,7 +2,7 @@
 title: Logical Coupling (Co-Change Analysis)
 status: draft
 project: metatron-nestjs
-location: specs/03-logical-coupling.md
+location: docs/specs/03-logical-coupling.md
 created: 2026-08-24
 tags: [analysis, git-history, coupling, lens]
 ---

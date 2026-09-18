@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Spec 01 — a route decorator must bind to the method that follows it,
- * whatever the file's indentation. See specs/01-handler-detection-robustness.md.
+ * whatever the file's indentation. See docs/specs/01-handler-detection-robustness.md.
  */
 const test = require('node:test');
 const assert = require('node:assert');
