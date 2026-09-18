@@ -2,7 +2,7 @@
 title: Handler Detection Robustness
 status: implemented
 project: metatron-nestjs
-location: specs/01-handler-detection-robustness.md
+location: docs/specs/01-handler-detection-robustness.md
 created: 2026-08-24
 tags: [scanner, correctness, portability]
 implemented: 2026-08-24
