@@ -18,6 +18,7 @@
  */
 
 const { execFileSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const scan = require('./scan');
 const BL = require('./baseline');
@@ -314,6 +315,22 @@ function analyze(cfg, opts = {}) {
     .filter((c) => c.status === 'renamed')
     .map((c) => [c.oldPath, c.path]);
 
+  // The report ends with a map: the changed set as a focus URL on the city
+  // view, when the view was actually built — the path of the last built
+  // view, not a guess. No view, no link.
+  const outDir = path.resolve(dir, cfg.outDir || '.metatron');
+  const cityView = path.join(outDir, 'city.html');
+  const entries = changes.map((c) => c.path);
+  const show = (p) => {
+    const r = path.relative(process.cwd(), p);
+    return r.startsWith('..') ? p : r;
+  };
+  const focus = {
+    paths: entries,
+    url: entries.length && fs.existsSync(cityView)
+      ? show(cityView) + '?focus=' + entries.map((e) => encodeURIComponent(e).replace(/%2F/g, '/')).join(',')
+      : null,
+  };
   return {
     project: cur.project,
     range: resolved.label,
@@ -337,6 +354,7 @@ function analyze(cfg, opts = {}) {
       : { path: c.path, status: c.status }),
     look: { hotspots: look.hotspots, coupling: look.coupling },
     untested: { files: untested, of: look.sourceCount },
+    focus,
   };
 }
 
@@ -397,6 +415,12 @@ function renderTerminal(r) {
   }
   const look = lookLines(r);
   if (look.length) { L.push(''); L.push('worth a look'); for (const x of look) L.push('  ' + x); }
+  if (r.focus.paths.length) {
+    L.push('');
+    L.push(r.focus.url
+      ? 'focus: ' + r.focus.url
+      : 'focus: build the view first (metatron views)');
+  }
   return L.join('\n') + '\n';
 }
 
@@ -439,6 +463,12 @@ function renderMarkdown(r) {
   if (look.length) {
     L.push('**Worth a look**');
     for (const x of look) L.push('- ' + x);
+  }
+  if (r.focus.paths.length) {
+    L.push('');
+    L.push(r.focus.url
+      ? '**Focus** — `' + r.focus.url + '`'
+      : '**Focus** — build the view first (`metatron views`)');
   }
   return L.join('\n') + '\n';
 }

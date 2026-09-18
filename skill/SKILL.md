@@ -112,6 +112,10 @@ npx metatron diff --format markdown # pasteable into a PR description
 ```
 
 It is a report, not a gate: stdout only, exit 0, no network, no PR required.
+
+The report ends with a `focus:` line — a URL that opens the city view with
+only the changed files' towers lit. The views must already be built; if they
+are not, the line says so instead of printing a dead link.
 Read it the same way you read the other findings: affected endpoints are
 call-based (a changed file in the endpoint's traced path), not import-based;
 deleted files are traced from a scan of the base commit, so a deletion reports
