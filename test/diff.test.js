@@ -12,6 +12,7 @@ const D = require('../src/diff');
 const BL = require('../src/baseline');
 const scan = require('../src/scan');
 const { load } = require('../src/config');
+const { build } = require('../src/build');
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'diff');
 const BIN = path.join(__dirname, '..', 'bin', 'metatron.js');
@@ -229,5 +230,26 @@ test('the CLI renders terminal, markdown and json', () => {
     const j = JSON.parse(js);
     assert.equal(j.project, 'fixture');
     assert.equal(j.files.total, 1);
+  });
+});
+
+test('the report ends with a focus line that names the built view', () => {
+  withRepo((git, commit, touch, cfg, tmp) => {
+    touch(SVC, '\n// c1\n'); commit('c1');
+    // no view built yet: the report refuses to print a dead link
+    const none = execFileSync(process.execPath, [BIN, 'diff', 'main~1...main'], { cwd: tmp, encoding: 'utf8' });
+    assert.ok(none.includes('build the view first (metatron views)'), none);
+    const jnone = JSON.parse(execFileSync(process.execPath, [BIN, 'diff', 'main~1...main', '--json'], { cwd: tmp, encoding: 'utf8' }));
+    assert.equal(jnone.focus.url, null);
+    assert.deepEqual(jnone.focus.paths, [SVC]);
+    // build the view, and the same report ends with a map
+    build(scan(cfg), path.join(tmp, '.metatron'));
+    const term = execFileSync(process.execPath, [BIN, 'diff', 'main~1...main'], { cwd: tmp, encoding: 'utf8' });
+    assert.ok(term.includes('focus: .metatron/city.html?focus=' + SVC), term);
+    const md = execFileSync(process.execPath, [BIN, 'diff', 'main~1...main', '--format=markdown'], { cwd: tmp, encoding: 'utf8' });
+    assert.ok(md.includes('`' + '.metatron/city.html?focus=' + SVC + '`'), md);
+    const j = JSON.parse(execFileSync(process.execPath, [BIN, 'diff', 'main~1...main', '--json'], { cwd: tmp, encoding: 'utf8' }));
+    assert.equal(j.focus.url, '.metatron/city.html?focus=' + SVC);
+    assert.deepEqual(j.focus.paths, [SVC]);
   });
 });

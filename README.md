@@ -224,13 +224,18 @@ worth a look
   `notes/domain/services/note.service.ts` is hotspot #9 of 362 (12 commits, 14 dependents)
   `check-items.repository.ts` co-changes with `create-check-item.transaction.script.ts` 30% of the time — not in this diff
   4 of 5 changed source files have no test
+
+focus: .metatron/city.html?focus=check-items/…,notes/domain/services/note.service.ts,…
 ```
 
 The range is local git only: it works offline, on any branch, before a PR
 exists — which is when the answer is most useful. The report goes to stdout
 and exits 0; nothing is posted anywhere, and the exit code is not a gate a
 pipeline should branch on. `--format=markdown` is pasteable into a PR
-description, `--json` is for tooling.
+description, `--json` is for tooling. The report ends with a `focus:` line:
+a URL that opens the city view with only the changed files' towers lit, for
+the files that have towers. If the views have not been built it says
+`build the view first (metatron views)` instead of printing a dead link.
 
 Three things the report refuses to do:
 
@@ -278,7 +283,7 @@ you share it.
 |------|---------|
 | `atlas` | Where does everything live, and which of its own rules does the code break? |
 | `traffic` | What happens when a request arrives? Every endpoint as an animated trace with the real payload at each hop. Full screen and three row densities, for APIs with a lot of routes. |
-| `city` | What shape is each module, and can I walk around it? One tower per module, one floor per directory, with a projection toggle — see below. |
+| `city` | What shape is each module, and can I walk around it? One tower per module, one floor per directory, with a projection toggle, and a `?focus=` URL that lights a set of towers and ghosts the rest — see below. |
 | `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
 | `schema` | What does the data look like? Entities, columns, and references — including the ones the ORM never hears about. |
 | `hotspots` | Where does refactoring pay? Every file plotted by change frequency against how much depends on it. Files with no test carry a dashed ring, so the corner doubles as a test backlog. Needs git history. |
