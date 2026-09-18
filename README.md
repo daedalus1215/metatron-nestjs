@@ -130,6 +130,13 @@ or is declared in the tree and provided nowhere. `port-ambiguous` means two
 modules bind the same token to different classes. Nest settles that by module
 scope, which metatron does not model, so it declines to pick.
 
+A third kind concerns the middle of a trace. When a call inside a method
+body cannot be followed — the method's body is in a shape metatron does not
+read, the `this.x` is a class field rather than an injected dependency, or
+the trace is deeper than five classes — the hop stops and a `trace-stalled`
+diagnostic says where and why. A trace that ends is either short or cut;
+the diagnostics tell which.
+
 ---
 
 ## Holding the line
@@ -507,8 +514,9 @@ break) · `modules`, `domainModules`, `platformModules` · `allModuleEdges`,
 `domainEdges` · `cycles` (Tarjan SCCs with sanctioned carve-outs applied
 progressively) · `crossDomain` · `ports` · `endpoints` · `shape` · `findings` · `dataModel` (entities, columns, declared and inferred
 relations) · `orphans` · `churn` / `churnMeta` · `diagnostics` (routes that
-could not be parsed and ports that could not be followed, rather than silently
-dropped) · `bindings` (every `provide:` in a module file and the class it binds;
+could not be parsed, and ports and mid-trace stops that could not be followed,
+rather than silently dropped) · `bindings` (every `provide:` in a module file
+and the class it binds;
 a trace hop that crossed one carries `viaPort`, `token` and `boundIn`) ·
 `violations` (warn findings flattened one per instance, each with a stable
 fingerprint).

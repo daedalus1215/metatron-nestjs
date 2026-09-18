@@ -152,3 +152,92 @@ projects' models to fix nothing measurable.
 - `metatron diff` on a Kairos commit reports affected endpoints through the
   full chain, not the first hop.
 - `npm test` green.
+
+## Implementation notes (2026-09-17)
+
+Landed in `src/scan.js` — the three method-syntax sites now share one
+`methodAnchor` helper carrying the arrow-property alternative, and `trace`
+gains a `stall` helper emitting the three `trace-stalled` reasons — plus
+`test/arrow-trace.test.js` over `test/fixtures/arrows/` (a `meet` app
+exercising the plain, `async` and `private` arrow shapes, a getter, a
+class-field dependency, and a seven-class `deep` chain that hits the depth
+cap).
+
+**Re-measured on the real projects, 2026-09-17.** The project set is chronus,
+kairos, omega, cereberus, nous and vereveil; only vereveil carries an
+`arch.config.js`, the other five scan on the default profile with `__dir` at
+`backend/`.
+
+| project | files | hops (old → new) | endpoints | new stalls |
+|---|---|---|---|---|
+| kairos | 121 | 37 → 153 | 23 | dep-not-injected ×9 |
+| chronus | 362 | 287 → 287 | 64 | dep-not-injected ×6 |
+| nous | 142 | 97 → 97 | 29 | dep-not-injected ×21, depth-cap ×1 |
+| cereberus | 64 | 47 → 47 | 14 | — |
+| omega | 209 | 147 → 147 | 28 | — |
+| vereveil | 148 | 153 → 153 | 23 | — |
+
+Kairos's file count matches the spec's census (121) exactly, and 22 of its
+23 endpoints now reach a hop of kind `repository` — all but `/healthz`,
+which has no dependencies. 19 of 23 reach depth ≥ 3; the four short ones
+are `/healthz` (no calls), `/auth/me` (controller straight to repository)
+and `/participants` + `/participants/:id` (controller → service →
+repository). No trace contains a repeated (file, method) pair, so the 153
+hops are shared subtrees re-traced once per endpoint, not a parse loop.
+
+Every new stall on every project is a `this.x.y()` where `x` is a class
+field (`logger = new Logger(…)`, `cache = new Map(…)`,
+`activeMeetings = new Map(…)` — the common NestJS idiom), plus one genuine
+depth-6 chain in nous (`summary/infra/remote-callers/ai-summary.remote-caller.ts`).
+No `body-not-found` on any real project: nothing there calls a shape the
+scanner does not accept.
+
+**Deviations from the spec:**
+
+- "Kairos … `diagnostics` is empty — nothing stops" — the prediction was
+  wrong: nine `dep-not-injected` stalls in `meetings.gateway.ts`. The
+  spec's normative text is explicit that non-injected `this.x` calls are
+  "diagnosed, not followed", and the census that produced the prediction
+  counted arrow-property files, not class-field calls. The behaviour
+  stands; the prediction did not survive contact with the codebase.
+- "The other five backends: models byte-identical to `main`" — holds for
+  cereberus, omega and vereveil. On chronus and nous the only differing
+  top-level key is `diagnostics` (the new stalls); endpoints, `flat`,
+  edges and everything else are byte-identical. Same root cause: the
+  premise "zero arrow-property files → nothing changes" did not anticipate
+  the stall diagnostic surfacing class-field calls the scanner always
+  skipped silently.
+- "hop count rises from 37 to roughly 80" — measured 153. The estimate did
+  not count shared subtrees being re-traced once per endpoint. The exact
+  number is recorded here, as the acceptance line asks.
+- "22 of 23 endpoints reach the repository layer (depth ≥ 3)" — the two
+  readings disagree: 22 of 23 reach a `repository` hop; 19 of 23 reach
+  depth ≥ 3. The substantive claim — the repository layer, absent from
+  every old trace, is now present in nearly all of them — holds under the
+  first reading.
+
+**Design decisions the spec left open:**
+
+- A stall is deduplicated per (file, method, reason) across the whole
+  scan: the same gap reached from two endpoints is reported once.
+- `dep-not-injected` fires only when the `this.x` is not a constructor
+  parameter at all. An injected dependency whose type resolves to no
+  scanned file (external packages) stays silent, as before — firing there
+  would tag every call on an injected logger as a stall.
+- A port file never emits `body-not-found` or `depth-cap`: a port is a
+  declaration boundary with no body by design, and a trace that cannot
+  cross it is already told by the port diagnostics (`port-unbound`,
+  `port-ambiguous`, factory). Verified on the spec-05 ports fixture, whose
+  three un-crossable ports would otherwise each have fired a false
+  `body-not-found`.
+
+**`metatron diff` check.** On Kairos commit `41b66a9` (81 changed files),
+both versions report the same 14 affected endpoints — the change set
+touches the services they all start from — but the attribution grows from
+13 via files to 33: the 20 the old model never saw are the transaction
+scripts, `meeting.repository.ts`, the mappers, the assemblers and
+`participant-aggregator.ts`. Nothing the old model saw is lost.
+
+`npm test` runs 65 tests; 7 are new, over `test/fixtures/arrows/` (the
+three arrow shapes, the getter stall, the dep-not-injected stall, the
+depth-cap stall, and the fixture's exact stall count).
