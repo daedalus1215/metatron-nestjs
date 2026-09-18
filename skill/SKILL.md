@@ -142,8 +142,11 @@ the sentence is generated from the model at build time. Slots:
 
 - **Check `diagnostics` before trusting endpoint data.** A non-empty list means
   routes were seen but could not be parsed (they are absent from `endpoints`),
-  or a trace stopped at a port metatron would not follow (`port-unbound`,
-  `port-ambiguous`). Coverage does not cover this — coverage measures
+  a trace stopped at a port metatron would not follow (`port-unbound`,
+  `port-ambiguous`), or a trace was cut mid-chain (`trace-stalled`, with
+  `body-not-found`, `dep-not-injected` or `depth-cap`) — the endpoint's
+  `flat` is then shorter than the request's real path, and `metatron diff`
+  sees less of it. Coverage does not cover this — coverage measures
   classification only.
 - **Check `tests.meta.reliable` before trusting any test finding.** When more
   than 25% of spec files match no source file, the `testLocators` layout does

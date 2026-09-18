@@ -116,7 +116,8 @@ function nextMethodAfter(src, from) {
     const rest = src.slice(i, i + 400);
     const mod = rest.match(/^(public|private|protected|readonly|static|async|override|abstract)\b/);
     if (mod) { i += mod[1].length; continue; }
-    const nm = rest.match(/^([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>)?\s*\(/);
+    const nm = rest.match(/^([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>)?\s*\(/)
+      || rest.match(/^([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/);
     if (!nm) return null;   // a property, a closing brace, anything that is not a method
     return { name: nm[1], open: i + nm[0].length - 1 };
   }
@@ -403,10 +404,18 @@ module.exports = function scan(cfg, opts = {}) {
     const m = text[rel].match(/export\s+(?:abstract\s+)?class\s+(\w+)/);
     return m ? m[1] : path.basename(rel, '.ts');
   };
+  /** The line where `name` opens a body: the method form `name(…)`, or the
+   *  arrow-property forms `name = (…)` / `name = async (…)`; modifiers
+   *  (public/private/protected/async) allowed. Spec 07. */
+  const methodAnchor = (src, name) => {
+    const method = new RegExp('(?:^|\\n)\\s*(?:public\\s+|private\\s+|protected\\s+)?(?:async\\s+)?' + name + '\\s*\\(', 'g');
+    const m = method.exec(src);
+    if (m) return m;
+    return new RegExp('(?:^|\\n)\\s*(?:public\\s+|private\\s+|protected\\s+)?' + name + '\\s*=\\s*(?:async\\s*)?\\(', 'g').exec(src);
+  };
   function methodSig(rel, name) {
     const src = text[rel];
-    const re = new RegExp('(?:^|\\n)\\s*(?:public\\s+|private\\s+|protected\\s+)?(?:async\\s+)?' + name + '\\s*\\(', 'g');
-    const m = re.exec(src);
+    const m = methodAnchor(src, name);
     if (!m) return null;
     const open = src.indexOf('(', m.index);
     const close = matchParen(src, open);
@@ -418,8 +427,7 @@ module.exports = function scan(cfg, opts = {}) {
   }
   function methodBody(rel, name) {
     const src = text[rel];
-    const re = new RegExp('(?:^|\\n)\\s*(?:public\\s+|private\\s+|protected\\s+)?(?:async\\s+)?' + name + '\\s*\\(', 'g');
-    const m = re.exec(src);
+    const m = methodAnchor(src, name);
     if (!m) return null;
     const open = src.indexOf('(', m.index);
     const close = matchParen(src, open);
@@ -687,9 +695,25 @@ module.exports = function scan(cfg, opts = {}) {
     }
   }
 
+  // Spec 07: a mid-trace stop is a diagnostic, not a silence. One per
+  // (file, method, reason) — the same stall reached from two endpoints is
+  // one gap, reported once.
+  const stalled = new Set();
+  const stall = (file, method, depth, reason) => {
+    const key = file + '#' + method + '#' + reason;
+    if (stalled.has(key)) return;
+    stalled.add(key);
+    diagnostics.push({ kind: 'trace-stalled', file, method, depth, reason });
+  };
   function trace(rel, method, seenKeys, depth) {
-    if (depth > 5) return [];
+    // A port is a declaration boundary: it has no body by design, and a
+    // trace that cannot cross it is already told by the port diagnostics
+    // (unbound, ambiguous, factory). Stalling there would report a parse
+    // gap where there is none.
+    const atPort = info[rel] && info[rel].pattern === 'port';
+    if (depth > 5) { if (!atPort) stall(rel, method, depth, 'depth-cap'); return []; }
     const body = methodBody(rel, method);
+    if (body === null && !atPort) stall(rel, method, depth, 'body-not-found');
     const mine = injects[rel] || [];
     const calls = [];
     if (body) {
@@ -704,7 +728,12 @@ module.exports = function scan(cfg, opts = {}) {
       const inj = mine.find((i) => i.prop === c.prop);
       // A port has no method bodies; continue into the class its module binds.
       const tgt = inj && (inj.boundTo || inj.file);
-      if (!tgt) continue;
+      if (!tgt) {
+        // this.x on something the constructor never injected: the call goes
+        // somewhere the scan cannot see.
+        if (!inj) stall(rel, method, depth, 'dep-not-injected');
+        continue;
+      }
       const key = tgt + '#' + c.method;
       if (seenKeys.has(key)) continue;
       seenKeys.add(key);
