@@ -9,8 +9,9 @@ tags: [index, roadmap]
 
 # Specs
 
-Six changes, written 2026-08-24 against `4c9d87b`. Numbered by dependency, not
-by importance.
+Eight changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
+were written 2026-09-17 against `d11ba66`. Numbered by dependency, not by
+importance.
 
 ## Layout
 
@@ -27,6 +28,8 @@ work lands. One spec per unit of work.
 | 04 | [Blast radius (`metatron diff`)](04-blast-radius.md) | new analysis | 01, 02 |
 | 05 | [Port / adapter resolution](05-port-adapter-resolution.md) | precision | — |
 | 06 | [Test presence crossed with risk](06-test-coverage-crossing.md) | new analysis | — |
+| 07 | [Arrow-property trace resolution](07-arrow-trace-resolution.md) | correctness | — |
+| 08 | [Focus lens (`?focus=`, city view)](08-focus-lens.md) | lens | 04 |
 
 ## Suggested order
 
@@ -54,7 +57,13 @@ needs no new machinery, only a crossing of data already in the model.
 
 **04 last**, since it composes everything else.
 
-## The thread running through all six
+**07 next** — it is a live correctness bug: on any codebase written with
+arrow properties, every trace is amputated after the first hop, silently, and
+everything trace-based (the traffic lens, `diff`'s affected endpoints)
+inherits the cut. **08 behind it**: small, view-only, and it composes 04's
+report.
+
+## The thread running through the analyses
 
 Three of these specs are mostly about *refusing to answer*:
 
@@ -62,6 +71,7 @@ Three of these specs are mostly about *refusing to answer*:
 - 05 declines to resolve `useFactory` bindings and flags ambiguous ones instead
   of picking.
 - 06 suppresses its own findings entirely when the test locator does not fit.
+- 07 makes the mid-trace stop say so rather than ending a trace unannounced.
 
 That is the same instinct as the coverage percentage: the failure mode of a
 visualisation tool is not crashing, it is drawing a confident picture of
