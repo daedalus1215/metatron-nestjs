@@ -76,11 +76,11 @@ test('an unresolved socket is counted and explained, once', () => {
   const d = model.diagnostics.filter((x) => x.kind === 'socket-unresolved');
   assert.deepStrictEqual(d.map((x) => [x.file, x.line]), [[SVC, 15]]);
   const { studs: _, ...sockets } = model.wiringMeta;
-  assert.deepStrictEqual(sockets, { sockets: 8, resolved: 7, port: 1, framework: 2, unresolved: 1 });
+  assert.deepStrictEqual(sockets, { sockets: 9, resolved: 8, port: 1, framework: 2, unresolved: 1 });
 });
 
 test('wires are exactly the resolved and port sockets', () => {
-  assert.strictEqual(model.wires.length, 5);
+  assert.strictEqual(model.wires.length, 6);
   assert.ok(model.wires.every((w) => w.to));
 });
 
@@ -187,7 +187,7 @@ test('grip: a public method called only from inside its class is unseen', () => 
 });
 
 test('wiringMeta counts studs by grip', () => {
-  assert.deepStrictEqual(model.wiringMeta.studs, { total: 15, brick: 8, route: 1, framework: 1, unseen: 5 });
+  assert.deepStrictEqual(model.wiringMeta.studs, { total: 17, brick: 9, route: 1, framework: 1, unseen: 6 });
 });
 
 test('grip: a method Nest calls is gripped by the framework, and says why', () => {
@@ -205,4 +205,10 @@ test('a script (main.ts) is a brick with no studs, so its calls are recorded', (
   const b = brick('main.ts');
   assert.deepStrictEqual([b.shape, b.studs.length, b.internals.map((s) => s.name)], ['script', 0, ['bootstrap']]);
   assert.deepStrictEqual(callsFrom('main.ts'), [['bootstrap', UTILS, 'formatDate', false]]);
+});
+
+test('a class injecting another declared in the same file resolves, and the call is recorded', () => {
+  const P = 'things/domain/services/pair.service.ts';
+  assert.deepStrictEqual(sockets(P + '#PairSecond'), [['first', 'resolved', P + '#PairFirst']]);
+  assert.deepStrictEqual(callsFrom(P + '#PairSecond'), [['go', P + '#PairFirst', 'run', false]]);
 });
