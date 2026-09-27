@@ -16,9 +16,13 @@ const { resolveChange, changeAt } = require('../src/change');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'metatron-change-'));
 const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args],
   { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+// The config sits in backend/, below the repository root — as in a repo with
+// a backend/ beside a frontend/. Git pathspecs are root-relative; a command
+// run from backend/ with one silently matches nothing.
+const SRC = path.join(dir, 'backend', 'src');
 const write = (rel, text) => {
-  fs.mkdirSync(path.dirname(path.join(dir, 'src', rel)), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'src', rel), text);
+  fs.mkdirSync(path.dirname(path.join(SRC, rel)), { recursive: true });
+  fs.writeFileSync(path.join(SRC, rel), text);
 };
 const svc = (name, deps = [], body = 'return 1;') => `import { Injectable } from '@nestjs/common';
 ${deps.map(([cls, file]) => `import { ${cls} } from '${file}';`).join('\n')}
@@ -51,10 +55,16 @@ test.before(() => {
   git('add', '.'); git('commit', '-q', '-m', 'add UserService');
   c2 = git('rev-parse', 'HEAD');
   git('checkout', '-q', 'main');
+  // A branch that only moves a file.
+  git('checkout', '-q', '-b', 'moves');
+  fs.mkdirSync(path.join(SRC, 'repo', 'moved'));
+  git('mv', 'backend/src/' + REPO, 'backend/src/repo/moved/a.repository.ts');
+  git('commit', '-q', '-m', 'move the repository');
+  git('checkout', '-q', 'main');
 });
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-const cfg = () => Object.assign({}, nestjs, { name: 'g', root: 'src', __dir: dir });
+const cfg = () => Object.assign({}, nestjs, { name: 'g', root: 'src', __dir: path.join(dir, 'backend') });
 const id = (rel, cls) => rel + '#' + cls;
 
 test('a range resolves to its merge base, its head commit, and first-parent frames', () => {
@@ -66,7 +76,7 @@ test('a range resolves to its merge base, its head commit, and first-parent fram
 
 test('the head is read from git objects, not the working tree', () => {
   // main is checked out: neither feature file exists on disk.
-  assert.ok(!fs.existsSync(path.join(dir, 'src', NEW)));
+  assert.ok(!fs.existsSync(path.join(SRC, NEW)));
   const { change, model } = changeAt(cfg(), { range: 'main...feat' });
   assert.strictEqual(change.bricks[id(NEW, 'NewService')], 'added');
   assert.strictEqual(change.bricks[id(USE, 'UserService')], 'added');
@@ -95,7 +105,7 @@ test('work in progress compares with the working tree, and adds an uncommitted f
     assert.strictEqual(change.rev, null);
     assert.strictEqual(change.bricks[id('feature/draft.service.ts', 'DraftService')], 'added');
   } finally {
-    fs.rmSync(path.join(dir, 'src', 'feature', 'draft.service.ts'));
+    fs.rmSync(path.join(SRC, 'feature', 'draft.service.ts'));
     git('checkout', '-q', 'main');
   }
 });
@@ -109,4 +119,11 @@ test('a PR that is local resolves like a range', () => {
   const gh = () => ({ baseRefOid: base, headRefOid: c2, title: 'Add the feature' });
   const r = resolveChange(cfg(), { pr: '#12' }, { gh });
   assert.deepStrictEqual([r.base, r.head, r.label], [base, c2, '#12 Add the feature']);
+});
+
+test('a moved file is a rename, not a removal plus an addition', () => {
+  const { change } = changeAt(cfg(), { range: 'main...moves' });
+  assert.deepStrictEqual(change.removed, []);
+  assert.strictEqual(change.bricks[id('repo/moved/a.repository.ts', 'ARepository')], 'unchanged');
+  assert.strictEqual(change.summary.added, 0);
 });
