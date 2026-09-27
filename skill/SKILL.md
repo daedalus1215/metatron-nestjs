@@ -123,6 +123,31 @@ a real blast radius; a new violation in untouched code is labelled a scan
 difference, not the diff's doing. A rename folds its moved violation rather
 than showing one new plus one fixed.
 
+## Workbench and the wiring model
+
+When the user wants to explore how classes fit together interactively, or
+inspect a class and what calls it:
+
+```bash
+npx metatron serve                  # http://127.0.0.1:4477/, re-scans on save
+```
+
+It is a long-running local server (bound to 127.0.0.1), so start it in the
+background and give the user the URL. Do not leave it running unasked.
+
+For questions you can answer yourself, read the wiring model in
+`.metatron/model.json` directly:
+
+- `bricks`: one per class, util file, port, or script. Each has `sockets`
+  (constructor parameters, with a resolution status) and `studs` (public
+  methods, with a `grip`).
+- `wires`: injection edges.
+- `calls`: call sites between bricks, each with its line.
+
+`grip: 'unseen'` means no call metatron can read reaches that method. Report
+it as "no caller found", never as "dead code": callers outside the tree, and
+call shapes the scan does not read, are invisible to it.
+
 ## Tests
 
 `npm test` runs the fixture suite in `test/`. Add a fixture whenever you fix a
