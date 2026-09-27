@@ -75,7 +75,8 @@ test('@InjectRepository is framework, typed against its entity', () => {
 test('an unresolved socket is counted and explained, once', () => {
   const d = model.diagnostics.filter((x) => x.kind === 'socket-unresolved');
   assert.deepStrictEqual(d.map((x) => [x.file, x.line]), [[SVC, 15]]);
-  assert.deepStrictEqual(model.wiringMeta, { sockets: 8, resolved: 7, port: 1, framework: 2, unresolved: 1 });
+  const { studs: _, ...sockets } = model.wiringMeta;
+  assert.deepStrictEqual(sockets, { sockets: 8, resolved: 7, port: 1, framework: 2, unresolved: 1 });
 });
 
 test('wires are exactly the resolved and port sockets', () => {
@@ -160,4 +161,30 @@ test('a static call is recorded with no wire behind it', () => {
 
 test('calls through a framework socket are not calls between bricks', () => {
   assert.deepStrictEqual(callsFrom(REPO), []);
+});
+
+const grip = (id, name) => brick(id).studs.find((s) => s.name === name).grip;
+
+test('grip: a stud another brick calls is gripped by a brick', () => {
+  assert.strictEqual(grip(SVC + '#ThingService', 'find'), 'brick');
+  assert.strictEqual(grip(SVC + '#ThingService', 'create'), 'brick', 'a static call grips');
+  assert.strictEqual(grip(UTILS, 'formatDate'), 'brick');
+});
+
+test('grip: a call through a port grips the port and the class bound to it', () => {
+  assert.strictEqual(grip(PORT, 'ping'), 'brick');
+  assert.strictEqual(grip('things/apps/adapters/thing.adapter.ts#ThingAdapter', 'ping'), 'brick');
+});
+
+test('grip: a route handler nothing calls is gripped by its route', () => {
+  assert.strictEqual(grip(ACTION, 'execute'), 'route');
+});
+
+test('grip: a public method called only from inside its class is unseen', () => {
+  assert.strictEqual(grip(SVC + '#ThingService', 'onlyFromInside'), 'unseen');
+  assert.strictEqual(grip(UTILS, 'isoWeek'), 'unseen');
+});
+
+test('wiringMeta counts studs by grip', () => {
+  assert.deepStrictEqual(model.wiringMeta.studs, { total: 13, brick: 7, route: 1, unseen: 5 });
 });
