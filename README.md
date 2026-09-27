@@ -1,7 +1,9 @@
 # metatron
 
-Point it at a NestJS backend and get five interactive views of its architecture,
-plus a list of every place the code breaks its own rules.
+Point it at a NestJS backend and get seven interactive views of its architecture,
+a list of every place the code breaks its own rules, and a live workbench where
+you can pick up any class, see what it is snapped into, and replay a PR against
+the code it touches.
 
 Nothing in the output is drawn or written by hand. Every box is a directory that
 exists, every line is an `import` a file actually writes, and every sentence is
@@ -48,7 +50,7 @@ metatron            # or `npx metatron` if you installed it into the project
 open .metatron/index.html
 ```
 
-That's it. Five views, self-contained HTML, no server. You don't need Claude or
+That's it. Seven views, self-contained HTML, no server. You don't need Claude or
 any login to look at them — they're just files.
 
 You can also run it without `cd`-ing anywhere:
@@ -136,6 +138,13 @@ read, the `this.x` is a class field rather than an injected dependency, or
 the trace is deeper than five classes — the hop stops and a `trace-stalled`
 diagnostic says where and why. A trace that ends is either short or cut;
 the diagnostics tell which.
+
+A fourth kind concerns the wiring model behind the workbench. Every
+constructor parameter of a class Nest builds is a socket, and each one is
+followed to the class that fills it. One that cannot be followed is a
+`socket-unresolved` diagnostic that names the parameter and why: no class of
+that name in the tree, a class from a package metatron does not know, or a
+parameter it cannot read. The count is on the `wiring` line of the scan.
 
 ---
 
@@ -344,6 +353,14 @@ installing a package shouldn't write into your home directory.
 Needs Node 18+. Chromium is optional, only for checking a view renders before
 you share it.
 
+If `metatron --help` prints something else, another tool of the same name is
+earlier on your PATH (the Rust sibling, `metatron-rust`, installs one through
+cargo). Run this one by its path, or give it an alias:
+
+```bash
+alias mtn='node ~/path/to/metatron-nestjs/bin/metatron.js'
+```
+
 ---
 
 ## What you get
@@ -411,7 +428,11 @@ widely depended on, and has no test is `untested-risk`; the `test-ratio`
 finding reports tested/total per pattern. This is **presence, not quality** —
 a file with one smoke test counts as tested.
 
-The test locator is configurable (`testLocators`) and self-checking. Every spec
+The test locator is configurable (`testLocators`) and self-checking. The
+default looks in a `__specs__/` folder beside the source (`foo.spec.ts` and
+`foo.integration.spec.ts`), then for a sibling `foo.spec.ts`, then in a
+mirrored `test/` tree. A source claims every spec it finds, so a unit spec and
+an integration spec both count. Every spec
 file must be claimed by exactly one source file; when too many are unmatched
 the locator does not fit the project and both findings suppress themselves
 rather than report a confident wrong number. The CLI says so.
@@ -481,7 +502,7 @@ Working on metatron itself: `npm test` runs the fixture suite.
 | `crossDomainGateways` | the only patterns a cross-context import may land on. |
 | `moduleOf` | `(rel) => string`, if the first path segment isn't the module. |
 | `churnSince` | git revision-range date, e.g. `'2 years ago'`, to bound history. |
-| `testLocators` | ordered `(relPath) => relPath` strategies that locate a source file's test. First hit wins; see Churn and hotspots. |
+| `testLocators` | ordered `(relPath) => relPath` strategies that locate a source file's tests. A source claims every spec any of them finds; the first is the one reported. See Churn and hotspots. |
 | `couplingMaxFiles` | commits touching more files than this are ignored for co-change — a 200-file rename couples everything to everything. Default 25. |
 | `couplingMinChanges` | per-file support floor before a pair is eligible. Default 5. |
 | `couplingMinDegree` | Jaccard floor for a pair to enter the model; the lens slider opens here. Default 0.3. |
@@ -552,10 +573,21 @@ The large `--virtual-time-budget` is required — the canvas views draw on
 checks won't catch mirrored text, washed-out blends, clipped content or missing
 glyphs. Look at the picture.
 
+The workbench cannot be checked this way. Its live-update stream never lets
+the page go idle, so `--screenshot` waits forever. Drive Chromium over the
+DevTools protocol instead (`--remote-debugging-port`): navigate, wait, then
+`Page.captureScreenshot`. That also gives you the console errors.
+
 ## What it can't see
 
 - **Imports are not calls.** The graphs count imports, type-only ones included.
-  Only `endpoints[].flat` follows real `this.x.y()` chains through method bodies.
+  Only `endpoints[].flat` and the wiring model's `calls` follow real calls
+  through method bodies: `this.x.method(` through an injected dependency, a
+  function imported from a util file, and `Cls.method(` on a static.
+- **Calls in other shapes are invisible.** A destructured dependency,
+  `this.x?.method(`, a call through a local alias, and callers outside the
+  scanned tree reach nothing. That is why a public method no call reaches is
+  `unseen` on the workbench, never "dead".
 - **Ports are followed only as far as a module file says.** A call through
   `@Inject(TOKEN)` continues into the class a module binds with `useClass` or
   `useExisting`, and the hop keeps the port's name so the indirection stays
@@ -567,8 +599,11 @@ glyphs. Look at the picture.
 - **Structure, not quality.** It knows where a transaction script sits and what
   it touches, never whether it's any good.
 - **Parsing, not compiling.** Route decorators bind to methods by walking
-  forward through decorators and comments, not via a TypeScript AST. Anything
-  that fails to bind is listed in `diagnostics` rather than dropped.
+  forward through decorators and comments, and classes, members and functions
+  are read by a brace-matching walker that skips strings, comments and regex
+  literals; there is no TypeScript AST. Anything that fails to bind is listed in
+  `diagnostics` rather than dropped. Inheritance is recorded (`extends`) but
+  not followed: a subclass does not inherit its parent's sockets.
 - **Filenames, not ASTs.** Suits projects whose conventions live in filenames. A
   codebase carrying its architecture in decorators needs a different front end.
 
@@ -587,13 +622,19 @@ rather than silently dropped) · `bindings` (every `provide:` in a module file
 and the class it binds;
 a trace hop that crossed one carries `viaPort`, `token` and `boundIn`) ·
 `violations` (warn findings flattened one per instance, each with a stable
-fingerprint).
+fingerprint) · `tests` (each source file's spec, and the specs no source
+claims) · `coupling` (co-change pairs) · `bricks` (one per class, util file,
+port or script: its `sockets`, the constructor parameters with where each is
+resolved; its `studs`, the public methods with their `grip`; and its
+`internals`, each with a line range) · `wires` (injection edges between bricks)
+· `calls` (every call site from one brick into another, with its line) ·
+`wiringMeta` (the `wiring` and `studs` coverage counts).
 
 ## Prior art
 
 Software cities go back to Wettel and Lanza's CodeCity (2007). "Fitness
 functions" is from *Building Evolutionary Architectures*. The stacked-plane view
 borrows its geometry from Purdue-model ICS diagrams. What's here is the coupling:
-your rules, your code, measured on every run, rendered five ways.
+your rules, your code, measured on every run, rendered seven ways.
 
 MIT.
