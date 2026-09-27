@@ -492,5 +492,5 @@ function renderJson(r) {
   return JSON.stringify(r, null, 2);
 }
 
-module.exports = { analyze, resolve, changeSet, baseModel, reachable, affectedEndpoints,
+module.exports = { analyze, resolve, changeSet, baseModel, baseFileMap, git, defaultBranch, reachable, affectedEndpoints,
                    violationDelta, renderTerminal, renderMarkdown, renderJson };
