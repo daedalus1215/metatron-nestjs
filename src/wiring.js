@@ -160,12 +160,13 @@ function wiringOf(ctx) {
     }
   }
   studsOf(ctx, bricks);
+  const calls = callsOf(ctx, bricks);
   const wiringMeta = {
     sockets: meta.sockets,
     resolved: meta.resolved + meta.port + meta.framework,
     port: meta.port, framework: meta.framework, unresolved: meta.unresolved,
   };
-  return { bricks, wires, wiringMeta };
+  return { bricks, wires, calls, wiringMeta };
 }
 
 /**
@@ -221,6 +222,130 @@ function studsOf(ctx, bricks) {
       }
     }
   }
+}
+
+/**
+ * Which stud each brick grips: every call site between two bricks.
+ *
+ *   this.x.method(   x is a socket: the call goes where the socket goes
+ *   name(            name is imported from a function brick
+ *   Cls.method(      Cls is another class brick and `method` a static stud
+ *
+ * Unlike the trace, this reads every method of every brick, not only those
+ * a route reaches. Calls inside one brick (`this.method(`) are wiring inside
+ * the brick, not between bricks, and are not recorded.
+ */
+function callsOf(ctx, bricks) {
+  const { files, text, decl } = ctx;
+  const byId = new Map(bricks.map((b) => [b.id, b]));
+  const calls = [];
+
+  // Where a call site sits: the brick and method whose body contains it.
+  const ranges = {};
+  const lineAt = {};
+  for (const rel of files) {
+    const src = text[rel];
+    const starts = [0];
+    for (let i = 0; i < src.length; i++) if (src[i] === '\n') starts.push(i + 1);
+    lineAt[rel] = (idx) => {
+      let lo = 0, hi = starts.length - 1;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= idx) lo = mid; else hi = mid - 1; }
+      return lo + 1;
+    };
+    const r = [];
+    for (const c of decl[rel].classes) {
+      if (!byId.has(rel + '#' + c.name)) continue;
+      for (const m of c.members) {
+        if (m.bodyOpen < 0 || m.kind === 'get' || m.kind === 'set') continue;
+        r.push({ brick: rel + '#' + c.name, method: m.kind === 'constructor' ? 'constructor' : m.name,
+          from: m.bodyOpen, to: m.bodyClose });
+      }
+    }
+    if (byId.has(rel)) {
+      for (const f of decl[rel].functions) r.push({ brick: rel, method: f.name, from: f.bodyOpen, to: f.bodyClose });
+    }
+    ranges[rel] = r;
+  }
+  const at = (rel, idx) => {
+    let best = null;
+    for (const r of ranges[rel]) {
+      if (idx > r.from && idx < r.to && (!best || r.to - r.from < best.to - best.from)) best = r;
+    }
+    return best;
+  };
+  const fileBrick = (rel) => (byId.has(rel) ? rel : null);
+
+  // Imported names, keeping the name as exported: `import { a as b }`.
+  const importsOf = (rel) => {
+    const out = {};
+    const re = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g;
+    let m;
+    while ((m = re.exec(text[rel]))) {
+      for (const raw of m[1].split(',')) {
+        const parts = raw.trim().split(/\s+as\s+/);
+        const local = parts.pop().trim();
+        const orig = (parts[0] || local).trim();
+        const file = ctx.symbolIndex[rel][local];
+        if (local && file) out[local] = { file, name: orig };
+      }
+    }
+    return out;
+  };
+
+  for (const rel of files) {
+    const src = text[rel];
+    if (!ranges[rel].length && !fileBrick(rel)) continue;
+
+    // this.x.method( through a socket
+    for (const r of ranges[rel]) {
+      const b = byId.get(r.brick);
+      if (!b.sockets || !b.sockets.length) continue;
+      const re = /this\.(\w+)\.(\w+)\s*\(/g;
+      re.lastIndex = r.from;
+      let m;
+      while ((m = re.exec(src)) && m.index < r.to) {
+        if (at(rel, m.index) !== r) continue;          // inside a nested member, counted there
+        const s = b.sockets.find((x) => x.prop === m[1]);
+        if (!s || !(s.status === 'resolved' || s.status === 'port')) continue;
+        const c = { from: b.id, fromMethod: r.method, to: s.to || s.boundTo, toMethod: m[2], line: lineAt[rel](m.index) };
+        if (s.status === 'port') c.boundTo = s.boundTo;
+        calls.push(c);
+      }
+    }
+
+    // name( into a function brick, Cls.method( into a static stud
+    const imported = importsOf(rel);
+    const targets = [];
+    for (const [local, { file, name }] of Object.entries(imported)) {
+      const fb = byId.get(file);
+      if (fb && fb.shape === 'functions' && fb.studs.some((s) => s.name === name)) {
+        targets.push({ re: new RegExp('(^|[^\\w$.])' + local + '\\s*\\(', 'g'), to: file, method: () => name });
+      }
+      const cb = byId.get(file + '#' + name);
+      if (cb && cb.studs.some((s) => s.static)) targets.push({ re: new RegExp('(^|[^\\w$.])' + local + '\\.(\\w+)\\s*\\(', 'g'), to: cb.id, cls: cb });
+    }
+    // a class calling another class's static method in the same file
+    for (const c of decl[rel].classes) {
+      const cb = byId.get(rel + '#' + c.name);
+      if (cb && cb.studs.some((s) => s.static)) targets.push({ re: new RegExp('(^|[^\\w$.])' + c.name + '\\.(\\w+)\\s*\\(', 'g'), to: cb.id, cls: cb });
+    }
+    for (const t of targets) {
+      let m;
+      while ((m = t.re.exec(src))) {
+        const idx = m.index + m[1].length;
+        const method = t.cls ? m[2] : t.method();
+        if (t.cls && !t.cls.studs.some((s) => s.static && s.name === method)) continue;
+        const r = at(rel, idx);
+        const from = r ? r.brick : fileBrick(rel);
+        if (!from || from === t.to) continue;           // a call inside one brick
+        const c = { from, fromMethod: r ? r.method : null, to: t.to, toMethod: method, line: lineAt[rel](idx) };
+        if (t.cls) c.static = true;
+        calls.push(c);
+      }
+    }
+  }
+  const key = (c) => [c.from, c.line, c.to, c.toMethod].join('\u0000');
+  return calls.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
 }
 
 module.exports = { bricksOf, wiringOf };
