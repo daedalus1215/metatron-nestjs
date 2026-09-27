@@ -159,12 +159,68 @@ function wiringOf(ctx) {
       }
     }
   }
+  studsOf(ctx, bricks);
   const wiringMeta = {
     sockets: meta.sockets,
     resolved: meta.resolved + meta.port + meta.framework,
     port: meta.port, framework: meta.framework, unresolved: meta.unresolved,
   };
   return { bricks, wires, wiringMeta };
+}
+
+/**
+ * What each brick offers (studs) and what it keeps to itself (internals).
+ *
+ *   class      public methods, method or arrow-property form, static included
+ *   functions  exported functions; the rest are internals
+ *   port       interface method signatures, `kind: 'declared'`
+ *
+ * The constructor is where sockets come from, not a stud. Getters and setters
+ * read as fields, and drawing one as a stud would suggest a part you plug
+ * into. A route handler is a stud with `route` set: HTTP grips it.
+ */
+function studsOf(ctx, bricks) {
+  const { decl, endpoints } = ctx;
+  const routeOf = new Map((endpoints || []).map((e) => [e.file + '#' + e.cls + '#' + e.handler, e.id]));
+  const shape = (m, kind) => ({
+    name: m.name, sig: m.sig, lines: [m.start, m.end], async: !!m.async, kind, static: !!m.static,
+  });
+  for (const b of bricks) {
+    b.studs = [];
+    b.internals = [];
+    const d = decl[b.file];
+    if (b.shape === 'class') {
+      const c = d.classes.find((x) => x.name === b.name);
+      const seen = new Map();
+      for (const m of c.members) {
+        if (m.kind === 'constructor' || m.kind === 'get' || m.kind === 'set') continue;
+        // An overload list is one method: keep the implementation, which has
+        // the body and the full line range.
+        const key = (m.static ? 'static ' : '') + m.name;
+        const prev = seen.get(key);
+        if (prev && !prev.abstract) continue;
+        seen.set(key, m);
+      }
+      for (const m of seen.values()) {
+        const s = shape(m, m.abstract ? 'declared' : 'method');
+        if (m.access !== 'public') { s.access = m.access; b.internals.push(s); continue; }
+        s.route = routeOf.get(b.file + '#' + b.name + '#' + m.name) || null;
+        b.studs.push(s);
+      }
+    } else if (b.shape === 'functions') {
+      for (const f of d.functions) {
+        const s = shape(f, 'function');
+        if (f.exported) { s.route = null; b.studs.push(s); } else b.internals.push(s);
+      }
+    } else if (b.shape === 'port') {
+      for (const i of d.interfaces) {
+        for (const m of i.members) {
+          b.studs.push({ name: m.name, sig: m.sig, lines: [m.start, m.end], async: false,
+            kind: 'declared', static: false, route: null, of: i.name });
+        }
+      }
+    }
+  }
 }
 
 module.exports = { bricksOf, wiringOf };
