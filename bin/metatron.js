@@ -220,7 +220,7 @@ const W = model.wiringMeta;
 if (W) {
   const pct = W.sockets ? ((W.resolved / W.sockets) * 100).toFixed(1) : '100.0';
   console.log(`  wiring ${W.resolved}/${W.sockets} sockets resolved (${pct}%) · ${W.framework} framework · ${W.unresolved} unresolved`);
-  console.log(`  studs ${W.studs.total} · ${W.studs.brick} gripped by a brick · ${W.studs.route} by a route · ${W.studs.unseen} unseen`);
+  console.log(`  studs ${W.studs.total} · ${W.studs.brick} gripped by a brick · ${W.studs.route} by a route · ${W.studs.framework} by the framework · ${W.studs.unseen} unseen`);
 }
 
 // A route we could not parse must be visible. Dropping it silently is how the

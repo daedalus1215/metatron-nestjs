@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Clock } from '../../clock/clock';
 import { Reflector } from '@nestjs/core';
 import { ThingRepository } from '../../infra/repositories/thing.repository';
-import { formatDate } from '../utils/date.utils';
+import { formatDate, Audited } from '../utils/date.utils';
 
 // Two injectable classes in one file. Each has its own constructor, and
 // neither may borrow the other's sockets.
@@ -28,6 +28,8 @@ export class ThingService {
 
   onlyFromInside(): void {}
 
+  onModuleInit(): void {}
+
   private helper(): number {
     return this.cached;
   }
@@ -48,6 +50,7 @@ export class ThingAuditor {
     private readonly reflector: Reflector,
   ) {}
 
+  @Audited()
   audit(): number {
     ThingService.create();
     return this.repo.count();
