@@ -261,6 +261,45 @@ Three things the report refuses to do:
 
 ---
 
+## Workbench
+
+```bash
+metatron serve              # http://127.0.0.1:4477/
+metatron serve --port 5000 --no-watch
+```
+
+The views above are pictures. The workbench is somewhere to pick the code
+up and turn it over. Pick a class and it is drawn as a brick in a stack:
+
+- the bricks it sits on (what its constructor injects) are below it
+- the bricks that sit on it are above it
+- rows are tiers, so a request reads top to bottom
+
+The parts of a brick are its **studs** and **sockets**:
+
+- **Studs** are its public methods, along the top edge. The fill shows what
+  calls each one: another brick, an HTTP route, the framework (`@OnEvent`,
+  `onModuleInit`, …), or nothing metatron can see.
+- **Sockets** are its constructor parameters, along the bottom edge.
+
+Hover a stud to light every call that grips it. Hover a socket to see which
+studs it grips. Click anything to read its source, where each call site
+links to the brick it lands in.
+
+It is a local server, bound to `127.0.0.1` only, because it serves source
+code. It re-scans when you save a `.ts` file, and the open page redraws
+with your place kept. The data comes from the wiring model (`bricks`,
+`wires`, `calls` in `model.json`). `metatron scan` prints its coverage line:
+
+```
+wiring 271/271 sockets resolved (100.0%) · 30 framework · 0 unresolved
+studs 356 · 255 gripped by a brick · 63 by a route · 10 by the framework · 28 unseen
+```
+
+An `unseen` stud is a public method no call metatron can read reaches. It
+is a lead, not a verdict: callers outside the tree, and call shapes the
+scan does not read, are invisible to it.
+
 ## On a new machine
 
 ```bash
@@ -389,6 +428,7 @@ metatron check            fail if new violations appeared
 metatron diff             what does this change touch? (report on stdout)
 metatron diff main...HEAD   an explicit range
 metatron diff --staged      what is about to be committed
+metatron serve            the workbench (local server, live re-scan)
 metatron skill            install the Claude skill
 metatron --help
 ```
