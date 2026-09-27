@@ -133,6 +133,8 @@ module.exports = {
   testLocators: [
     // `__specs__/` subdirectory, one spec per source file (Chronus layout)
     (rel) => rel.replace(/\/([^/]+)\.ts$/, '/__specs__/$1.spec.ts'),
+    // ... and its integration spec beside it (Chronus entities, repositories)
+    (rel) => rel.replace(/\/([^/]+)\.ts$/, '/__specs__/$1.integration.spec.ts'),
     // sibling `foo.spec.ts` next to `foo.ts`
     (rel) => rel.replace(/\.ts$/, '.spec.ts'),
     // mirrored `test/` tree

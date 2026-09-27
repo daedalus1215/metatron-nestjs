@@ -1230,17 +1230,18 @@ module.exports = function scan(cfg, opts = {}) {
   const bySource = {};
   for (const f of files) {
     if (specSet.has(f)) continue;
-    let hit = null;
+    // A source may have several specs (a unit spec and an integration spec):
+    // it claims every one its locators find. `bySource` keeps the first.
+    const hits = [];
     for (let i = 0; i < locators.length; i++) {
       let cand;
       try { cand = locators[i](f); } catch { continue; }
-      if (typeof cand !== 'string' || !specSet.has(cand)) continue;
-      hit = cand;
+      if (typeof cand !== 'string' || !specSet.has(cand) || hits.includes(cand)) continue;
+      hits.push(cand);
       strategyHits[i] = (strategyHits[i] || 0) + 1;
-      break;
     }
-    bySource[f] = hit;
-    if (hit) testClaims[hit] = (testClaims[hit] || 0) + 1;
+    bySource[f] = hits[0] || null;
+    for (const h of hits) testClaims[h] = (testClaims[h] || 0) + 1;
   }
   const unmatchedSpecs = [...specSet].filter((s) => testClaims[s] !== 1).sort();
   const specFiles = specSet.size;
