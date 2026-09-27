@@ -223,6 +223,16 @@ if (W) {
   console.log(`  studs ${W.studs.total} · ${W.studs.brick} gripped by a brick · ${W.studs.route} by a route · ${W.studs.framework} by the framework · ${W.studs.unseen} unseen`);
 }
 
+// A trace stall has no line: it names the method the trace could not leave.
+const STALL_REASON = {
+  'depth-cap': 'deeper than five classes',
+  'body-not-found': 'method body not found',
+  'dep-not-injected': 'calls this.x on something the constructor does not inject',
+};
+const diagWhere = (d) => (d.line !== undefined ? `${d.file}:${d.line}` : `${d.file}#${d.method}`);
+const diagWhat = (d) => d.detail
+  || (d.kind === 'trace-stalled' ? `trace stops at depth ${d.depth}: ${STALL_REASON[d.reason] || d.reason}` : '');
+
 // A route we could not parse must be visible. Dropping it silently is how the
 // two-space-indentation bug survived four projects unnoticed.
 const D = model.diagnostics || [];
@@ -232,7 +242,7 @@ if (D.length) {
   for (const d of D) (byKind[d.kind] = byKind[d.kind] || []).push(d);
   for (const [kind, list] of Object.entries(byKind).sort((a, b) => b[1].length - a[1].length)) {
     console.log(`    ${kind}  ${list.length}x`);
-    for (const d of list.slice(0, 3)) console.log(`      ${d.file}:${d.line}  ${d.detail}`);
+    for (const d of list.slice(0, 3)) console.log(`      ${diagWhere(d)}  ${diagWhat(d)}`);
     if (list.length > 3) console.log(`      ... ${list.length - 3} more`);
   }
 }
