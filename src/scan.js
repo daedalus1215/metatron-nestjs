@@ -12,7 +12,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { violationsOf } = require('./violations');
 const declarations = require('./classes');
-const { bricksOf } = require('./wiring');
+const { wiringOf } = require('./wiring');
 
 // ------------------------------------------------------------------ helpers
 
@@ -363,7 +363,7 @@ module.exports = function scan(cfg, opts = {}) {
     }
     const b = found[0];
     if (b && b.impl) {
-      Object.assign(inj, { boundTo: b.impl, boundVia: b.via, boundIn: b.module });
+      Object.assign(inj, { boundTo: b.impl, boundCls: b.cls, boundVia: b.via, boundIn: b.module });
       return;
     }
     // useValue is data rather than an implementation: nothing to follow, and
@@ -382,25 +382,44 @@ module.exports = function scan(cfg, opts = {}) {
   }
 
   // ---- constructor injections
+  //
+  // Read per class (spec 09): each class's constructor, inside its own body.
+  // `injects[rel]` is the first class in the file that has a constructor —
+  // what the file-level readers have always meant — and `injectsOf[rel][Cls]`
+  // is every class's own. A parameter the pattern cannot read is kept, with
+  // no type, so it can be counted as a socket without entering a trace.
+  const decl = {};
+  for (const f of files) decl[f] = declarations.parse(text[f]);
   const injects = {};
+  const injectsOf = {};
   const INJECT_RE = /@Inject\s*\(\s*([A-Za-z_$][\w$]*|'[^']*'|"[^"]*")\s*\)/;
   for (const rel of files) {
     const src = text[rel];
-    const ci = src.indexOf('constructor(');
-    if (ci < 0) { injects[rel] = []; continue; }
-    const open = src.indexOf('(', ci);
-    const close = matchParen(src, open);
-    if (close < 0) { injects[rel] = []; continue; }
-    injects[rel] = splitTop(src.slice(open + 1, close)).map((p) => {
-      const clean = p.replace(/@\w+\([^)]*\)/g, ' ').replace(/@\w+/g, ' ').trim();
-      const m = clean.match(/(?:private|public|protected|readonly|\s)*\s*(\w+)\s*:\s*([A-Za-z_]\w*)/);
-      if (!m) return null;
-      const inj = { prop: m[1], type: m[2], file: EXTERNAL_TYPES.has(m[2]) ? null : symbolIndex[rel][m[2]] || null };
-      const tm = p.match(INJECT_RE);
-      if (tm) bindInjection(rel, inj, tm[1], lineOf(src, src.indexOf(p, open)));
-      return inj;
-    }).filter(Boolean);
+    injectsOf[rel] = {};
+    for (const c of decl[rel].classes) {
+      const ctor = c.members.find((m) => m.kind === 'constructor' && !m.abstract);
+      if (!ctor) continue;
+      const open = ctor.pOpen;
+      injectsOf[rel][c.name] = splitTop(src.slice(open + 1, ctor.pClose)).map((p) => {
+        const line = lineOf(src, src.indexOf(p, open));
+        const clean = p.replace(/@\w+\([^)]*\)/g, ' ').replace(/@\w+/g, ' ').trim();
+        const m = clean.match(/(?:private|public|protected|readonly|\s)*\s*(\w+)\s*:\s*([A-Za-z_]\w*)/);
+        if (!m) return { prop: clean.replace(/\s+/g, ' '), type: null, raw: p, line, unread: true };
+        const inj = { prop: m[1], type: m[2], file: EXTERNAL_TYPES.has(m[2]) ? null : symbolIndex[rel][m[2]] || null };
+        const tm = p.match(INJECT_RE);
+        if (tm) bindInjection(rel, inj, tm[1], line);
+        return Object.assign(inj, { raw: p, line });
+      });
+      if (!injects[rel]) injects[rel] = injectsOf[rel][c.name].filter((i) => !i.unread);
+    }
+    if (!injects[rel]) injects[rel] = [];
   }
+  /** The injections of the class in `rel` that declares `method`. */
+  const injectsFor = (rel, method) => {
+    const own = (decl[rel] ? decl[rel].classes : []).find((c) => injectsOf[rel][c.name]
+      && c.members.some((m) => m.name === method && m.kind !== 'constructor'));
+    return own ? injectsOf[rel][own.name].filter((i) => !i.unread) : injects[rel] || [];
+  };
 
   const className = (rel) => {
     const m = text[rel].match(/export\s+(?:abstract\s+)?class\s+(\w+)/);
@@ -576,10 +595,10 @@ module.exports = function scan(cfg, opts = {}) {
   }));
   const seenLink = new Set();
   const fileLinks = [];
-  // ---- wiring (spec 09): every declaration, read inside its own body
-  const decl = {};
-  for (const f of files) decl[f] = declarations.parse(text[f]);
-  const bricks = bricksOf({ files, info, decl, tiers: TIERS });
+  // ---- wiring (spec 09)
+  const { bricks, wires, wiringMeta } = wiringOf({
+    files, text, info, decl, tiers: TIERS, injectsOf, symbolIndex, diagnostics, EXTERNAL_TYPES,
+  });
 
   for (const e of fileEdges) {
     const a = info[e.from], b = info[e.to];
@@ -721,7 +740,7 @@ module.exports = function scan(cfg, opts = {}) {
     if (depth > 5) { if (!atPort) stall(rel, method, depth, 'depth-cap'); return []; }
     const body = methodBody(rel, method);
     if (body === null && !atPort) stall(rel, method, depth, 'body-not-found');
-    const mine = injects[rel] || [];
+    const mine = injectsFor(rel, method);
     const calls = [];
     if (body) {
       const re = /this\.(\w+)\.(\w+)\s*\(/g;
@@ -1314,7 +1333,7 @@ module.exports = function scan(cfg, opts = {}) {
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
     fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, coupling, diagnostics, bindings, tests,
-    bricks,
+    bricks, wires, wiringMeta,
   };
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);
