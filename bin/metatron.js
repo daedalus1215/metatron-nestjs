@@ -24,6 +24,8 @@ if (args[0] === '--help' || args[0] === '-h') {
   metatron diff main...HEAD     explicit range
   metatron diff                 the default branch's merge base ... HEAD
   metatron diff --staged        what is about to be committed
+  metatron serve [path]     the workbench: bricks, wiring and source, live
+  metatron serve --port 4477 --no-watch
   metatron skill            install the Claude skill into ~/.claude/skills
   metatron skill --where    print where the skill would be installed
 
@@ -64,11 +66,11 @@ if (args[0] === 'skill') {
   process.exit(0);
 }
 
-const cmd = ['scan', 'views', 'baseline', 'check', 'diff', 'all'].includes(args[0]) ? args.shift() : 'all';
+const cmd = ['scan', 'views', 'baseline', 'check', 'diff', 'serve', 'all'].includes(args[0]) ? args.shift() : 'all';
 
 // A path argument lets you point metatron at a project instead of cd-ing into it.
 // Anything else is treated as a lens-name filter.
-const flags = { rule: [], allowNew: 0, fixed: true, json: false, update: false, staged: false, format: null };
+const flags = { rule: [], allowNew: 0, fixed: true, json: false, update: false, staged: false, format: null, port: 4477, watch: true };
 let where = process.cwd();
 const rest = [];
 for (let i = 0; i < args.length; i++) {
@@ -81,6 +83,9 @@ for (let i = 0; i < args.length; i++) {
   if (a === '--json') { flags.json = true; continue; }
   if (a === '--update') { flags.update = true; continue; }
   if (a === '--staged') { flags.staged = true; continue; }
+  if (a === '--port') { flags.port = Number(args[++i]); continue; }
+  if (a.startsWith('--port=')) { flags.port = Number(a.slice(7)); continue; }
+  if (a === '--no-watch') { flags.watch = false; continue; }
   if (a.startsWith('--format=')) { flags.format = a.slice(9); continue; }
   if (a === '--format') { flags.format = args[++i]; continue; }
   if (a.startsWith('-')) continue;
@@ -113,6 +118,23 @@ if (cmd === 'diff') {
     : format === 'markdown' ? D.renderMarkdown(report)
     : D.renderTerminal(report));
   process.exit(0);
+}
+
+if (cmd === 'serve') {
+  const { createWorkbench } = require('../src/serve');
+  let wb;
+  try { wb = createWorkbench(cfg, { watch: flags.watch }); } catch (e) { console.error('scan failed: ' + e.message); process.exit(2); }
+  wb.listen(flags.port).then((url) => {
+    const W = wb.state.model.wiringMeta;
+    console.log(`metatron workbench · ${wb.state.model.project}`);
+    console.log(`  ${wb.state.model.bricks.length} bricks · ${W.sockets} sockets · ${wb.state.model.calls.length} calls`);
+    console.log(`  ${wb.state.watching ? 'watching for changes' : 'static (not watching)'}`);
+    console.log(`\n  ${url}\n`);
+  }, (e) => {
+    console.error(e.code === 'EADDRINUSE' ? `port ${flags.port} is in use — try --port <n>` : e.message);
+    process.exit(2);
+  });
+  return;
 }
 
 const outDir = path.resolve(cfg.__dir, cfg.outDir || '.metatron');
