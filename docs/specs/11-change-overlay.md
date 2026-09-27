@@ -1,10 +1,11 @@
 ---
 title: Change Overlay — a PR on the workbench
-status: draft
+status: implemented
 project: metatron-nestjs
 location: docs/specs/11-change-overlay.md
 created: 2026-09-26
 tags: [lens, workbench, diff, wiring, git]
+implemented: 2026-09-26
 ---
 
 # Change Overlay — a PR on the workbench
@@ -189,6 +190,34 @@ the default port. Otherwise it gives the command to start one.
 3. **On chronus**, a recent merged PR's range renders its change map with
    no console errors. The summary's attachment targets are the existing
    bricks its new classes inject.
+
+## Results (2026-09-26)
+
+On chronus's own merged PRs (`<merge>^1...<merge>^2`), about 0.4 s each:
+
+| PR | what the overlay says |
+|---|---|
+| #167 register user | one new `RegisterUserTransactionScript`: it attaches to the existing `UserRepository`, and `UsersService` is grafted to reach it |
+| #177 layout unification | one new `CreateNoteResponder`, grafted into `CreateNoteAction`. The 55 moved files are renames, so nothing reads as removed |
+| #178 remaining modules | a service layer inserted: the new `FolderService` is grafted under six folder actions and attaches to six existing folder transaction scripts; the tag and time-track actions are rewired through their services. 15 frames |
+| #166, #171 | bodies edited, no wiring moved, and the overlay says so |
+
+In headless Chromium on #178, the change map draws 29 bricks, with 7
+attachments, 7 grafts and 9 rewires. Focusing the new `FolderService`
+shows its source at the head. Scrubbing to frame 3, a move-only commit,
+shows that nothing moved.
+
+**A bug the real repository found and the fixture did not.** Rename
+detection ran `git diff -- backend/src` from `backend/`. Git pathspecs are
+relative to the repository root, so it matched nothing, and #177 read as 35
+added and 34 removed. Every pathspec command now runs from the repository
+root, and the test repository keeps its config in `backend/`.
+
+**Not changed here:** `metatron diff <A>...<B>` still scans the working
+tree as its head (spec 04). For a branch that is not checked out, its blast
+radius describes the wrong tree. The overlay reads the head from git
+objects, so the two can disagree on such a range. Fixing `diff` is a
+separate change to spec 04's behaviour.
 
 ## Out of scope
 
