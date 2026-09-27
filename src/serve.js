@@ -16,6 +16,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const scan = require('./scan');
+const { changeAt, modelCache } = require('./change');
 
 const PAGE = path.resolve(__dirname, '..', 'templates', 'serve', 'workbench.html');
 const HOST = '127.0.0.1';
@@ -41,6 +42,10 @@ function createWorkbench(cfg, opts = {}) {
   const debounceMs = opts.debounceMs === undefined ? 300 : opts.debounceMs;
   const state = { model: null, text: {}, version: 0, error: null, watching: false };
   const clients = new Set();
+  // Spec 11: scans of change heads, by commit, and their text for the
+  // source panel. Only a commit this server scanned can be read back.
+  const cache = modelCache(8);
+  const revText = new Map();
 
   function send(event) {
     const line = 'data: ' + JSON.stringify(event) + '\n\n';
@@ -85,9 +90,27 @@ function createWorkbench(cfg, opts = {}) {
     }
     if (url.pathname === '/api/source') {
       const file = url.searchParams.get('file') || '';
-      if (!Object.prototype.hasOwnProperty.call(state.text, file)) return json(404, { error: 'not a scanned file' });
+      const rev = url.searchParams.get('rev');
+      const text = rev ? revText.get(rev) : state.text;
+      if (!text || !Object.prototype.hasOwnProperty.call(text, file)) return json(404, { error: 'not a scanned file' });
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-      return res.end(state.text[file]);
+      return res.end(text[file]);
+    }
+    if (url.pathname === '/api/change') {
+      const q = url.searchParams;
+      const spec = q.get('pr') ? { pr: q.get('pr') } : q.get('range') ? { range: q.get('range') } : {};
+      let out;
+      try {
+        out = changeAt(cfg, spec, { cache, current: state.model, frame: q.has('frame') ? q.get('frame') : undefined });
+      } catch (e) {
+        return json(400, { error: e.message });
+      }
+      if (out.change.rev) {
+        revText.set(out.change.rev, out.model.__text);
+        if (revText.size > 8) revText.delete(revText.keys().next().value);
+      }
+      return json(200, Object.assign(payload(out.model, state.version),
+        { error: state.error, watching: state.watching, change: out.change }));
     }
     if (url.pathname === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
