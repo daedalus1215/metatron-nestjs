@@ -1,10 +1,11 @@
 ---
 title: Wiring Model — bricks, sockets, studs
-status: draft
+status: implemented
 project: metatron-nestjs
 location: docs/specs/09-wiring-model.md
 created: 2026-09-26
 tags: [scanner, model, call-graph, workbench]
+implemented: 2026-09-26
 ---
 
 # Wiring Model — bricks, sockets, studs
@@ -323,6 +324,48 @@ existing view. Only 10 reads these keys.
 3. Brick ids are stable. Two scans of the same tree produce identical
    `bricks`, sorted by id.
 4. `metatron scan` prints the `wiring` line.
+
+## Results (2026-09-26)
+
+| | chronus | omega |
+|---|---|---|
+| bricks | 270 | 135 |
+| sockets resolved | 271 / 271 (12 port, 30 framework) | 156 / 156 (23 framework) |
+| studs | 356: 248 brick, 63 route, 45 unseen | 188: 128 brick, 28 route, 32 unseen |
+| calls | 322 | 201 |
+| trace hops also in `calls` | 306 / 306 | 146 / 146 |
+| endpoints landing on a stud | 63 / 63 | 28 / 28 |
+
+Every existing model key is unchanged on both.
+
+**Size.** The estimate was wrong. The new keys add 363 KB to chronus's
+model, taking it from about 585 KB to 948 KB, not the under 150 KB
+predicted. The repeated brick ids in `calls` and `wires`, and the
+signatures on every stud and internal, make up the difference. No view
+pays for it: every lens has an adapter that picks its own keys, and none
+reads these. If 10 needs a smaller payload, the fix is an index of brick
+ids, not dropping fields.
+
+**What `unseen` turned up.** On chronus, most of the 45 unseen studs are
+methods the *framework* calls:
+
+- lifecycle hooks: `onModuleInit`, `handleConnection`, `handleDisconnect`
+- `@OnEvent` listener handlers
+- `JwtStrategy.validate`
+- migration `up` / `down`
+- `configure*` functions called from `main.ts`
+
+The last group is a second gap. `main.ts` declares no exported function,
+so it is not a brick, and calls from a file with no brick are not
+recorded. Neither gap makes the data wrong, since `unseen` never claimed
+dead. But both make the list noisier than it should be. A follow-up could
+add a `framework` grip, driven by stud decorators and Nest's lifecycle
+method names, and give brickless entry files like `main.ts` a brick. That
+work is not done here.
+
+**Also not recorded:** a function called from a class decorator's
+arguments, such as `@ProtectedAction(…)`. It sits outside every member
+body, and a class file has no file-level brick to attribute it to.
 
 ## Out of scope
 
