@@ -1,0 +1,507 @@
+<!-- metatron: Which files change together without referencing each other? A dependency structure matrix over co-change, with the import graph overlaid to mark what it explains. -->
+<title>{{project}} Coupling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,400&display=swap">
+
+<style>
+:root {
+  --paper:#F2F4F8; --surface:#FFFFFF; --surface2:#E7ECF3; --sunk:#DEE5EF;
+  --ink:#151E29; --ink2:#485A6F; --ink3:#7A8B9F;
+  --rule:#D2DAE4; --rule2:#B9C4D2;
+  --blue:#2B5CA8; --amber:#A85B06; --rose:#A31C39; --green:#1B6448; --violet:#54479A; --teal:#136A80;
+  --hot:#A31C39; --warm:#A85B06; --calm:#5C7086;
+  --shadow:0 1px 2px rgba(21,30,41,.06), 0 8px 24px rgba(21,30,41,.07);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:#0E141B; --surface:#151D26; --surface2:#1C2631; --sunk:#111922;
+    --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
+    --rule:#28343F; --rule2:#36454F;
+    --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6; --teal:#4FB6CE;
+    --hot:#EE7189; --warm:#E0A04A; --calm:#67788C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"] {
+  --paper:#0E141B; --surface:#151D26; --surface2:#1C2631; --sunk:#111922;
+  --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
+  --rule:#28343F; --rule2:#36454F;
+  --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6; --teal:#4FB6CE;
+  --hot:#EE7189; --warm:#E0A04A; --calm:#67788C;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+}
+
+* { box-sizing:border-box; }
+body { margin:0; background:var(--paper); color:var(--ink);
+  font-family:'Archivo',ui-sans-serif,system-ui,sans-serif; font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; }
+.mono { font-family:'IBM Plex Mono',ui-monospace,monospace; }
+.wrap { max-width:1560px; margin:0 auto; padding:0 26px 80px; }
+
+.mast { padding:48px 0 24px; border-bottom:2px solid var(--ink); }
+.eyebrow { font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--ink3); margin:0 0 16px; }
+h1 { font-size:clamp(34px,5.2vw,58px); line-height:1.03; letter-spacing:-.03em; font-weight:700; margin:0; text-wrap:balance; }
+.dek { font-family:'Source Serif 4',Georgia,serif; font-size:18px; line-height:1.6; color:var(--ink2);
+  max-width:64ch; margin:18px 0 0; }
+.statrow { display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:1px;
+  background:var(--rule); border:1px solid var(--rule); margin-top:32px; }
+.stat { background:var(--paper); padding:13px 15px; }
+.stat b { display:block; font-family:'IBM Plex Mono',monospace; font-size:24px; font-weight:600;
+  letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.stat span { display:block; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-top:3px; }
+.stat.hot b { color:var(--hot); }
+
+.bar { display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin:26px 0 12px; }
+.btn { font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:.04em;
+  border:1px solid var(--rule2); background:var(--surface); color:var(--ink2); padding:6px 11px; cursor:pointer; }
+.btn:hover { border-color:var(--ink3); color:var(--ink); }
+.btn.on { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.btn:focus-visible, input:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+.sep { width:1px; height:20px; background:var(--rule2); margin:0 3px; }
+.thr { display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ink2); }
+.thr input[type=range] { width:130px; accent-color:var(--ink); }
+.thr b { color:var(--ink); font-weight:500; min-width:34px; text-align:right; font-variant-numeric:tabular-nums; }
+
+.plate { border:1px solid var(--rule2); background:var(--surface); box-shadow:var(--shadow); }
+.split { display:grid; grid-template-columns:minmax(0,1fr) 330px; }
+@media (max-width:1100px){ .split { grid-template-columns:minmax(0,1fr); } }
+.chart { overflow:hidden; }
+svg.sc { display:block; width:100%; height:auto; }
+svg.sc text { font-family:'IBM Plex Mono',monospace; }
+.cell { cursor:pointer; }
+.cell:hover { stroke:var(--ink); stroke-width:1.5; }
+.cell.sel { stroke:var(--ink); stroke-width:2; }
+.mlab { font-size:10px; fill:var(--ink2); }
+.mlab.top { font-size:9.5px; }
+.flab { font-size:9px; fill:var(--ink3); }
+.modsep { stroke:var(--ink); stroke-width:1.5; opacity:.5; }
+.modcap { font-size:9px; fill:var(--ink3); letter-spacing:.08em; }
+.insp { border-left:1px solid var(--rule2); padding:38px 18px 16px; overflow:auto; max-height:min(74vh,820px); }
+@media (max-width:1100px){ .insp { border-left:0; border-top:1px solid var(--rule2); max-height:520px; } }
+.insp .empty { font-family:'Source Serif 4',Georgia,serif; font-style:italic; color:var(--ink3); }
+.insp h3 { margin:0 0 3px; font-size:14px; font-weight:600; word-break:break-all; }
+.insp .sub { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--ink3); margin:0 0 12px; word-break:break-all; }
+.insp .pair2 { margin:10px 0 0; }
+.ilab { font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.15em; text-transform:uppercase;
+  color:var(--ink3); margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--rule); }
+.kv { list-style:none; margin:0; padding:0; }
+.kv li { display:flex; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink2); padding:3px 0; }
+.kv li b { color:var(--ink); font-weight:500; margin-left:auto; font-variant-numeric:tabular-nums; }
+.legend { display:flex; flex-wrap:wrap; gap:11px 18px; padding:11px 16px; border-top:1px solid var(--rule); background:var(--surface2); }
+.lg { display:flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--ink2); }
+.lg i { width:10px; height:10px; display:block; }
+
+section { margin-top:52px; }
+.shead { display:flex; align-items:baseline; gap:13px; border-bottom:1px solid var(--rule2);
+  padding-bottom:9px; margin-bottom:18px; flex-wrap:wrap; }
+.shead h2 { font-size:21px; font-weight:600; letter-spacing:-.015em; margin:0; }
+.shead .num { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink3); letter-spacing:.1em; }
+.note { font-family:'Source Serif 4',Georgia,serif; font-size:16.5px; line-height:1.65; color:var(--ink2); max-width:68ch; }
+.note + .note { margin-top:12px; }
+.note strong { color:var(--ink); font-weight:400; box-shadow:inset 0 -0.5em 0 color-mix(in srgb, var(--amber) 18%, transparent); }
+.tblwrap { overflow-x:auto; border:1px solid var(--rule2); background:var(--surface); box-shadow:var(--shadow); }
+table { border-collapse:collapse; width:100%; font-size:13px; }
+th,td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--rule); white-space:nowrap; }
+th { font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink3); font-weight:500; background:var(--surface2); }
+td.n { font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; text-align:right; }
+td.p { font-family:'IBM Plex Mono',monospace; font-size:11px; white-space:normal; word-break:break-all; }
+tbody tr { cursor:pointer; }
+tbody tr:hover { background:var(--surface2); }
+.none { padding:40px 24px; font-family:'Source Serif 4',Georgia,serif; font-style:italic; color:var(--ink3); }
+footer { margin-top:60px; padding-top:20px; border-top:2px solid var(--ink); color:var(--ink3); }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Co-change × import graph · from git history</p>
+  <h1>{{project}} Coupling</h1>
+  <p class="dek">One cell per pair of files that keeps landing in the same commit, shaded by how often. Every graph this tool draws comes from <span class="mono">import</span> statements; this is the only one that comes from history. <strong>The import overlay marks the pairs the graph already explains — the ones it cannot are a duplicated rule or a missing abstraction.</strong> Click a module block to zoom into the files behind it.</p>
+  <div class="statrow" id="statrow"></div>
+</header>
+
+<div class="bar" id="bar">
+  <button class="btn on" id="gModule">modules</button>
+  <button class="btn" id="gFile">files</button>
+  <span class="sep"></span>
+  <button class="btn on" id="tOverlay">import overlay</button>
+  <span class="sep"></span>
+  <span class="thr">min degree
+    <input id="thr" type="range" aria-label="Minimum coupling degree">
+    <b id="thrv"></b>
+  </span>
+  <span class="sep"></span>
+  <button class="btn" id="reset">reset</button>
+</div>
+
+<div class="plate" data-fullscreen>
+  <div class="split" data-fs-grow>
+    <div class="chart" id="chart"></div>
+    <aside class="insp" id="insp"></aside>
+  </div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<section>
+  <div class="shead"><span class="num">01</span><h2>Reading it</h2></div>
+  <p class="note" data-narr="coupling"></p>
+  <p class="note">Both axes are the same list of files, so the matrix is symmetric and the diagonal is each module co-changing with itself. Shade is the Jaccard degree: of all the commits that touched either file, the fraction that touched both. The <span class="mono">a→b</span> column in the table below is the asymmetric reading — a file that always drags its partner along is a different story from one that is dragged.</p>
+</section>
+
+<section>
+  <div class="shead"><span class="num">02</span><h2>Pairs</h2></div>
+  <div class="tblwrap">
+    <table id="tbl"><thead><tr><th>File A</th><th>File B</th><th style="text-align:right">Together</th><th style="text-align:right">Degree</th><th style="text-align:right">A→B</th><th style="text-align:right">B→A</th><th>Import</th><th>Modules</th></tr></thead><tbody></tbody></table>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><span class="num">03</span><h2>What this does not know</h2></div>
+  <p class="note" data-narr="coupling"></p>
+</section>
+
+<footer>
+  <p class="note" style="font-size:14px" data-narr="provenance"></p>
+</footer>
+
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function(){
+"use strict";
+var D = JSON.parse(document.getElementById('data').textContent);
+var C = D.coupling || { pairs: [], eligible: [], meta: {} };
+var M = C.meta || {};
+var PAIRS = C.pairs || [];
+
+var FN = {};
+D.fileNodes.forEach(function(n){ FN[n.f] = n; });
+var MODIMPORT = {};
+D.moduleImports.forEach(function(s){ MODIMPORT[s] = 1; });
+var MODS = (D.modules || []).map(function(m){ return m.id; });
+var modIdx = {};
+MODS.forEach(function(m, i){ modIdx[m] = i; });
+
+var FILES = (C.eligible || []).slice().sort(function(a, b){
+  var A = FN[a] || {}, B = FN[b] || {};
+  var ma = modIdx[A.m] != null ? modIdx[A.m] : 9999;
+  var mb = modIdx[B.m] != null ? modIdx[B.m] : 9999;
+  return ma - mb || a.localeCompare(b);
+});
+var FILEIDX = {};
+FILES.forEach(function(f, i){ FILEIDX[f] = i; });
+
+var PMAP = {};
+PAIRS.forEach(function(p){ PMAP[p.a + '\u0000' + p.b] = p; });
+
+var DEF = function(){
+  return { gran:'module', overlay:true, thr: M.minDegree || 0.3, sel:null, focus:null };
+};
+var state = DEF();
+
+function visible(){
+  return PAIRS.filter(function(p){ return p.degree >= state.thr; });
+}
+function pairKey(a, b){ return a < b ? a + '\u0000' + b : b + '\u0000' + a; }
+function pairOf(f1, f2){ return PMAP[pairKey(f1, f2)]; }
+function modOf(f){ var n = FN[f]; return n ? n.m : '?'; }
+
+function focusFiles(){
+  if (!state.focus) return FILES;
+  return FILES.filter(function(f){ return state.focus.indexOf(modOf(f)) >= 0; });
+}
+
+/* ---- stats ---- */
+function renderStats(){
+  var v = visible();
+  var unexp = v.filter(function(p){ return p.imports === 0; });
+  var heavy = M.commits > 0 && M.excludedCommits / M.commits >= 0.25;
+  var stats = [
+    ['commits scanned', M.commits || 0, ''],
+    ['commits excluded', (M.excludedCommits || 0) + ' of ' + (M.commits || 0), heavy ? 'hot' : ''],
+    ['eligible files', FILES.length, ''],
+    ['pairs in view', v.length, ''],
+    ['unexplained pairs', unexp.length, unexp.length ? 'hot' : '']
+  ];
+  document.getElementById('statrow').innerHTML = stats.map(function(s){
+    return '<div class="stat ' + s[2] + '"><b>' + s[1] + '</b><span>' + s[0] + '</span></div>';
+  }).join('');
+}
+
+/* ---- dependency structure matrix ---- */
+function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function base(f){ return f.split('/').pop().replace(/\.ts$/, ''); }
+function trunc(s, n){ return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+function cellStyle(v){
+  if (state.overlay) {
+    if (v.imports) return 'fill:var(--blue);fill-opacity:' + (0.1 + 0.4 * v.degree).toFixed(3) + ';stroke:var(--ink3);stroke-width:0.7';
+    return 'fill:var(--rose);fill-opacity:' + (0.12 + 0.78 * v.degree).toFixed(3);
+  }
+  return 'fill:var(--amber);fill-opacity:' + (0.1 + 0.65 * v.degree).toFixed(3);
+}
+
+// One axis of items: {id, label, file?} and the value lookup for a cell.
+function render(){
+  var el = document.getElementById('chart');
+  if (M.reason) {
+    el.innerHTML = '<p class="none">No git history available' + (M.reason ? ' — ' + esc(M.reason) : '') +
+      '. Co-change needs commit history to exist at all.</p>';
+    return;
+  }
+  var v = visible();
+  if (state.gran === 'file' && focusFiles().length < 2) {
+    el.innerHTML = '<p class="none">Fewer than two files here changed often enough to form a pair' +
+      (M.reason ? '' : ' — a file needs ' + (M.minChanges || 5) + ' commits before it can be coupled to anything.') + '</p>';
+    return;
+  }
+
+  var axis, cellOf, title;
+  if (state.gran === 'module') {
+    axis = MODS.filter(function(m){ return FILES.some(function(f){ return modOf(f) === m; }); });
+    cellOf = {};
+    // strongest pair above threshold between two modules; the import graph
+    // explains the cell when any file pair across them imports the other
+    var cellCache = {};
+    for (var i = 0; i < axis.length; i++) {
+      for (var j = 0; j < axis.length; j++) {
+        var k = i < j ? axis[i] + '\u0000' + axis[j] : axis[j] + '\u0000' + axis[i];
+        if (cellCache[k]) { cellOf[i + ',' + j] = cellOf[j + ',' + i] = cellCache[k]; continue; }
+        var best = null;
+        for (var q = 0; q < v.length; q++) {
+          var p = v[q];
+          var ma = modOf(p.a), mb = modOf(p.b);
+          var hit = i === j ? (ma === mb && ma === axis[i])
+            : ((ma === axis[i] && mb === axis[j]) || (ma === axis[j] && mb === axis[i]));
+          if (hit && (!best || p.degree > best.degree)) best = p;
+        }
+        var imp = MODIMPORT[k] ? 1 : 0;
+        cellCache[k] = best ? { degree: best.degree, imports: best.imports || imp, best: best }
+                            : { degree: 0, imports: imp };
+        cellOf[i + ',' + j] = cellOf[j + ',' + i] = cellCache[k];
+      }
+    }
+    title = 'Modules ordered by size, co-change between them';
+  } else {
+    axis = focusFiles().map(function(f){ return f; });
+    cellOf = {};
+    for (var a = 0; a < axis.length; a++) {
+      for (var b = 0; b < axis.length; b++) {
+        var pp = a === b ? null : pairOf(axis[a], axis[b]);
+        cellOf[a + ',' + b] = pp || null;
+      }
+    }
+    title = state.focus
+      ? 'Files in ' + state.focus.map(esc).join(' and ') + ', co-change with each other'
+      : 'All eligible files ordered by module, co-change between them';
+  }
+
+  var N = axis.length;
+  if (!N) { el.innerHTML = '<p class="none">No files changed often enough to pair.</p>'; return; }
+  var cell = state.gran === 'module'
+    ? Math.max(10, Math.min(44, Math.floor(700 / N)))
+    : Math.max(4, Math.min(18, Math.floor(900 / N)));
+  var PL = state.gran === 'module' ? 150 : 132, PR = 18, PT = state.gran === 'module' ? 92 : 78, PB = 16;
+  var W = PL + N * cell + PR, H = PT + N * cell + PB;
+
+  var s = [];
+  s.push('<svg class="sc" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="' + esc(title) + '">');
+
+  var topStep = cell >= 26 ? 1 : Math.ceil(26 / cell);
+  for (var i = 0; i < N; i++) {
+    for (var j = 0; j < N; j++) {
+      var vv = cellOf[i + ',' + j];
+      var x = PL + j * cell, y = PT + i * cell;
+      if (vv && vv.degree > 0) {
+        var isSel = state.sel && vv.best && state.sel === pairKey(vv.best.a, vv.best.b);
+        s.push('<rect class="cell' + (isSel ? ' sel' : '') + '" x="' + (x + 0.5) + '" y="' + (y + 0.5) +
+          '" width="' + (cell - 1) + '" height="' + (cell - 1) + '" style="' + cellStyle(vv) + '" data-i="' + i + '" data-j="' + j + '"></rect>');
+      }
+    }
+  }
+
+  // module block separators in file mode
+  if (state.gran === 'file') {
+    for (var b2 = 1; b2 < N; b2++) {
+      if (modOf(axis[b2 - 1]) !== modOf(axis[b2])) {
+        var yy = PT + b2 * cell;
+        s.push('<line class="modsep" x1="' + PL + '" y1="' + yy + '" x2="' + (W - PR) + '" y2="' + yy + '"/>');
+        s.push('<line class="modsep" x1="' + PL + '" y1="' + PT + '" x2="' + PL + '" y2="' + yy + '"/>');
+        var cap = trunc(modOf(axis[b2]), 20);
+        s.push('<text class="modcap" x="' + (PL + 4) + '" y="' + (yy + 9) + '">' + esc(cap) + '</text>');
+      }
+    }
+  }
+
+  // labels
+  for (var li = 0; li < N; li++) {
+    var lab = state.gran === 'module' ? trunc(axis[li], 16) : trunc(base(axis[li]), 18);
+    s.push('<text class="mlab" x="' + (PL - 8) + '" y="' + (PT + li * cell + cell / 2 + 3.5) + '" text-anchor="end">' + esc(lab) + '</text>');
+    if (li % topStep === 0) {
+      var tx = PL + li * cell + cell / 2, ty = PT - 8;
+      s.push('<text class="mlab top" transform="rotate(-55 ' + tx + ' ' + ty + ')" x="' + tx + '" y="' + ty + '">' + esc(lab) + '</text>');
+    }
+  }
+
+  s.push('</svg>');
+  el.innerHTML = s.join('');
+  el.querySelectorAll('.cell').forEach(function(r){
+    r.addEventListener('click', function(){
+      var i = Number(r.getAttribute('data-i')), j = Number(r.getAttribute('data-j'));
+      if (state.gran === 'module') {
+        if (i === j) { state.focus = [axis[i]]; }
+        else { state.focus = [axis[i], axis[j]]; }
+        state.gran = 'file';
+        syncGranBtns();
+        state.sel = null;
+      } else {
+        var key = i === j ? null : pairKey(axis[i], axis[j]);
+        state.sel = state.sel === key ? null : key;
+      }
+      render(); renderStats(); renderTable(); inspect();
+    });
+  });
+}
+
+function syncGranBtns(){
+  document.getElementById('gModule').classList.toggle('on', state.gran === 'module');
+  document.getElementById('gFile').classList.toggle('on', state.gran === 'file');
+}
+
+/* ---- inspector ---- */
+function pct(x){ return Math.round(x * 100) + '%'; }
+function inspect(){
+  var el = document.getElementById('insp');
+  if (!M.reason && state.sel && PMAP[state.sel]) {
+    var p = PMAP[state.sel];
+    var na = FN[p.a] || {}, nb = FN[p.b] || {};
+    var cross = na.m !== nb.m;
+    el.innerHTML =
+      '<h3>' + esc(base(p.a)) + ' <span style="color:var(--ink3)">~</span> ' + esc(base(p.b)) + '</h3>' +
+      '<p class="sub">' + esc(p.a) + '</p>' +
+      '<p class="sub pair2">' + esc(p.b) + '</p>' +
+      '<ul class="kv">' +
+        '<li>together<b>' + p.co + ' of ' + (p.changesA + p.changesB - p.co) + '</b></li>' +
+        '<li>degree<b>' + pct(p.degree) + '</b></li>' +
+        '<li>when ' + esc(base(p.a).slice(0, 14)) + ' changes<b>' + pct(p.aThenB) + '</b></li>' +
+        '<li>when ' + esc(base(p.b).slice(0, 14)) + ' changes<b>' + pct(p.bThenA) + '</b></li>' +
+        '<li>import edge<b>' + (p.imports ? 'yes' : 'no') + '</b></li>' +
+        '<li>modules<b>' + (cross ? esc(na.m) + ' × ' + esc(nb.m) : esc(na.m) + ' (same)') + '</b></li>' +
+      '</ul>' +
+      '<p class="ilab">Read</p>' +
+      '<p class="note" style="font-size:14px;max-width:none">' +
+      (p.imports
+        ? 'The import graph already explains this pair — of course a file changes with the thing it imports.'
+        : 'No import edge goes between them. ' +
+          (cross ? 'They sit in different modules, which makes the shared habit harder to excuse. ' : '') +
+          'Look for a rule that belongs in both of their heads.</p>');
+    return;
+  }
+  var v = visible().slice(0, 5);
+  if (!M.reason && v.length) {
+    el.innerHTML = '<p class="empty">Click a cell for the pair behind it. The strongest pairs in view:</p>' +
+      v.map(function(p){
+        return '<p class="sub" style="margin:6px 0 0">' + esc(trunc(base(p.a), 22)) + ' ~ ' + esc(trunc(base(p.b), 22)) +
+          ' <b style="color:var(--ink)">' + pct(p.degree) + '</b>' + (p.imports ? '' : ' <span style="color:var(--hot)">· unexplained</span>') + '</p>';
+      }).join('');
+    return;
+  }
+  el.innerHTML = '<p class="empty">Nothing to pair yet — click a cell once the history is there.</p>';
+}
+
+/* ---- table ---- */
+function renderTable(){
+  var v = visible().slice(0, 40);
+  var tb = document.querySelector('#tbl tbody');
+  if (M.reason || !v.length) {
+    tb.innerHTML = '<tr><td colspan="8" class="none" style="padding:32px 24px">' +
+      (M.reason
+        ? 'No git history available' + (M.reason ? ' — ' + esc(M.reason) : '') + '.'
+        : 'No pair of files reaches the current threshold.') +
+      '</td></tr>';
+    return;
+  }
+  tb.innerHTML = v.map(function(p){
+    var na = FN[p.a] || {}, nb = FN[p.b] || {};
+    var cross = na.m !== nb.m;
+    return '<tr data-key="' + esc(pairKey(p.a, p.b)) + '">' +
+      '<td class="p">' + esc(p.a) + '</td><td class="p">' + esc(p.b) + '</td>' +
+      '<td class="n">' + p.co + ' of ' + (p.changesA + p.changesB - p.co) + '</td>' +
+      '<td class="n" style="color:' + (p.imports ? 'var(--ink2)' : 'var(--hot)') + '">' + pct(p.degree) + '</td>' +
+      '<td class="n">' + pct(p.aThenB) + '</td><td class="n">' + pct(p.bThenA) + '</td>' +
+      '<td class="p">' + (p.imports ? 'yes' : '<span style="color:var(--hot)">no</span>') + '</td>' +
+      '<td class="p" style="color:var(--ink3)">' + (cross ? esc(na.m) + ' × ' + esc(nb.m) : esc(na.m) + ' (same)') + '</td></tr>';
+  }).join('');
+  document.querySelectorAll('#tbl tbody tr').forEach(function(tr){
+    tr.addEventListener('click', function(){
+      var key = tr.getAttribute('data-key');
+      var p = PMAP[key];
+      state.sel = state.sel === key ? null : key;
+      if (p && state.sel && state.gran === 'module') {
+        var ma = modOf(p.a), mb = modOf(p.b);
+        state.focus = ma === mb ? [ma] : [ma, mb];
+        state.gran = 'file';
+        syncGranBtns();
+      }
+      render(); renderStats(); renderTable(); inspect();
+    });
+  });
+}
+
+/* ---- legend ---- */
+function renderLegend(){
+  document.getElementById('legend').innerHTML =
+    '<span class="lg"><i style="background:var(--rose)"></i>co-changes, no import edge</span>' +
+    (state.overlay
+      ? '<span class="lg"><i style="background:var(--blue);outline:1px solid var(--ink3)"></i>also shares an import edge</span>'
+      : '<span class="lg"><i style="background:var(--amber)"></i>degree, overlay off</span>') +
+    '<span class="lg" style="color:var(--ink3)">shade = fraction of commits in which both changed · click a block to zoom into its files</span>';
+}
+
+/* ---- controls ---- */
+function tog(id, key, after){
+  var b = document.getElementById(id);
+  b.addEventListener('click', function(){
+    state[key] = !state[key];
+    b.classList.toggle('on', state[key]);
+    render(); renderStats(); renderTable(); inspect(); renderLegend();
+    if (after) after();
+  });
+}
+tog('tOverlay', 'overlay');
+document.getElementById('gModule').addEventListener('click', function(){
+  state.gran = 'module'; state.focus = null; state.sel = null;
+  syncGranBtns(); render(); renderTable(); inspect();
+});
+document.getElementById('gFile').addEventListener('click', function(){
+  state.gran = 'file'; state.sel = null;
+  syncGranBtns(); render(); renderTable(); inspect();
+});
+(function(){
+  var r = document.getElementById('thr');
+  r.min = String(M.minDegree || 0.3); r.max = '1'; r.step = '0.05';
+  r.value = String(state.thr);
+  document.getElementById('thrv').textContent = Math.round(state.thr * 100) + '%';
+  r.addEventListener('input', function(){
+    state.thr = Number(r.value);
+    document.getElementById('thrv').textContent = Math.round(state.thr * 100) + '%';
+    render(); renderStats(); renderTable(); inspect();
+  });
+})();
+document.getElementById('reset').addEventListener('click', function(){
+  state = DEF();
+  document.getElementById('thr').value = String(state.thr);
+  document.getElementById('thrv').textContent = Math.round(state.thr * 100) + '%';
+  document.getElementById('tOverlay').classList.add('on');
+  syncGranBtns();
+  render(); renderStats(); renderTable(); inspect(); renderLegend();
+});
+
+renderStats(); render(); renderTable(); inspect(); renderLegend();
+window.__coupling = { PAIRS: PAIRS, FILES: FILES, state: state, visible: visible };
+})();
+</script>

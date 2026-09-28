@@ -163,3 +163,68 @@ The lens must state, in a `data-narr` slot rather than typed prose:
   the finding correctly reports that none do.
 - Deleting `.git` degrades to the same message churn already produces.
 - Screenshot-verified at both module and file granularity before it ships.
+
+## Implementation notes (2026-09-17)
+
+Landed in `src/defaults/nestjs.js` (the three `coupling*` keys), `src/scan.js`
+(per-commit file sets instead of the discarded churn grouping, the size cap
+and support floor, Jaccard scoring, the crossing against the import graph,
+the `logical-coupling` finding, the model field), `src/narrate.js` (the
+`N.coupling` slot), `adapters/coupling.js` (pairs plus the minimum of graph
+the lens reads: file modules and module-level import edges),
+`templates/coupling.html` (the DSM lens), and `test/coupling.test.js` with
+`test/fixtures/coupling/`.
+
+**Re-measured on the real projects, 2026-09-17.** The tree has moved since
+the spec was written: chronus now has 256 commits against the spec's 238, and
+12 of them (4.7%) are ignored by the size cap — a small minority, as the
+acceptance criterion asks.
+
+| project | commits | ignored | eligible | pairs | unexplained |
+|---|---|---|---|---|---|
+| chronus | 256 | 12 | 43 | 26 | 6 |
+| nous | 70 | 1 | 6 | 1 | 0 |
+| cereberus | 41 | 2 | 9 | 6 | 3 |
+| omega | 36 | 2 | 1 | 0 | 0 |
+| kairos | 13 | 2 | 1 | 0 | 0 |
+| vereveil | 8 | 3 | 0 | 0 | 0 |
+
+Chronus's strongest unexplained pair is
+`notes/test-utils.ts ~ notes/test-utils/mock-factories.ts` (63%); its only
+cross-module unexplained pair is
+`check-items/.../check-items.repository.ts ~ notes/domain/services/note.service.ts`
+(30%), which the module matrix shows as the off-diagonal block. Cereberus
+reports `add-password ~ update-password.transaction.script.ts` at 78% — the
+duplicated-rule shape the lens exists to find: two transaction scripts in one
+module that share no import edge. Kairos, omega and vereveil are too young to
+form pairs (one, one and zero eligible files): the lens shows its
+"nothing to pair yet" state and the finding reports none — the
+absence-of-coupling caveat in the narrated slot exists precisely for this.
+
+**Deviations from the spec:**
+
+- The finding's 60% bar is fixed reporting shorthand, distinct from the model's
+  `couplingMinDegree` (0.3): the model keeps every pair at or above the floor
+  for the lens, the finding shortlists the ones that are hard to explain. The
+  spec's example made the bar explicit without naming a config key for it.
+- Support is counted over the trusted (non-ignored) commits only: a file
+  dragged along by an ignored sweep does not earn pair eligibility.
+- `meta.minDegree` is stored in the model so the lens slider opens at the
+  floor that was actually used.
+
+**Lens.** The DSM defaults to the module matrix (chronus: ten modules, always
+readable), with a files toggle (43 axes), click-to-zoom on blocks, a threshold
+slider that opens at `couplingMinDegree`, and the import overlay on by
+default — rose for unexplained, blue for explained. Screenshot-verified in
+both themes, at both granularities, plus the zoom and slider states.
+
+`npm test` runs 49 tests; 6 are new, over `test/fixtures/coupling/` with a
+synthetic 26-commit git history that makes each guard fire exactly once (the
+sweep exclusion, the support floor, the degree floor, the import crossing,
+degradation, and the `couplingMaxFiles` override). The exact-value Jaccard
+assertions double as the sweep check: if the ignored commit were counted, the
+headline pair would read 0.75 instead of 5/7.
+
+Scanned all six projects with this branch and with `main` in a worktree:
+every part of the model outside `coupling` and the new finding is
+byte-identical. Headless Chromium logs no console errors on any view.

@@ -139,6 +139,20 @@ module.exports = {
     (rel) => rel.replace(/^src\//, 'test/').replace(/\.ts$/, '.spec.ts'),
   ],
 
+  /**
+   * Co-change analysis (spec 03): which files change together in the same
+   * commit, crossed against the import graph.
+   *
+   * `couplingMaxFiles` — commits touching more files than this are ignored:
+   * a 200-file rename couples everything to everything.
+   * `couplingMinChanges` — a pair is only eligible when both files changed
+   * at least this many times (across the non-ignored commits).
+   * `couplingMinDegree` — Jaccard floor for a pair to enter the model.
+   */
+  couplingMaxFiles: 25,
+  couplingMinChanges: 5,
+  couplingMinDegree: 0.3,
+
   /** Naming conventions to flag when a file deviates. */
   naming: [
     {
