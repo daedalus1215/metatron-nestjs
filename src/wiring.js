@@ -165,6 +165,7 @@ function wiringOf(ctx) {
     sockets: meta.sockets,
     resolved: meta.resolved + meta.port + meta.framework,
     port: meta.port, framework: meta.framework, unresolved: meta.unresolved,
+    studs: gripsOf(bricks, calls),
   };
   return { bricks, wires, calls, wiringMeta };
 }
@@ -346,6 +347,35 @@ function callsOf(ctx, bricks) {
   }
   const key = (c) => [c.from, c.line, c.to, c.toMethod].join('\u0000');
   return calls.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+}
+
+/**
+ * A wire says one brick sits on another; a call says which stud it grips.
+ *
+ *   brick    another brick calls it (a call through a port grips both the
+ *            port's stud and the stud of the class bound to it)
+ *   route    no brick calls it, but it is a route handler: HTTP grips it
+ *   unseen   no call metatron can read reaches it
+ *
+ * `unseen`, not `none`: call shapes the scan cannot read, and callers outside
+ * the scanned tree, are invisible here. It is a lead, not a verdict of dead
+ * code.
+ */
+function gripsOf(bricks, calls) {
+  const gripped = new Set();
+  for (const c of calls) {
+    gripped.add(c.to + '\u0000' + c.toMethod);
+    if (c.boundTo) gripped.add(c.boundTo + '\u0000' + c.toMethod);
+  }
+  const count = { total: 0, brick: 0, route: 0, unseen: 0 };
+  for (const b of bricks) {
+    for (const s of b.studs) {
+      s.grip = gripped.has(b.id + '\u0000' + s.name) ? 'brick' : s.route ? 'route' : 'unseen';
+      count.total++;
+      count[s.grip]++;
+    }
+  }
+  return count;
 }
 
 module.exports = { bricksOf, wiringOf };
