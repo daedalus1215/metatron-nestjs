@@ -1,10 +1,11 @@
 ---
 title: Workbench — metatron serve
-status: draft
+status: implemented
 project: metatron-nestjs
 location: docs/specs/10-workbench.md
 created: 2026-09-26
 tags: [lens, server, workbench, wiring]
+implemented: 2026-09-26
 ---
 
 # Workbench — `metatron serve`
@@ -188,6 +189,24 @@ which focuses the target brick when clicked.
 5. Server tests (`test/serve.test.js`) start on port 0 against the wiring
    fixture and cover the API routes, the refused paths, and a re-scan after
    a file write.
+
+## Results (2026-09-26)
+
+- On chronus, the payload is 416 KB and the page loads with no console
+  errors. Focusing `NoteService` at depth 2 draws 37 bricks and 49 edges:
+  actions above; transaction scripts, converters, the check-items
+  aggregator and repositories below.
+- Hovering `NoteMemoTagRepository.findMemoById` lights exactly one wire,
+  from `NoteAggregator`, which matches its single entry in `calls`.
+- Live: appending a class to a watched file re-scanned once (v2), and the
+  open page redrew with its focus kept.
+- That live edit found a scanner bug: injecting a class declared in the
+  same file was unresolved, because such a class is never imported. It is
+  fixed in `scan.js`, so the trace benefits too, and the wiring fixture
+  covers it.
+- The page is checked in headless Chromium over the DevTools protocol, not
+  a plain `--screenshot`. The event stream never lets the page go idle, so
+  a screenshot run waits forever.
 
 ## Out of scope
 
