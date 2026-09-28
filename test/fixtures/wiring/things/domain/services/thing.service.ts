@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Clock } from '@acme/clock';
+import { Clock } from '../../clock/clock';
+import { Reflector } from '@nestjs/core';
 import { ThingRepository } from '../../infra/repositories/thing.repository';
 import { formatDate } from '../utils/date.utils';
 
@@ -42,7 +43,10 @@ export class ThingService {
 
 @Injectable()
 export class ThingAuditor {
-  constructor(private readonly repo: ThingRepository) {}
+  constructor(
+    private readonly repo: ThingRepository,
+    private readonly reflector: Reflector,
+  ) {}
 
   audit(): number {
     ThingService.create();
