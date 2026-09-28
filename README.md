@@ -300,6 +300,29 @@ An `unseen` stud is a public method no call metatron can read reaches. It
 is a lead, not a verdict: callers outside the tree, and call shapes the
 scan does not read, are invisible to it.
 
+### A change on the workbench
+
+Type a range (`main...feat/x`), a PR (`#12`), or nothing (work in progress)
+into the bar. The bench switches to a **change map**: every brick the change
+added or edited, and both ends of every connection it made, in tier rows.
+New connections are coloured by which of their ends already existed:
+
+| | |
+|---|---|
+| **attachment** | new code plugging into an existing brick |
+| **graft** | an existing brick changed to reach new code |
+| **rewire** | two existing bricks newly connected: the old code's shape moved |
+
+The panel on the left leads with where the change meets the codebase,
+grouped by the existing brick. A range with several commits gets a scrubber
+that replays it one commit at a time.
+
+The head of a range is read from git objects, so a PR can be reviewed from
+any branch without checking it out. `#12` asks `gh` for the PR's commits. If
+the head commit is not local, the workbench prints the `git fetch` to run and
+does not fetch it for you. `metatron diff` ends with a link to the same
+range on the workbench.
+
 ## On a new machine
 
 ```bash
