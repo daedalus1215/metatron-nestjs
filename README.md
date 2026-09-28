@@ -122,7 +122,7 @@ you share it.
 | view | answers |
 |------|---------|
 | `atlas` | Where does everything live, and which of its own rules does the code break? |
-| `traffic` | What happens when a request arrives? Every endpoint as an animated trace with the real payload at each hop. |
+| `traffic` | What happens when a request arrives? Every endpoint as an animated trace with the real payload at each hop. Full screen and three row densities, for APIs with a lot of routes. |
 | `city` | What shape is each module, and can I walk around it? One tower per module, one floor per directory, with a projection toggle — see below. |
 | `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
 | `schema` | What does the data look like? Entities, columns, and references — including the ones the ORM never hears about. |
