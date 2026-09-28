@@ -114,6 +114,22 @@ If you see `controller-prefix-unresolved`, the `@Controller()` argument is a
 form metatron does not read, and routes in that file are reported relative to
 `/` instead of the real prefix.
 
+Two kinds concern ports. A call through `@Inject(TOKEN)` is followed into the
+class a module binds to that token with `useClass` or `useExisting`. When
+metatron cannot say which class that is, the trace stops at the interface and a
+diagnostic says why:
+
+```
+    port-unbound  1x
+      things/domain/services/thing.service.ts:21  no module provides UNBOUND_PORT — trace stops at UnboundPort
+```
+
+`port-unbound` means the token is provided by `useFactory` (a factory can return
+anything, so it is not followed), is bound to a class outside the scanned tree,
+or is declared in the tree and provided nowhere. `port-ambiguous` means two
+modules bind the same token to different classes. Nest settles that by module
+scope, which metatron does not model, so it declines to pick.
+
 ---
 
 ## Holding the line
@@ -367,8 +383,14 @@ glyphs. Look at the picture.
 
 - **Imports are not calls.** The graphs count imports, type-only ones included.
   Only `endpoints[].flat` follows real `this.x.y()` chains through method bodies.
-- **DI tokens are invisible.** Anything Nest resolves through a string token
-  instead of an imported symbol leaves no edge, so coupling is understated.
+- **Ports are followed only as far as a module file says.** A call through
+  `@Inject(TOKEN)` continues into the class a module binds with `useClass` or
+  `useExisting`, and the hop keeps the port's name so the indirection stays
+  visible. `useFactory`, a token bound differently in two modules, and an
+  in-tree token nobody provides are listed in `diagnostics` rather than guessed
+  at. Module scoping (`imports`/`exports`) and dynamic modules
+  (`forRootAsync()`) are not modelled, and no import edge is invented for a
+  binding.
 - **Structure, not quality.** It knows where a transaction script sits and what
   it touches, never whether it's any good.
 - **Parsing, not compiling.** Route decorators bind to methods by walking
@@ -387,8 +409,11 @@ break) · `modules`, `domainModules`, `platformModules` · `allModuleEdges`,
 `domainEdges` · `cycles` (Tarjan SCCs with sanctioned carve-outs applied
 progressively) · `crossDomain` · `ports` · `endpoints` · `shape` · `findings` · `dataModel` (entities, columns, declared and inferred
 relations) · `orphans` · `churn` / `churnMeta` · `diagnostics` (routes that
-could not be parsed, rather than silently dropped) · `violations` (warn findings
-flattened one per instance, each with a stable fingerprint).
+could not be parsed and ports that could not be followed, rather than silently
+dropped) · `bindings` (every `provide:` in a module file and the class it binds;
+a trace hop that crossed one carries `viaPort`, `token` and `boundIn`) ·
+`violations` (warn findings flattened one per instance, each with a stable
+fingerprint).
 
 ## Prior art
 
