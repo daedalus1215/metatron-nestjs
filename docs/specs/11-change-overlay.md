@@ -213,11 +213,10 @@ relative to the repository root, so it matched nothing, and #177 read as 35
 added and 34 removed. Every pathspec command now runs from the repository
 root, and the test repository keeps its config in `backend/`.
 
-**Not changed here:** `metatron diff <A>...<B>` still scans the working
-tree as its head (spec 04). For a branch that is not checked out, its blast
-radius describes the wrong tree. The overlay reads the head from git
-objects, so the two can disagree on such a range. Fixing `diff` is a
-separate change to spec 04's behaviour.
+**Resolved later (2026-09-27):** `metatron diff <A>...<B>` scanned the
+working tree as its head, so on a branch that was not checked out it
+disagreed with the overlay. `diff` now reads its head from git too. See the
+amendment at the end of spec 04.
 
 ## Out of scope
 

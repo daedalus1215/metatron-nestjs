@@ -253,3 +253,50 @@ test('the report ends with a focus line that names the built view', () => {
     assert.deepEqual(j.focus.paths, [SVC]);
   });
 });
+
+// A range whose head is not checked out is measured at its head, not against
+// whatever the working tree holds. LIST gains a repository import on the
+// feature branch only: an action>repository violation that exists at the
+// head, and nowhere on main.
+const importRepo = (tmp) => {
+  const lp = path.join(tmp, LIST);
+  fs.writeFileSync(lp, fs.readFileSync(lp, 'utf8')
+    .replace("import { NoteService } from '../../../domain/services/note.service';",
+      "import { NoteService } from '../../../domain/services/note.service';\nimport { NoteRepository } from '../../../infra/repositories/note.repository';"));
+};
+
+test('a range whose head is not checked out is measured at its head', () => {
+  withRepo((git, commit, touch, cfg, tmp) => {
+    git(['checkout', '-q', '-b', 'feature']);
+    importRepo(tmp); commit('feature: list reaches the repository');
+    git(['checkout', '-q', 'main']);
+    const r = D.analyze(cfg, { range: 'main...feature' });
+
+    assert.deepEqual(r.changed, [{ path: LIST, status: 'modified' }]);
+    assert.deepEqual(r.architecture.added.map((v) => [v.rule, v.from]), [['action>repository', LIST]]);
+  });
+});
+
+test('uncommitted edits do not leak into a committed range', () => {
+  withRepo((git, commit, touch, cfg, tmp) => {
+    touch(LIST, '\n// c1\n'); commit('c1');
+    importRepo(tmp);                                // the same file, not committed
+    const r = D.analyze(cfg, { range: 'main~1...main' });
+    assert.deepEqual(r.changed, [{ path: LIST, status: 'modified' }]);
+    assert.ok(!r.architecture.added.some((v) => v.from === LIST));
+  });
+});
+
+test('--staged measures the index, not the working tree', () => {
+  withRepo((git, commit, touch, cfg, tmp) => {
+    const original = fs.readFileSync(path.join(tmp, LIST), 'utf8');
+    importRepo(tmp);
+    git(['add', LIST]);
+    // Undo it in the working tree only: the staged version keeps the import.
+    fs.writeFileSync(path.join(tmp, LIST), original);
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: tmp, encoding: 'utf8' });
+    assert.ok(staged.includes(LIST), 'fixture: the import is still staged');
+    const r = D.analyze(cfg, { staged: true });
+    assert.deepEqual(r.architecture.added.map((v) => [v.rule, v.from]), [['action>repository', LIST]]);
+  });
+});

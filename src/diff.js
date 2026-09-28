@@ -52,7 +52,7 @@ function isRepo(dir) {
  */
 function resolve(dir, arg, staged) {
   if (!isRepo(dir)) throw new Error('not a git repository: ' + dir);
-  if (staged) return { kind: 'staged', base: 'HEAD', range: null, label: 'staged changes' };
+  if (staged) return { kind: 'staged', base: 'HEAD', head: null, range: null, label: 'staged changes' };
   if (!arg) {
     const def = defaultBranch(dir);
     if (!def) throw new Error(
@@ -62,10 +62,12 @@ function resolve(dir, arg, staged) {
   }
   const m = arg.match(/^(.+?)\.\.\.(.+)$/) || arg.match(/^(.+?)\.\.(.+)$/);
   if (!m) throw new Error('"' + arg + '" is not a range. Use <base>...<head>, e.g. main...HEAD');
-  let base;
+  let base, head;
   try { base = git(dir, ['merge-base', m[1], m[2]]).trim(); }
   catch { throw new Error('no merge base for ' + m[1] + ' and ' + m[2] + ' — are they both commits in this repo?'); }
-  return { kind: 'range', base, range: arg, label: arg };
+  try { head = git(dir, ['rev-parse', '--verify', '--quiet', m[2] + '^{commit}']).trim(); }
+  catch { throw new Error('not a commit: ' + m[2]); }
+  return { kind: 'range', base, head, range: arg, label: arg };
 }
 
 /**
@@ -145,6 +147,42 @@ function catBatch(dir, shas) {
 
 function baseModel(cfg, base, gitRoot, relRoot) {
   return scan(cfg, { files: baseFileMap(gitRoot, relRoot, base, cfg), churnAt: base });
+}
+
+/**
+ * The staged tree: `ls-files -s` names the index's blobs, read in one batch
+ * as the base is. Unstaged edits and untracked files are not in it.
+ */
+function indexFileMap(gitRoot, relRoot, cfg) {
+  const list = git(gitRoot, ['ls-files', '-s', '--', relRoot]);
+  const prefix = relRoot === '.' ? '' : relRoot + '/';
+  const entries = [];
+  for (const line of list.split('\n')) {
+    if (!line) continue;
+    const tab = line.indexOf('\t');
+    const [, sha, stage] = line.slice(0, tab).split(' ');
+    const p = line.slice(tab + 1);
+    if (stage !== '0' || !p.startsWith(prefix)) continue;
+    const rel = p.slice(prefix.length);
+    if (!rel.endsWith('.ts')) continue;
+    if ((cfg.ignore || []).some((re) => re.test(path.join(gitRoot, relRoot, rel)))) continue;
+    entries.push([sha, rel]);
+  }
+  const blobs = catBatch(gitRoot, entries.map(([s]) => s));
+  const map = {};
+  for (const [s, rel] of entries) if (blobs[s] !== undefined) map[rel] = blobs[s];
+  return map;
+}
+
+/**
+ * The head side of the change, read from git like the base: the range's
+ * head commit, or the index for --staged. Never the working tree — a range
+ * whose head is not checked out would otherwise be measured against
+ * whatever is, and uncommitted edits would leak into a committed range.
+ */
+function headModel(cfg, resolved, gitRoot, relRoot) {
+  if (resolved.kind === 'staged') return scan(cfg, { files: indexFileMap(gitRoot, relRoot, cfg), churnAt: 'HEAD' });
+  return scan(cfg, { files: baseFileMap(gitRoot, relRoot, resolved.head, cfg), churnAt: resolved.head });
 }
 
 /**
@@ -262,8 +300,8 @@ function riskFor(model, files, changedSet, acc) {
 }
 
 /**
- * The whole analysis: one scan of the working tree, one of the base commit,
- * and the crossings between them.
+ * The whole analysis: one scan of the head (commit or index), one of the
+ * base commit, and the crossings between them.
  */
 function analyze(cfg, opts = {}) {
   const dir = cfg.__dir;
@@ -272,7 +310,7 @@ function analyze(cfg, opts = {}) {
   const relRoot = path.relative(gitRoot, path.resolve(dir, cfg.root)) || '.';
   const changes = changeSet(gitRoot, relRoot, resolved);
 
-  const cur = scan(cfg);
+  const cur = headModel(cfg, resolved, gitRoot, relRoot);
   const base = baseModel(cfg, resolved.base, gitRoot, relRoot);
   const curFiles = new Set(cur.fileNodes.map((n) => n.f));
   const baseFiles = new Set(base.fileNodes.map((n) => n.f));

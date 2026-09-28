@@ -260,9 +260,12 @@ Three things the report refuses to do:
   no request actually reaches through the traced path is not an affected
   endpoint.
 - **Report a deleted file as having no impact.** A deleted file has no node in
-  the current model, so `diff` scans twice: once at the base of the range, with
-  the file contents resolved from git objects. The working tree is never
-  checked out or stashed, so the command is safe to run mid-edit. A rename is
+  the current model, so `diff` scans twice, once at each end of the range,
+  with the file contents resolved from git objects. The head is the range's
+  head commit (or the index, with `--staged`), not the working tree: a branch
+  you have not checked out is measured as it is on that branch, and uncommitted
+  edits never leak into a committed range. Nothing is checked out or stashed,
+  so the command is safe to run mid-edit. A rename is
   one change, not a deletion plus an addition: a violation that merely moved
   with a renamed file is folded, not reported as one new and one fixed.
 - **Blame the diff for a new violation in untouched code.** That is labelled a
