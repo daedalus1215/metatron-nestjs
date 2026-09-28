@@ -5,13 +5,15 @@
  */
 'use strict';
 
-const CORE = [0, 1, 2, 3, 4, 5, 6, 7];   // Entry .. Domain Model
-const EXTRA = [8, 9, 10];                 // Wiring, Platform, Test — behind a toggle
+// Supporting tiers sit behind a toggle; the rest are the core stack. Read
+// from the model's own tiers, so a profile with other tiers (react) renders.
+const EXTRA_NAMES = new Set(['Wiring', 'Platform', 'Test', 'Support']);
 const GOLDEN = 2.39996;
 const RING = 62;
 
 module.exports = function layers(D) {
-  const shown = new Set(CORE.concat(EXTRA));
+  const EXTRA = D.tiers.filter((t) => EXTRA_NAMES.has(t.name)).map((t) => t.i);
+  const shown = new Set(D.tiers.map((t) => t.i));
   const nodes = D.fileNodes.map((n, i) => ({ ...n, i })).filter((n) => shown.has(n.t));
 
   // module cluster centres, biggest first, on a golden-angle ring so they never collide
@@ -57,7 +59,7 @@ module.exports = function layers(D) {
   for (const f of D.findings) {
     if (f.tone !== 'warn') continue;
     for (const it of f.items) {
-      const m = String(it).match(/^([\w./-]+\.ts)/);
+      const m = String(it).match(/^([\w./-]+\.tsx?)/);
       if (m) (flagged[m[1]] = flagged[m[1]] || []).push(f.title);
     }
   }
