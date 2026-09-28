@@ -79,6 +79,20 @@ what the file contains:
 | a port (`pattern: 'port'`) with no class | the file: a hollow brick | `path/to/file.ts` |
 | types, interfaces, consts, enums only | not a brick | — |
 
+Two cases the table leaves open:
+
+- **A file with classes *and* exported functions** gets both: a brick per
+  class, plus one `functions` brick for the file. Their ids cannot collide,
+  because only the class bricks carry `#`.
+- **Files in the Test tier (`spec`, `test-util`) produce no bricks.** A test
+  double is a class too, but drawing `FakeRepository` next to
+  `ThingRepository` would double every part. What tests reach is already
+  recorded in `tests`.
+
+Entities, DTOs and modules are classes, so they are bricks. They have few
+sockets or none, and the workbench can filter them by `pattern`. Leaving
+them out of the model would be a lens decision made in the wrong place.
+
 The id always contains the file path. The file is the brick's address,
 because git, `diff` and `?focus=` all work in files. The `#Class` suffix is
 what lets two classes share an address.
