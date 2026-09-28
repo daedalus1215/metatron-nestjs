@@ -104,6 +104,7 @@ svg.board text { font-family:'IBM Plex Mono',monospace; }
 .track { stroke:var(--track); stroke-width:1.5; fill:none; }
 .st { stroke-width:1.5; }
 .stn { font-size:8px; fill:var(--paper); font-weight:600; }
+.via { fill:none; stroke:var(--ink2); stroke-width:1.2; stroke-dasharray:2 2; }
 .dot { stroke:var(--surface); stroke-width:1.2; }
 .rowg { cursor:pointer; }
 .rowg:hover .rowbg { fill:color-mix(in srgb, var(--ink) 6%, transparent); }
@@ -339,6 +340,8 @@ function render(){
       var x = xs[k], n = st.nodes.length;
       var r = (n > 1 ? 8 : 6) * (V.rowH/30 < 0.8 ? 0.75 : (V.rowH/30 > 1.2 ? 1.15 : 1));
       s.push('<circle class="st l'+st.lane+' s'+st.lane+'" cx="'+x+'" cy="'+cy+'" r="'+r+'" fill-opacity="'+(n>1?'1':'.85')+'"/>');
+      // reached through a port: the call crossed a DI binding, not a direct reference
+      if (st.nodes.some(function(nd){ return nd.viaPort; })) s.push('<circle class="via" cx="'+x+'" cy="'+cy+'" r="'+(r+3)+'"/>');
       if (n > 1) s.push('<text class="stn" x="'+x+'" y="'+(cy+3)+'" text-anchor="middle">'+n+'</text>');
     });
     s.push('<circle class="dot" r="'+V.dot+'" fill="var(--dot)" cx="'+xs[0]+'" cy="'+cy+'" data-row="'+i+'"/>');
@@ -429,6 +432,7 @@ function inspect(e){
       '<span class="kind k-'+esc(n.kind)+'">'+esc(n.kind)+'</span>'+
       '<span class="cls">'+esc(n.cls)+'.'+esc(n.method||'?')+'</span>'+
       (n.inferred ? ' <em style="color:var(--ink3);font-size:9px">injected, no call resolved</em>' : '') +
+      (n.viaPort ? ' <em style="color:var(--ink2);font-size:9px" title="'+esc(n.token)+' bound in '+esc(n.boundIn)+'">through '+esc(n.viaPort)+'</em>' : '') +
       (n.sig ? '<span class="sig">'+esc(n.sig)+'</span>' : '') + '</li>';
   }).join('')+'</ul>' : '<p class="empty" style="font-size:13px">No calls — this handler returns directly.</p>');
 
@@ -450,6 +454,7 @@ function inspect(e){
 document.getElementById('legend').innerHTML = LANES.map(function(L){
   return '<span class="lg"><i style="background:var(--l'+L.i+')"></i>'+esc(L.name)+'</span>';
 }).join('') + '<span class="lg"><i style="background:var(--dot)"></i>request in flight</span>' +
+  '<span class="lg"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle class="via" cx="7" cy="7" r="5"/></svg>reached through a port</span>' +
   '<span class="lg" style="color:var(--ink3)">numbered stop = more than one class at that lane</span>';
 
 var noService = EP.filter(function(e){ return !e.stations.some(function(s){return s.lane===1;}) && e.stations.some(function(s){return s.lane>1;}); });
