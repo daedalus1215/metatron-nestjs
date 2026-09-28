@@ -332,6 +332,10 @@ New connections are coloured by which of their ends already existed:
 | **attachment** | new code plugging into an existing brick |
 | **graft** | an existing brick changed to reach new code |
 | **rewire** | two existing bricks newly connected: the old code's shape moved |
+| **detached** | a connection the change removed, drawn dashed red |
+
+A removed brick is drawn as a ghost, dashed and struck through, as it was
+before the change. Click it to read its source as it was.
 
 The panel on the left leads with where the change meets the codebase,
 grouped by the existing brick. A range with several commits gets a scrubber

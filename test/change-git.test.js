@@ -127,3 +127,24 @@ test('a moved file is a rename, not a removal plus an addition', () => {
   assert.strictEqual(change.bricks[id('repo/moved/a.repository.ts', 'ARepository')], 'unchanged');
   assert.strictEqual(change.summary.added, 0);
 });
+
+test('the workbench serves a removed brick, and its source at the base', async () => {
+  const { createWorkbench } = require('../src/serve');
+  git('checkout', '-q', '-b', 'trim', 'feat');
+  git('rm', '-q', 'backend/src/' + USE);
+  git('commit', '-q', '-m', 'drop UserService');
+  git('checkout', '-q', 'main');
+  const wb = createWorkbench(cfg(), { watch: false, log: () => {} });
+  const url = await wb.listen(0);
+  try {
+    const d = await (await fetch(url + 'api/change?range=feat...trim')).json();
+    assert.deepStrictEqual(d.change.removed.map((b) => [b.id, b.studs.map((s) => s.name)]),
+      [[id(USE, 'UserService'), ['run']]]);
+    assert.ok(d.change.pairs.some((p) => p.class === 'detached' && p.from === id(USE, 'UserService')));
+    const src = await fetch(url + 'api/source?file=' + encodeURIComponent(USE) + '&rev=' + d.change.base);
+    assert.strictEqual(src.status, 200);
+    assert.match(await src.text(), /class UserService/);
+  } finally {
+    await wb.close();
+  }
+});

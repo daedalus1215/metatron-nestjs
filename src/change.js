@@ -51,7 +51,9 @@ function compare(base, head, renames = []) {
   }
   for (const [id, b] of baseBricks) {
     if (headBricks.has(id)) continue;
-    removed.push({ id, name: b.name, file: b.file, pattern: b.pattern, module: b.module, tier: b.tier });
+    // The whole brick as it was, so the bench can draw it as a ghost and the
+    // inspector can show what went: its studs, sockets and line range.
+    removed.push(Object.assign({}, b, { id }));
     count.removed++;
   }
 
@@ -264,6 +266,7 @@ function changeAt(cfg, spec, opts = {}) {
   const cmp = compare(baseModel, headModel, renamesBetween(r, at.sha));
   return {
     model: headModel,
+    base: baseModel,
     change: Object.assign({
       label: r.label, base: r.base, head: r.head, frame, rev: at.sha,
       frames: r.frames.map((f) => ({ sha: f.sha, subject: f.subject })),

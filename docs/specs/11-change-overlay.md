@@ -149,8 +149,10 @@ summary of the set would need its own definition.
   - `added` bricks are tinted green, and `edited` ones amber
   - edges are coloured by class, with `attachment` and `graft` the loudest
   - a stud pip is outlined by its own status
-- **Removed bricks** are listed in the change panel, not drawn: the head
-  model has no position for them.
+- **Removed bricks** are drawn as ghosts, dashed and struck through, as
+  they were at the base. `removed` carries each whole brick, and detached
+  connections are dashed red. Their source is served at the base commit.
+  *(Added 2026-09-27; first cut listed them only.)*
 - **The left column gains a change panel**, built from the summary:
   attachments grouped by the existing brick they land on, grafts, rewires,
   and edited bricks with their edited studs. Every row focuses a brick.
@@ -222,4 +224,25 @@ amendment at the end of spec 04.
 
 - **Commit sets that are not a range.** See Frames.
 - **Posting anything to a PR.** The overlay reads.
-- **Drawing removed bricks on the bench.**
+
+## Follow-up (2026-09-27): removed bricks on the bench
+
+The head model has no removed brick, so the first cut listed removed
+bricks and drew nothing. Now:
+
+- `compare()` puts the **whole base brick** in `removed`: studs, sockets,
+  internals and lines.
+- The page adds each one as a **ghost**, dashed and struck through, linked
+  by the pairs the change detached. The change map includes the ghosts and
+  both ends of every detached pair.
+- **Detached pairs** are drawn dashed red, straight from `pairs`, since the
+  head has no wire or call left to draw them from.
+- **The server keeps the base's text** as well as the head's, so a ghost's
+  source panel shows the file as it was (`/api/source?rev=<base>`).
+
+On chronus #178 the map draws 2 of its 4 removed bricks (the other two are
+DTOs, hidden by default), and 15 detached edges. `CreateTagAction` is one of
+the two: it was deleted in `b14b886`, *"drop the never-registered
+create-tag"*. Clicking it shows its source at the base and its three severed
+connections. `test/change-git.test.js` covers the whole-brick payload and
+the base-side source.

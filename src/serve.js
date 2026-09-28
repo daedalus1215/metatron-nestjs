@@ -105,10 +105,13 @@ function createWorkbench(cfg, opts = {}) {
       } catch (e) {
         return json(400, { error: e.message });
       }
-      if (out.change.rev) {
-        revText.set(out.change.rev, out.model.__text);
-        if (revText.size > 8) revText.delete(revText.keys().next().value);
+      // The head's text, and the base's: a removed brick is read at the base.
+      for (const [rev, m] of [[out.change.rev, out.model], [out.change.base, out.base]]) {
+        if (!rev) continue;
+        revText.delete(rev);
+        revText.set(rev, m.__text);
       }
+      while (revText.size > 8) revText.delete(revText.keys().next().value);
       return json(200, Object.assign(payload(out.model, state.version),
         { error: state.error, watching: state.watching, change: out.change }));
     }
