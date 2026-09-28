@@ -135,4 +135,138 @@ function summarise(count, pairs) {
   });
 }
 
-module.exports = { compare };
+// ------------------------------------------------------------------ git
+const { execFileSync } = require('child_process');
+const path = require('path');
+const scan = require('./scan');
+const D = require('./diff');
+
+/**
+ * What to compare. The head of a range is read from git objects, never from
+ * the working tree: a PR reviewed from main must show the PR.
+ *
+ *   {}             merge base of the default branch and HEAD ... working tree
+ *   { range }      merge base of A and B ... commit B
+ *   { pr }         the PR's merge base ... the PR's head commit
+ *
+ * Frames are the first-parent commits from base to head, oldest first, so a
+ * merge from the base branch is one frame, not a replay of it. Work in
+ * progress adds a last frame for the working tree when it differs.
+ */
+function resolveChange(cfg, spec = {}, opts = {}) {
+  const dir = cfg.__dir;
+  const git = (args) => D.git(dir, args);
+  try { git(['rev-parse', '--is-inside-work-tree']); } catch { throw new Error('not a git repository: ' + dir); }
+  const gitRoot = git(['rev-parse', '--show-toplevel']).trim();
+  const relRoot = path.relative(gitRoot, path.resolve(dir, cfg.root)) || '.';
+  const commit = (ref) => {
+    try { return git(['rev-parse', '--verify', '--quiet', ref + '^{commit}']).trim(); } catch { return null; }
+  };
+  const mergeBase = (a, b) => {
+    try { return git(['merge-base', a, b]).trim(); }
+    catch { throw new Error('no merge base for ' + a + ' and ' + b + ' — are they both commits in this repo?'); }
+  };
+
+  let label, base, head;
+  if (spec.pr) {
+    const n = String(spec.pr).replace(/^#/, '');
+    if (!/^\d+$/.test(n)) throw new Error('not a PR number: ' + spec.pr);
+    const info = (opts.gh || ghPr)(dir, n);
+    for (const [what, sha] of [['head', info.headRefOid], ['base', info.baseRefOid]]) {
+      if (!commit(sha)) {
+        throw new Error(`the PR's ${what} commit ${sha.slice(0, 7)} is not in this repository.\n` +
+          (what === 'head' ? `  git fetch origin pull/${n}/head` : '  git fetch origin'));
+      }
+    }
+    head = info.headRefOid;
+    base = mergeBase(info.baseRefOid, head);
+    label = `#${n}${info.title ? ' ' + info.title : ''}`;
+  } else if (spec.range) {
+    const m = spec.range.match(/^(.+?)\.\.\.(.+)$/) || spec.range.match(/^(.+?)\.\.(.+)$/);
+    if (!m) throw new Error('"' + spec.range + '" is not a range. Use <base>...<head>, e.g. main...feat/x');
+    head = commit(m[2]);
+    if (!head) throw new Error('not a commit: ' + m[2]);
+    base = mergeBase(m[1], head);
+    label = spec.range;
+  } else {
+    const def = D.defaultBranch(dir);
+    if (!def) throw new Error('cannot determine the default branch (no origin/HEAD, no local main or master)');
+    base = mergeBase(def, 'HEAD');
+    head = null;
+    label = 'work in progress on ' + (git(['rev-parse', '--abbrev-ref', 'HEAD']).trim() || 'HEAD') + ' vs ' + def;
+  }
+
+  const log = git(['log', '--reverse', '--first-parent', '--format=%H%x09%s', base + '..' + (head || 'HEAD')]);
+  const frames = [{ sha: base, subject: '(base)' }];
+  for (const line of log.split('\n')) {
+    if (!line) continue;
+    const t = line.indexOf('\t');
+    frames.push({ sha: line.slice(0, t), subject: line.slice(t + 1) });
+  }
+  if (!head && git(['status', '--porcelain', '--', relRoot]).trim()) frames.push({ sha: null, subject: '(uncommitted)' });
+  return { label, base, head, frames, gitRoot, relRoot };
+}
+
+function ghPr(dir, n) {
+  let out;
+  try {
+    out = execFileSync('gh', ['pr', 'view', n, '--json', 'baseRefOid,headRefOid,title'], {
+      cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    throw new Error('gh pr view ' + n + ' failed: ' + String(e.stderr || e.message).trim().split('\n')[0]);
+  }
+  return JSON.parse(out);
+}
+
+/** Renames between the base and a frame (null sha: the working tree). */
+function renamesBetween(r, dir, sha) {
+  const args = ['diff', '-M', '--name-status', r.base].concat(sha ? [sha] : []).concat(['--', r.relRoot]);
+  const prefix = r.relRoot === '.' ? '' : r.relRoot + '/';
+  const out = [];
+  for (const line of D.git(dir, args).split('\n')) {
+    const p = line.split('\t');
+    if (p[0] && p[0][0] === 'R' && p[1].startsWith(prefix) && p[2].startsWith(prefix)) {
+      out.push([p[1].slice(prefix.length), p[2].slice(prefix.length)]);
+    }
+  }
+  return out;
+}
+
+/** Scans by commit, keeping the last few: scrubbing must not re-scan. */
+function modelCache(size = 8) {
+  const map = new Map();
+  return {
+    get(cfg, r, sha) {
+      if (map.has(sha)) { const m = map.get(sha); map.delete(sha); map.set(sha, m); return m; }
+      const m = scan(cfg, { files: D.baseFileMap(r.gitRoot, r.relRoot, sha, cfg), churnAt: sha });
+      map.set(sha, m);
+      if (map.size > size) map.delete(map.keys().next().value);
+      return m;
+    },
+  };
+}
+
+/**
+ * The change at one frame: the head model, and the overlay against the base.
+ * `current` is the working-tree model, used for the uncommitted frame.
+ */
+function changeAt(cfg, spec, opts = {}) {
+  const r = resolveChange(cfg, spec, opts);
+  const cache = opts.cache || modelCache();
+  const last = r.frames.length - 1;
+  const frame = opts.frame === undefined || opts.frame === null ? last : Math.max(0, Math.min(last, Number(opts.frame)));
+  const at = r.frames[frame];
+  const baseModel = cache.get(cfg, r, r.base);
+  const headModel = at.sha ? cache.get(cfg, r, at.sha) : (opts.current || scan(cfg));
+  const cmp = compare(baseModel, headModel, renamesBetween(r, cfg.__dir, at.sha));
+  return {
+    model: headModel,
+    change: Object.assign({
+      label: r.label, base: r.base, head: r.head, frame, rev: at.sha,
+      frames: r.frames.map((f) => ({ sha: f.sha, subject: f.subject })),
+    }, cmp),
+  };
+}
+
+module.exports = { compare, resolveChange, changeAt, modelCache };
