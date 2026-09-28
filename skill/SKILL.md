@@ -1,9 +1,10 @@
 ---
-name: metatron
-description: Build or refresh visual architecture views of a NestJS/TypeScript backend, and check a codebase against its own stated architecture rules. Use when asked to map/visualise/diagram a backend's architecture, to bootstrap architecture views in a project that has none, to refresh them after changes, to add a new visual style, or to find layering violations, cross-context leaks, dead code and naming drift.
+name: metatron-nest
+description: Build or refresh visual architecture views of a NestJS/TypeScript backend, and check a codebase against its own stated architecture rules. Use when asked to map/visualise/diagram a backend's architecture, to bootstrap architecture views in a project that has none, to refresh them after changes, to add a new visual style, to find layering violations, cross-context leaks, dead code and naming drift, to explore how classes are wired together (the workbench), or to see how a PR, a branch or a set of commits touches existing code.
+tags: [nestjs, architecture, visualization, code-review]
 ---
 
-# metatron
+# metatron-nest
 
 Compiles a NestJS/TypeScript backend into a measured model and renders it through
 visual lenses. Repo: `github:daedalus1215/metatron-nestjs`.

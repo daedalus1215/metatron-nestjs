@@ -27,6 +27,7 @@ if (args[0] === '--help' || args[0] === '-h') {
   metatron-nest serve [path]     the workbench: bricks, wiring and source, live
   metatron-nest serve --port 4477 --no-watch
   metatron-nest skill            install the agent skill into ~/.agents/skills
+  metatron-nest skill --dest <dir>   install into <dir>/metatron-nest/ instead
   metatron-nest skill --where    print where the skill would be installed
 
 check flags:
@@ -52,9 +53,16 @@ Docs: https://github.com/daedalus1215/metatron-nestjs`);
 // Installs the bundled skill so an agent session in any repo knows this tool
 // exists. Kept explicit rather than a postinstall hook — nothing should write
 // into a user's home directory as a side effect of npm install.
+//
+// `--dest <dir>` installs into <dir>/metatron-nest/ instead, for a skills
+// folder you keep under version control and link into your agents.
 if (args[0] === 'skill') {
   const home = process.env.HOME || require('os').homedir();
-  const dest = path.join(home, '.agents', 'skills', 'metatron', 'SKILL.md');
+  const at = args.indexOf('--dest');
+  const destArg = at >= 0 ? args[at + 1] : (args.find((a) => a.startsWith('--dest=')) || '').slice(7) || null;
+  if (at >= 0 && !destArg) { console.error('--dest needs a directory'); process.exit(2); }
+  const root = destArg ? path.resolve(destArg.replace(/^~(?=\/|$)/, home)) : path.join(home, '.agents', 'skills');
+  const dest = path.join(root, 'metatron-nest', 'SKILL.md');
   if (args.includes('--where')) { console.log(dest); process.exit(0); }
   const srcSkill = path.resolve(__dirname, '..', 'skill', 'SKILL.md');
   if (!fs.existsSync(srcSkill)) { console.error('bundled skill missing at ' + srcSkill); process.exit(1); }
@@ -62,7 +70,9 @@ if (args[0] === 'skill') {
   const existed = fs.existsSync(dest);
   fs.copyFileSync(srcSkill, dest);
   console.log(`${existed ? 'updated' : 'installed'} ${dest}`);
-  console.log('Start a new agent session to pick it up.');
+  console.log(destArg
+    ? `Link it into your agent to load it, e.g.\n  ln -s ${path.dirname(dest)} ${path.join(home, '.agents', 'skills', 'metatron-nest')}`
+    : 'Start a new agent session to pick it up.');
   process.exit(0);
 }
 

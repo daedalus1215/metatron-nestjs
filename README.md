@@ -360,7 +360,17 @@ metatron-nest skill    # lets agent sessions use it without being told how
 ```
 
 `metatron-nest skill` copies the bundled skill to
-`~/.agents/skills/metatron/SKILL.md`. After that, a new agent session in **any**
+`~/.agents/skills/metatron-nest/SKILL.md`. If you keep your skills in a
+version-controlled folder and link them into your agents, install it there
+instead and link it:
+
+```bash
+metatron-nest skill --dest ~/Projects/skills/skills/software-development
+ln -s ~/Projects/skills/skills/software-development/metatron-nest ~/.agents/skills/metatron-nest
+```
+
+Re-run the same `skill` command after updating metatron-nest to refresh the
+copy. After that, a new agent session in **any**
 repo already knows this tool exists — you can say "set up metatron here" or "map
 this backend" and it knows the whole procedure. Without it, you'd have to say
 "read the README in metatron-nestjs and use it", which also works.
@@ -487,6 +497,7 @@ metatron-nest diff main...HEAD   an explicit range
 metatron-nest diff --staged      what is about to be committed
 metatron-nest serve            the workbench (local server, live re-scan)
 metatron-nest skill            install the agent skill
+metatron-nest skill --dest <dir>   ... into <dir>/metatron-nest/ instead
 metatron-nest --help
 ```
 
