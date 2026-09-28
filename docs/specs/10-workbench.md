@@ -56,7 +56,7 @@ metatron serve [path] [--port 4477] [--no-watch]
 
 | route | returns |
 |---|---|
-| `GET /` | the workbench page (`templates/workbench.html`, served as is) |
+| `GET /` | the workbench page (`templates/serve/workbench.html`, served as is — outside the build's lens list) |
 | `GET /api/model` | the workbench payload (below), with a `version` |
 | `GET /api/source?file=<rel>` | the file's text, as scanned |
 | `GET /api/events` | server-sent events: `{ version }` after each re-scan |
