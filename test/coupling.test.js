@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Spec 03 — logical coupling: co-change crossed against the import graph.
- * See specs/03-logical-coupling.md.
+ * See docs/specs/03-logical-coupling.md.
  */
 const test = require('node:test');
 const assert = require('node:assert');

@@ -2,7 +2,7 @@
 title: Violation Baseline and `metatron check`
 status: implemented
 project: metatron-nestjs
-location: specs/02-violation-baseline-and-check.md
+location: docs/specs/02-violation-baseline-and-check.md
 created: 2026-08-24
 tags: [fitness-functions, ci, baseline, gating]
 implemented: 2026-08-24
