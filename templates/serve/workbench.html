@@ -150,6 +150,42 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
   background:var(--surface); cursor:pointer; color:var(--blue); font-family:inherit; }
 .src .go:hover { border-color:var(--blue); }
 
+/* change mode (spec 11) */
+.chg { display:inline-flex; gap:6px; align-items:center; }
+.chg input { width:min(260px, 40vw); padding:4px 8px; border:1px solid var(--rule2); border-radius:6px;
+  background:var(--surface); color:var(--ink); font:inherit; font-size:12.5px; }
+.chg button, .scrub button { border:1px solid var(--rule2); border-radius:6px; background:var(--surface); padding:3px 9px; font-size:12px; cursor:pointer; }
+.chg button:hover, .scrub button:hover { border-color:var(--ink2); }
+.scrub button[aria-pressed="true"] { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.scrub { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:6px 16px; border-bottom:1px solid var(--rule);
+  background:var(--surface2); font-size:12.5px; }
+.scrub input[type=range] { flex:0 1 320px; min-width:120px; }
+.scrub .lbl { color:var(--ink2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60ch; }
+.scrub strong { font-weight:600; }
+.brick.added rect.body { fill:color-mix(in srgb, var(--green) 15%, var(--surface)); stroke:var(--green); }
+.brick.edited rect.body { fill:color-mix(in srgb, var(--amber) 15%, var(--surface)); stroke:var(--amber); }
+.brick.ctx { opacity:.7; }
+.edge.c-attachment { stroke:var(--green); opacity:1; stroke-width:2.6; }
+.edge.c-graft { stroke:var(--amber); opacity:1; stroke-width:2.6; }
+.edge.c-rewire { stroke:var(--violet); opacity:1; stroke-width:2.6; }
+.edge.c-territory { stroke:var(--green); opacity:.75; stroke-width:1.4; }
+.edge.c-kept { stroke:var(--blue); opacity:.9; stroke-width:1.8; }
+.ring { fill:none; stroke-width:2; pointer-events:none; }
+.ring.added { stroke:var(--green); } .ring.edited { stroke:var(--amber); }
+.cp { border-bottom:1px solid var(--rule); padding:8px 0 10px; max-height:55%; overflow:auto; font-size:12.5px; }
+.cp .lead { padding:0 12px 6px; }
+.cp .lead b { font-size:13px; }
+.cp h4 { margin:10px 12px 2px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); font-weight:600; }
+.cp .it { padding:2px 12px 2px 16px; }
+.cp a { color:var(--blue); cursor:pointer; }
+.cp a:hover { text-decoration:underline; }
+.sw { display:inline-block; width:10px; height:3px; vertical-align:3px; margin-right:6px; border-radius:2px; }
+.cp .muted { color:var(--ink3); }
+.chip.added { background:color-mix(in srgb, var(--green) 22%, var(--surface)); color:var(--green); }
+.chip.edited { background:color-mix(in srgb, var(--amber) 22%, var(--surface)); color:var(--amber); }
+.badge.added { border-color:var(--green); color:var(--green); }
+.badge.edited { border-color:var(--amber); color:var(--amber); }
+
 @media (max-width: 1100px) {
   main { grid-template-columns:220px minmax(0,1fr); grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
   .insp { grid-column:1 / -1; border-left:0; border-top:1px solid var(--rule); }
@@ -170,10 +206,19 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
   <span class="meta mono" id="wiring"></span>
   <span class="err" id="err" hidden></span>
   <span class="spacer"></span>
+  <form class="chg" id="chgform" aria-label="Show a change">
+    <input id="chg" placeholder="main...feat/x · #12 · empty: work in progress" aria-label="Range, PR, or empty for work in progress">
+    <button type="submit">show change</button>
+    <button type="button" id="chgclear" hidden>clear</button>
+  </form>
   <span class="meta">depth</span>
   <span class="seg" id="depth" role="group" aria-label="Depth below the focused brick">
     <button data-d="1">1</button><button data-d="2" aria-pressed="true">2</button><button data-d="3">3</button>
   </span>
+</div>
+<div class="scrub" id="scrub" hidden>
+  <button type="button" id="mapbtn">change map</button>
+  <span id="frames" hidden><input type="range" id="frame" min="0" step="1" aria-label="Frame"> <span class="lbl" id="framelabel"></span></span>
 </div>
 <main>
   <aside class="col">
@@ -182,6 +227,7 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
       <select id="mod" aria-label="Module"><option value="">all modules</option></select>
       <div class="pats" id="pats"></div>
     </div>
+    <div class="cp" id="cp" hidden></div>
     <div class="list" id="list"></div>
   </aside>
   <section class="bench" id="bench"><div class="empty">Loading the model…</div></section>
@@ -202,6 +248,7 @@ const S = {
   q: '', mod: '', src: new Map(), version: 0,
   out: new Map(), inc: new Map(),       // brick -> Set of neighbours (down / up)
   callsTo: new Map(), callsFrom: new Map(), routes: new Map(),
+  change: null, spec: null, map: false, pairCls: new Map(),   // spec 11
 };
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -272,6 +319,19 @@ function neighbourhood() {
   return { nodes, cut };
 }
 
+// The change map: every added or edited brick, and both ends of every new
+// or changed connection. Unchanged bricks come in only as context.
+function changeNodes() {
+  const C = S.change, nodes = new Map();
+  const put = (id) => {
+    const b = S.byId.get(id);
+    if (b && !nodes.has(id) && !S.hidden.has(b.pattern) && nodes.size < 120) nodes.set(id, 0);
+  };
+  for (const [id, st] of Object.entries(C.bricks)) if (st === 'added' || st === 'edited') put(id);
+  for (const p of C.pairs) if (p.class !== 'detached') { put(p.from); put(p.to); }
+  return { nodes, cut: 0 };
+}
+
 const BH = 50, GAP = 26, ROWGAP = 96, PAD = 40, LABEL = 110, PIP = 13;
 function brickWidth(b) {
   const text = Math.max(b.name.length * 7.4, b.pattern.length * 5.6) + 28;
@@ -320,8 +380,10 @@ const pipX = (p, n, i) => { const k = Math.min(n, 18); return p.x + (p.w - (k - 
 // ------------------------------------------------------------------ bench
 function renderBench() {
   const bench = $('bench');
-  if (!S.focus || !S.byId.has(S.focus)) { bench.innerHTML = '<div class="empty">Pick a brick on the left.</div>'; return; }
-  const { nodes, cut } = neighbourhood();
+  const mapMode = S.change && S.map;
+  if (!mapMode && (!S.focus || !S.byId.has(S.focus))) { bench.innerHTML = '<div class="empty">Pick a brick on the left.</div>'; return; }
+  const { nodes, cut } = mapMode ? changeNodes() : neighbourhood();
+  if (!nodes.size) { bench.innerHTML = '<div class="empty">This change moves no bricks and no wiring. Pick a frame, or a brick on the left.</div>'; return; }
   const L = layout(nodes);
   const P = L.pos;
   let edges = '', bricks = '', rowsSvg = '';
@@ -333,6 +395,7 @@ function renderBench() {
       + `<text class="rowlabel" x="${PAD}" y="${y - 6}">${esc(tier ? tier.name : t)}</text>`;
   });
 
+  const pc = (a, b) => { const c = S.change && S.pairCls.get(a + '>' + b); return c ? ' c-' + c : ''; };
   const curve = (x1, y1, x2, y2) => {
     const dy = Math.max(30, Math.abs(y2 - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
@@ -346,12 +409,12 @@ function renderBench() {
       if (!tgt) return;
       const q = P.get(tgt);
       wired.add(id + '>' + tgt);
-      edges += `<path class="edge wire" data-from="${esc(id)}" data-to="${esc(tgt)}" data-sock="${i}" d="${curve(pipX(p, b.sockets.length, i), p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+      edges += `<path class="edge wire${pc(id, tgt)}" data-from="${esc(id)}" data-to="${esc(tgt)}" data-sock="${i}" d="${curve(pipX(p, b.sockets.length, i), p.y + BH, q.x + q.w / 2, q.y)}"/>`;
       if (s.status === 'port' && s.to && s.boundTo && P.has(s.to) && P.has(s.boundTo)) {
         const r = P.get(s.boundTo), pp = P.get(s.to);
         if (!wired.has(s.to + '>' + s.boundTo)) {
           wired.add(s.to + '>' + s.boundTo);
-          edges += `<path class="edge bound" data-from="${esc(s.to)}" data-to="${esc(s.boundTo)}" d="${curve(pp.x + pp.w / 2, pp.y + BH, r.x + r.w / 2, r.y)}"/>`;
+          edges += `<path class="edge bound${pc(s.to, s.boundTo)}" data-from="${esc(s.to)}" data-to="${esc(s.boundTo)}" d="${curve(pp.x + pp.w / 2, pp.y + BH, r.x + r.w / 2, r.y)}"/>`;
         }
       }
     });
@@ -363,13 +426,15 @@ function renderBench() {
       if (!P.has(c.to) || wired.has(id + '>' + c.to) || seen.has(c.to)) continue;
       seen.add(c.to);
       const p = P.get(id), q = P.get(c.to);
-      edges += `<path class="edge call" data-from="${esc(id)}" data-to="${esc(c.to)}" d="${curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+      edges += `<path class="edge call${pc(id, c.to)}" data-from="${esc(id)}" data-to="${esc(c.to)}" d="${curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y)}"/>`;
     }
   }
 
   for (const [id] of nodes) {
     const b = S.byId.get(id), p = P.get(id), col = tierVar(b.tier);
-    let g = `<g class="brick ${b.shape === 'port' ? 'port' : ''} ${id === S.focus ? 'focus' : ''}" data-id="${esc(id)}">`
+    const cst = S.change ? S.change.bricks[id] : null;
+    const paint = cst === 'added' || cst === 'edited' ? cst : (S.change && mapMode ? 'ctx' : '');
+    let g = `<g class="brick ${b.shape === 'port' ? 'port' : ''} ${id === S.focus && !mapMode ? 'focus' : ''} ${paint}" data-id="${esc(id)}">`
       + `<rect class="body" x="${p.x}" y="${p.y}" width="${p.w}" height="${BH}" rx="5" stroke="${col}"/>`
       + `<rect x="${p.x}" y="${p.y}" width="5" height="${BH}" rx="2" fill="${col}"/>`
       + `<text class="name" x="${p.x + p.w / 2}" y="${p.y + 23}" text-anchor="middle">${esc(b.name)}</text>`
@@ -381,6 +446,8 @@ function renderBench() {
       else if (s.grip === 'route') g += `<circle ${common} cx="${x}" cy="${y}" r="4.5" fill="var(--surface)" stroke="var(--blue)" stroke-width="2.2"/>`;
       else if (s.grip === 'unseen') g += `<circle ${common} cx="${x}" cy="${y}" r="4.5" fill="var(--paper)" stroke="var(--rose)" stroke-width="1.4" stroke-dasharray="2 1.6"/>`;
       else g += `<circle ${common} cx="${x}" cy="${y}" r="4.5" fill="${col}" stroke="var(--surface)" stroke-width="1"/>`;
+      const sst = cst === 'edited' && S.change.studs[id] ? S.change.studs[id][s.name] : null;
+      if (sst === 'added' || sst === 'edited') g += `<circle class="ring ${sst}" cx="${x}" cy="${y}" r="7.5"/>`;
     });
     b.sockets.slice(0, 18).forEach((s, i) => {
       const x = pipX(p, b.sockets.length, i);
@@ -394,9 +461,9 @@ function renderBench() {
     + `<svg id="svg" width="${L.width}" height="${L.height}" viewBox="0 0 ${L.width} ${L.height}" role="img" aria-label="Bricks around ${esc(short(S.focus))}">`
     + rowsSvg + `<g id="edges">${edges}</g>` + bricks + '</svg>'
     + legend();
-  const f = P.get(S.focus);
+  const f = P.get(mapMode ? [...nodes.keys()].find((k) => S.change.bricks[k] === 'added') || [...nodes.keys()][0] : S.focus);
   bench.scrollLeft = Math.max(0, f.x + f.w / 2 - bench.clientWidth / 2);
-  bench.scrollTop = Math.max(0, f.y - bench.clientHeight / 3);
+  bench.scrollTop = mapMode ? 0 : Math.max(0, f.y - bench.clientHeight / 3);
 }
 function legend() {
   const pip = (inner) => `<svg width="12" height="12" viewBox="-6 -6 12 12">${inner}</svg>`;
@@ -406,7 +473,11 @@ function legend() {
     <span>${pip('<rect x="-4" y="-4" width="8" height="8" fill="var(--violet)"/>')}framework</span>
     <span>${pip('<circle r="4" fill="none" stroke="var(--rose)" stroke-dasharray="2 1.6"/>')}unseen</span>
     <span>${pip('<rect x="-4.5" y="-3" width="9" height="6" fill="var(--ink)"/>')}socket</span>
-    <span>solid: wire · dashed: call with no wire · dotted: port → bound class</span></div>`;
+    <span>solid: wire · dashed: call with no wire · dotted: port → bound class</span>
+    ${S.change ? `<span><i class="sw" style="background:var(--green)"></i>attachment: new → existing</span>
+    <span><i class="sw" style="background:var(--amber)"></i>graft: existing → new</span>
+    <span><i class="sw" style="background:var(--violet)"></i>rewire: existing → existing</span>
+    <span><i class="sw" style="background:var(--blue)"></i>new calls on a kept wire</span>` : ''}</div>`;
 }
 
 // ------------------------------------------------------------------ hover
@@ -473,6 +544,7 @@ function renderInspector() {
   $('head').innerHTML = `<h2>${esc(b.name)}</h2><div class="path mono">${esc(b.file)}:${b.lines[0]}–${b.lines[1]}</div>
     <div class="chips"><span class="chip">${esc(b.pattern)}</span><span class="chip">${esc(b.module)}</span>
     <span class="chip">${esc(tier ? tier.name : b.tier)}</span><span class="chip">${esc(b.shape)}</span>
+    ${S.change && S.change.bricks[b.id] && S.change.bricks[b.id] !== 'unchanged' ? `<span class="chip ${esc(S.change.bricks[b.id])}">${esc(S.change.bricks[b.id])} in this change</span>` : ''}
     ${b.extends ? `<span class="chip">extends ${esc(b.extends)}</span>` : ''}</div>`;
   let h = '';
   const row = (lines, inner, extra = '') => `<button class="row" data-lines="${lines[0]}-${lines[1]}">${inner}${extra}</button>`;
@@ -489,7 +561,9 @@ function renderInspector() {
   h += '<h3>studs</h3>' + (b.studs.length ? b.studs.map((s) => {
     const callers = callersOf(b, s);
     const route = s.route && S.routes.get(s.route);
-    return row(s.lines, `<code>${s.static ? 'static ' : ''}${esc(s.sig)}</code><span class="badge ${esc(s.grip)}">${esc(s.grip)}${s.framework ? ' · ' + esc(s.framework) : ''}</span>`,
+    const cs = S.change && S.change.studs[b.id] ? S.change.studs[b.id][s.name] : null;
+    return row(s.lines, `<code>${s.static ? 'static ' : ''}${esc(s.sig)}</code><span class="badge ${esc(s.grip)}">${esc(s.grip)}${s.framework ? ' · ' + esc(s.framework) : ''}</span>`
+      + (cs === 'added' || cs === 'edited' ? `<span class="badge ${cs}">${cs}</span>` : ''),
       (route ? `<span class="by">${esc(route.verb)} ${esc(route.route)}</span>` : '')
       + (callers.length ? `<span class="by">← ${callers.map((c) => `<a data-go="${esc(c.from)}">${esc(short(c.from))}.${esc(c.fromMethod || '(module)')}</a>`).join(', ')}</span>` : ''));
   }).join('') : '<div class="none">none</div>');
@@ -535,12 +609,13 @@ function highlight(lines) {
   });
 }
 async function renderSource(b) {
-  const key = S.version + '|' + b.file;
+  const rev = S.change ? S.change.rev : null;
+  const key = S.version + '|' + (rev || '') + '|' + b.file;
   const box = $('src');
   if (!S.src.has(key)) {
     box.innerHTML = '<div class="none">loading source…</div>';
     try {
-      const r = await fetch('api/source?file=' + encodeURIComponent(b.file));
+      const r = await fetch('api/source?file=' + encodeURIComponent(b.file) + (rev ? '&rev=' + rev : ''));
       S.src.set(key, r.ok ? await r.text() : null);
     } catch { S.src.set(key, null); }
     if (S.focus !== b.id) return;
@@ -573,15 +648,31 @@ function flashLines(a, z) {
 }
 
 // ------------------------------------------------------------------ focus + wiring up
-function focus(id, fromHash) {
+// The hash carries the focus and, in change mode, the change:
+// #b=<brick>&change=<range | pr:N | wip>&f=<frame>&map=1
+function readHash() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  return { b: q.get('b'), change: q.get('change'), f: q.get('f'), map: q.get('map') === '1' };
+}
+function writeHash(push) {
+  const q = new URLSearchParams();
+  if (S.focus) q.set('b', S.focus);
+  if (S.spec !== null) {
+    q.set('change', S.spec);
+    if (S.change && S.change.frame !== S.change.frames.length - 1) q.set('f', S.change.frame);
+    if (S.map) q.set('map', '1');
+  }
+  const h = '#' + q.toString().replace(/%2F/g, '/').replace(/%23/g, '#');
+  if (h === location.hash) return;
+  if (push) history.pushState(null, '', h); else history.replaceState(null, '', h);
+}
+function fromHash() { return readHash().b; }
+function focus(id, quiet) {
   if (!S.byId.has(id)) return;
   S.focus = id;
-  if (!fromHash) history.pushState(null, '', '#b=' + encodeURIComponent(id));
-  renderList(); renderBench(); renderInspector();
-}
-function fromHash() {
-  const m = location.hash.match(/^#b=(.+)$/);
-  return m ? decodeURIComponent(m[1]) : null;
+  S.map = false;
+  if (!quiet) writeHash(true);
+  renderList(); renderBench(); renderInspector(); renderScrub();
 }
 function defaultFocus() {
   // The most connected service-ish brick: a good first stack to look at.
@@ -603,15 +694,117 @@ function status() {
   $('err').textContent = S.m.error ? 'last re-scan failed: ' + S.m.error + ' — showing the previous model' : '';
 }
 async function load() {
+  const h = readHash();
+  if (h.change !== null) return loadChange(h.change, h.f, h.map || !h.b);
+  S.change = null; S.spec = null; S.pairCls = new Map();
   const m = await (await fetch('api/model')).json();
   S.version = m.version;
   index(m);
-  renderPats(); status();
-  const want = (S.focus && S.byId.has(S.focus)) ? S.focus : (fromHash() && S.byId.has(fromHash()) ? fromHash() : defaultFocus());
+  renderPats(); status(); renderChangePanel();
+  const want = (S.focus && S.byId.has(S.focus)) ? S.focus : (h.b && S.byId.has(h.b) ? h.b : defaultFocus());
   S.focus = null;
   focus(want, true);
-  if (!fromHash()) history.replaceState(null, '', '#b=' + encodeURIComponent(want));
+  writeHash(false);
 }
+
+// ------------------------------------------------------------------ change mode (spec 11)
+function specQuery(spec) {
+  if (spec === 'wip' || spec === '') return '';
+  const pr = spec.match(/^(?:pr:|#)(\d+)$/);
+  return pr ? 'pr=' + pr[1] : 'range=' + encodeURIComponent(spec);
+}
+async function loadChange(spec, frame, map) {
+  spec = (spec.trim() || 'wip').replace(/^#(\d+)$/, 'pr:$1');
+  $('bench').innerHTML = '<div class="empty">Scanning the change…</div>';
+  const q = specQuery(spec);
+  const url = 'api/change?' + q + (frame !== null && frame !== undefined && frame !== '' ? (q ? '&' : '') + 'frame=' + frame : '');
+  const r = await fetch(url);
+  const d = await r.json();
+  if (!r.ok) {
+    $('err').hidden = false; $('err').textContent = d.error;
+    $('bench').innerHTML = `<div class="empty">Could not show that change:<br><pre class="mono">${esc(d.error)}</pre></div>`;
+    return;
+  }
+  S.version = d.version;
+  S.spec = spec;
+  S.change = d.change;
+  index(d);
+  S.pairCls = new Map(d.change.pairs.map((p) => [p.from + '>' + p.to, p.class]));
+  $('chg').value = spec === 'wip' ? '' : spec.replace(/^pr:/, '#');
+  $('chgclear').hidden = false;
+  renderPats(); status(); renderChangePanel();
+  const h = readHash();
+  S.focus = h.b && S.byId.has(h.b) ? h.b : S.focus && S.byId.has(S.focus) ? S.focus : null;
+  S.map = !!map || !S.focus;
+  renderList(); renderBench(); renderScrub();
+  if (S.focus) renderInspector();
+  else {
+    $('head').innerHTML = '<h2>The change</h2><div class="path">Click a brick on the map to inspect it and read its source at this frame.</div>';
+    $('parts').innerHTML = ''; $('src').innerHTML = '';
+  }
+  writeHash(false);
+}
+function renderScrub() {
+  const C = S.change;
+  $('scrub').hidden = !C;
+  if (!C) return;
+  $('mapbtn').setAttribute('aria-pressed', String(S.map));
+  $('mapbtn').textContent = S.map ? 'change map' : 'back to the change map';
+  const many = C.frames.length > 2;
+  $('frames').hidden = !many;
+  if (many) {
+    $('frame').max = C.frames.length - 1;
+    $('frame').value = C.frame;
+    const f = C.frames[C.frame];
+    $('framelabel').innerHTML = `<strong>${C.frame}/${C.frames.length - 1}</strong> ${f.sha ? esc(f.sha.slice(0, 7)) + ' ' : ''}${esc(f.subject)}`;
+  }
+}
+function renderChangePanel() {
+  const C = S.change, cp = $('cp');
+  cp.hidden = !C;
+  if (!C) return;
+  const s = C.summary;
+  const link = (id) => S.byId.has(id) ? `<a data-go="${esc(id)}">${esc(short(id))}</a>` : `<span class="muted">${esc(String(id).split('/').pop())}</span>`;
+  let h = `<div class="lead"><b>${esc(C.label)}</b><br>${s.added} added · ${s.edited} edited · ${s.removed} removed</div>`;
+  const group = (title, color, list, arrow) => list.length ? `<h4><i class="sw" style="background:${color}"></i>${title}</h4>`
+    + list.map((g) => `<div class="it">${link(g.brick)} <span class="muted">${arrow}</span> ${g.with.map(link).join(', ')}</div>`).join('') : '';
+  h += group(`attaches to ${s.attachments.length} existing`, 'var(--green)', s.attachments, '←');
+  h += group(`grafted into ${s.grafts.length} existing`, 'var(--amber)', s.grafts, '→');
+  if (s.rewires.length) h += `<h4><i class="sw" style="background:var(--violet)"></i>rewires ${s.rewires.length}</h4>`
+    + s.rewires.map((p) => `<div class="it">${link(p.from)} <span class="muted">→</span> ${link(p.to)}</div>`).join('');
+  const kept = C.pairs.filter((p) => p.class === 'kept' && p.newCalls.length);
+  if (kept.length) h += `<h4><i class="sw" style="background:var(--blue)"></i>new calls on kept wires</h4>`
+    + kept.map((p) => `<div class="it">${link(p.from)} <span class="muted">→</span> ${link(p.to)} <span class="muted">${esc(p.newCalls.join(', '))}</span></div>`).join('');
+  const added = Object.keys(C.bricks).filter((k) => C.bricks[k] === 'added');
+  const edited = Object.keys(C.bricks).filter((k) => C.bricks[k] === 'edited');
+  if (added.length) h += `<h4>added</h4>` + added.map((k) => `<div class="it">${link(k)}</div>`).join('');
+  if (edited.length) h += `<h4>edited</h4>` + edited.map((k) => {
+    const st = Object.entries(C.studs[k] || {}).filter(([, v]) => v !== 'unchanged');
+    return `<div class="it">${link(k)} <span class="muted">${st.length ? st.map(([n, v]) => esc(n) + (v === 'edited' ? '' : ' (' + v + ')')).join(', ') : 'constructor, fields or decorators'}</span></div>`;
+  }).join('');
+  if (C.removed.length) h += `<h4>removed</h4>` + C.removed.map((r) => `<div class="it muted">${esc(r.name)} · ${esc(r.file)}</div>`).join('');
+  if (s.detached) h += `<div class="it muted">${s.detached} connection${s.detached === 1 ? '' : 's'} detached</div>`;
+  cp.innerHTML = h;
+}
+$('chgform').addEventListener('submit', (e) => {
+  e.preventDefault();
+  S.focus = null;
+  loadChange($('chg').value, null, true).then(() => writeHash(true));
+});
+$('chgclear').addEventListener('click', () => {
+  S.change = null; S.spec = null; S.map = false;
+  $('chg').value = ''; $('chgclear').hidden = true; $('err').hidden = true;
+  writeHash(true);
+  load();
+});
+$('mapbtn').addEventListener('click', () => { S.map = true; writeHash(true); renderBench(); renderScrub(); });
+let scrubTimer = null;
+$('frame').addEventListener('input', (e) => {
+  clearTimeout(scrubTimer);
+  const f = e.target.value;
+  $('framelabel').textContent = f + '/' + (S.change.frames.length - 1) + ' ' + S.change.frames[f].subject;
+  scrubTimer = setTimeout(() => loadChange(S.spec, f, S.map).then(() => writeHash(false)), 150);
+});
 
 document.addEventListener('click', (e) => {
   const go = e.target.closest('[data-go]');
@@ -648,7 +841,13 @@ $('depth').addEventListener('click', (e) => {
   $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === d)));
   renderBench();
 });
-addEventListener('popstate', () => { const id = fromHash(); if (id && id !== S.focus) focus(id, true); });
+addEventListener('popstate', () => {
+  const h = readHash();
+  const frame = S.change ? String(S.change.frame) : null;
+  if ((h.change || null) !== S.spec || (S.change && (h.f || String(S.change.frames.length - 1)) !== frame)) { load(); return; }
+  if (S.change && h.map !== S.map) { S.map = h.map; renderBench(); renderScrub(); return; }
+  if (h.b && h.b !== S.focus) focus(h.b, true);
+});
 
 load().catch((e) => { $('bench').innerHTML = `<div class="empty">Could not load the model: ${esc(e.message)}</div>`; });
 
@@ -657,7 +856,8 @@ try {
   const ev = new EventSource('api/events');
   ev.onmessage = (e) => {
     const d = JSON.parse(e.data);
-    if (S.m && d.version > S.version) load();
+    // In change mode only work in progress follows the working tree.
+    if (S.m && d.version > S.version && (!S.change || S.spec === 'wip')) load();
     else if (S.m) { S.m.error = d.error || null; status(); }
   };
   ev.onerror = () => { $('live').innerHTML = '<span class="dot"></span>disconnected'; };
