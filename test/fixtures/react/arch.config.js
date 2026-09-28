@@ -1,1 +1,1 @@
-module.exports = { extends: 'react', name: 'fixture', root: 'src', aliases: { '@': 'src' } };
+module.exports = { extends: 'react', root: 'src', aliases: { '@': 'src' } };

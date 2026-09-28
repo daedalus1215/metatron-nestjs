@@ -13,6 +13,7 @@ const { execFileSync } = require('child_process');
 const { violationsOf } = require('./violations');
 const declarations = require('./classes');
 const { wiringOf } = require('./wiring');
+const { reactWiringOf } = require('./react-wiring');
 
 // ------------------------------------------------------------------ helpers
 
@@ -853,9 +854,10 @@ module.exports = function scan(cfg, opts = {}) {
   endpoints.sort((a, b) => a.module.localeCompare(b.module) || a.route.localeCompare(b.route) || a.verb.localeCompare(b.verb));
 
   // ---- wiring (spec 09)
-  const { bricks, wires, calls, wiringMeta } = wiringOf({
-    files, text, info, decl, tiers: TIERS, injectsOf, symbolIndex, diagnostics, EXTERNAL_TYPES, endpoints,
-  });
+  // The profile picks the wiring model: Nest's DI, or React's components,
+  // hooks and contexts (spec 12).
+  const wiringCtx = { files, text, info, decl, tiers: TIERS, injectsOf, symbolIndex, diagnostics, EXTERNAL_TYPES, endpoints, resolveSpec };
+  const { bricks, wires, calls, wiringMeta, routes } = cfg.wiring === 'react' ? reactWiringOf(wiringCtx) : wiringOf(wiringCtx);
 
   // ---- churn, from git history
   //
@@ -1389,6 +1391,7 @@ module.exports = function scan(cfg, opts = {}) {
     fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, coupling, diagnostics, bindings, tests,
     bricks, wires, calls, wiringMeta,
   };
+  if (routes) model.routes = routes;
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);
   // The scanned text, for the workbench's source panel (spec 10). Not

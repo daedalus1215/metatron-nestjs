@@ -253,13 +253,20 @@ const c = model.coverage;
 const skips = model.fileLinks.filter((l) => model.skipRules.some((r) => r.id === l[3])).length;
 console.log(`metatron · ${model.project}`);
 console.log(`  ${model.stats.files} files · ${model.stats.edges} imports · ${model.stats.nodes} directories · ${model.modules.length} modules`);
-console.log(`  ${model.stats.endpoints} endpoints · ${model.stats.hops} traced hops`);
+if (!(model.wiringMeta && model.wiringMeta.http)) console.log(`  ${model.stats.endpoints} endpoints · ${model.stats.hops} traced hops`);
 console.log(`  ${skips} layer-skipping links · ${model.findings.filter((f) => f.tone === 'warn').length} deviations · ${model.findings.filter((f) => f.tone === 'good').length} rules upheld`);
 console.log(`  coverage ${c.classified}/${c.files} (${(100 - c.unclassifiedPct).toFixed(1)}%)${c.unclassifiedPct > 25 ? '  !!' : c.unclassifiedPct > 10 ? '  !' : ''}`);
 // Spec 09: how much of the wiring was followed. No warning threshold yet —
 // one measurement is not enough to calibrate one.
 const W = model.wiringMeta;
-if (W) {
+if (W && W.http) {
+  // A React frontend (spec 12): sockets are the hooks and contexts used.
+  const inTree = W.resolved - W.framework;
+  console.log(`  wiring ${W.sockets} hooks & contexts used · ${inTree} in the tree · ${W.framework} framework · ${W.unresolved} unresolved`);
+  console.log(`  renders ${W.renders} of components in the tree · ${W.frameworkRenders} of package components · ${(model.routes || []).length} routes`);
+  console.log(`  studs ${W.studs.total} · ${W.studs.brick} used by a brick · ${W.studs.route} mounted by a route · ${W.studs.unseen} unseen`);
+  console.log(`  http ${W.http.calls} calls through the API client · ${W.http.unread} with a URL metatron cannot read`);
+} else if (W) {
   const pct = W.sockets ? ((W.resolved / W.sockets) * 100).toFixed(1) : '100.0';
   console.log(`  wiring ${W.resolved}/${W.sockets} sockets resolved (${pct}%) · ${W.framework} framework · ${W.unresolved} unresolved`);
   console.log(`  studs ${W.studs.total} · ${W.studs.brick} gripped by a brick · ${W.studs.route} by a route · ${W.studs.framework} by the framework · ${W.studs.unseen} unseen`);

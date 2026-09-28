@@ -27,6 +27,11 @@ function parse(src, opts = {}) {
   const n = src.length;
   const jsx = !!opts.jsx;
   let unbalanced = false;
+  // What is not code: comments, string and template text, regex literals,
+  // JSX text. Recorded as [from, to) by start, since a region can be stepped
+  // over more than once.
+  const text = new Map();
+  const mark = (a, b) => { if (b > a && (text.get(a) || 0) < b) text.set(a, b); };
 
   // 1-based line of an offset, by binary search over line starts.
   const starts = [0];
@@ -40,21 +45,24 @@ function parse(src, opts = {}) {
   /** Past a comment, string, template or regex literal starting at i, or i if none. */
   function skipLiteral(i) {
     const c = src[i], d = src[i + 1];
-    if (c === '/' && d === '/') { const e = src.indexOf('\n', i); return e < 0 ? n : e; }
-    if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); return e < 0 ? n : e + 2; }
+    if (c === '/' && d === '/') { const e = src.indexOf('\n', i); mark(i, e < 0 ? n : e); return e < 0 ? n : e; }
+    if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); mark(i, e < 0 ? n : e + 2); return e < 0 ? n : e + 2; }
     if (c === '\'' || c === '"') {
       for (let j = i + 1; j < n; j++) {
         if (src[j] === '\\') j++;
-        else if (src[j] === c || src[j] === '\n') return j + 1;
+        else if (src[j] === c || src[j] === '\n') { mark(i, j + 1); return j + 1; }
       }
+      mark(i, n);
       return n;
     }
     if (c === '`') {
+      let from = i;
       for (let j = i + 1; j < n; j++) {
         if (src[j] === '\\') j++;
-        else if (src[j] === '`') return j + 1;
-        else if (src[j] === '$' && src[j + 1] === '{') j = close(j + 1);
+        else if (src[j] === '`') { mark(from, j + 1); return j + 1; }
+        else if (src[j] === '$' && src[j + 1] === '{') { mark(from, j); j = close(j + 1); from = j + 1; }
       }
+      mark(from, n);
       return n;
     }
     if (jsx && c === '<' && jsxCanStart(i)) {
@@ -71,6 +79,7 @@ function parse(src, opts = {}) {
         else if (src[j] === '/' && !inClass) {
           let k = j + 1;
           while (k < n && /[a-z]/.test(src[k])) k++;
+          mark(i, k);
           return k;
         }
       }
@@ -115,16 +124,18 @@ function parse(src, opts = {}) {
       }
     }
     j++;
+    let run = j;
     while (j < n) {                               // children: text, {code}, elements
       const c = src[j];
       if (c === '<') {
+        mark(run, j);
         if (src[j + 1] === '/') { const e = src.indexOf('>', j); return e < 0 ? -1 : e + 1; }
         const e = skipJsx(j);
         if (e < 0) return -1;
-        j = e;
+        j = run = e;
         continue;
       }
-      if (c === '{') { j = close(j); if (j >= n) return -1; j++; continue; }
+      if (c === '{') { mark(run, j); j = close(j); if (j >= n) return -1; j++; run = j; continue; }
       j++;
     }
     return -1;
@@ -450,7 +461,13 @@ function parse(src, opts = {}) {
     i = until(i + w.length, ';\n') + 1;
     reset();
   }
-  return { classes, functions, interfaces, unbalanced };
+  // Sorted, merged ranges of what is not code.
+  const nonCode = [];
+  for (const [a, b] of [...text.entries()].sort((x, y) => x[0] - y[0])) {
+    const last = nonCode[nonCode.length - 1];
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b); else nonCode.push([a, b]);
+  }
+  return { classes, functions, interfaces, unbalanced, nonCode };
 }
 
 module.exports = { parse };
