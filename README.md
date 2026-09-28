@@ -126,6 +126,7 @@ you share it.
 | `city` | What shape is each module, and can I walk around it? One tower per module, one floor per directory, with a projection toggle — see below. |
 | `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
 | `schema` | What does the data look like? Entities, columns, and references — including the ones the ORM never hears about. |
+| `hotspots` | Where does refactoring pay? Every file plotted by change frequency against how much depends on it. Needs git history. |
 
 ### Isometric or perspective?
 

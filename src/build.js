@@ -37,7 +37,55 @@ function personalise(html, model, jsonId) {
     .replace(/\{\{modules\}\}/g, String(model.modules.length))
     .replace(/\{\{root\}\}/g, model.root || 'src');
 
-  const filler = `
+  // Every lens is a viewport-bound plate, and every one of them benefits from
+  // filling the screen. Injected here rather than written into each template so
+  // a new lens gets it for free: mark the plate `data-fullscreen` and the row
+  // container `data-fs-grow`.
+  const fullscreen = `
+<style>
+.metatron-full { position:fixed !important; inset:0 !important; z-index:9999;
+  margin:0 !important; border-radius:0 !important; display:flex; flex-direction:column;
+  background:var(--paper, var(--surface, #111)); }
+.metatron-full [data-fs-grow] { flex:1; min-height:0; }
+.metatron-full [data-fs-grow] > * { max-height:none !important; height:100% !important; }
+body.metatron-locked { overflow:hidden; }
+.metatron-fsbtn { position:absolute; top:8px; right:10px; z-index:3;
+  font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; letter-spacing:.04em;
+  padding:5px 10px; cursor:pointer; color:var(--ink2, #889); background:var(--surface, #1a222c);
+  border:1px solid var(--rule2, #445); opacity:.72; }
+.metatron-fsbtn:hover { opacity:1; color:var(--ink, #eee); }
+.metatron-fsbtn:focus-visible { outline:2px solid var(--blue, #79a4e6); outline-offset:2px; }
+</style>
+<script>
+(function(){
+  var plate = document.querySelector('[data-fullscreen]');
+  if (!plate) return;
+  if (getComputedStyle(plate).position === 'static') plate.style.position = 'relative';
+  var btn = document.createElement('button');
+  btn.className = 'metatron-fsbtn';
+  btn.type = 'button';
+  btn.textContent = '⤢ full screen';
+  btn.title = 'Fill the screen (Esc to leave)';
+  plate.appendChild(btn);
+  function on(){ return plate.classList.contains('metatron-full'); }
+  function set(v){
+    plate.classList.toggle('metatron-full', v);
+    document.body.classList.toggle('metatron-locked', v);
+    btn.textContent = v ? '✕ exit' : '⤢ full screen';
+    try {
+      if (v && plate.requestFullscreen) plate.requestFullscreen().catch(function(){});
+      else if (!v && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function(){});
+    } catch (e) {}
+    // canvas lenses watch their own container, but nudge anything that does not
+    window.dispatchEvent(new Event('resize'));
+  }
+  btn.addEventListener('click', function(){ set(!on()); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && on()) { e.preventDefault(); set(false); } });
+  document.addEventListener('fullscreenchange', function(){ if (!document.fullscreenElement && on()) set(false); });
+})();
+</script>`;
+
+  const filler = fullscreen + `
 <script id="__narr" type="application/json">${JSON.stringify(N)}</script>
 <script>
 (function(){
