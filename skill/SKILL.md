@@ -80,6 +80,12 @@ Static checks cannot catch mirrored text transforms, washed-out colour blends,
 content clipped outside the viewport, or tofu glyphs in the chosen font. All four
 have happened.
 
+## Tests
+
+`npm test` runs the fixture suite in `test/`. Add a fixture whenever you fix a
+parsing bug — `test/fixtures/indentation/` exists because a route-binding regex
+silently bound routes to the wrong method on four-space codebases.
+
 ## Adding a lens
 
 `templates/<name>.html` with exactly one `__DATA__` token in a JSON script tag;
@@ -94,6 +100,9 @@ the sentence is generated from the model at build time. Slots:
 
 ## Reporting findings honestly
 
+- **Check `diagnostics` before trusting endpoint data.** A non-empty list means
+  routes were seen but could not be parsed; they are absent from `endpoints`.
+  Coverage does not cover this — coverage measures classification only.
 - `findings[].tone` is `good` (a rule the code upholds), `warn` (a deviation) or
   `note`. Report the upheld rules too — "zero upward calls across 1,047 imports"
   is a real result, not an absence of news.
