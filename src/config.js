@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const PROFILES = { nestjs: require('./defaults/nestjs') };
+const PROFILES = { nestjs: require('./defaults/nestjs'), react: require('./defaults/react') };
 
 /** Finds arch.config.js by walking up from `from`. */
 function find(from) {
