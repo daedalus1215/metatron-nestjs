@@ -1,10 +1,11 @@
 ---
 title: Frontend Scanner — React on the workbench, down to the endpoint
-status: draft
+status: implemented
 project: metatron-nestjs
 location: docs/specs/12-frontend-scanner.md
 created: 2026-09-28
 tags: [scanner, react, frontend, workbench, full-stack]
+implemented: 2026-09-28
 ---
 
 # Frontend Scanner — React on the workbench, down to the endpoint
@@ -309,6 +310,69 @@ does today.
    errors.
 6. **Backend unchanged.** The chronus and omega backend models are identical
    before and after, on every key.
+
+## Results (2026-09-28)
+
+| | chronus/frontend | omega/frontend |
+|---|---|---|
+| coverage with the default `react` profile | 211/212 (99.5%) | 98/98 |
+| components found (capitalised declarations) | 127/127, the 4 wrapped included | 48/48 |
+| `.tsx` files unbalanced / boundaries changed by JSX mode | 0 / 0 | 0 / 0 |
+| bricks | 127 components, 62 hooks, 4 contexts, 18 function files, 4 classes | 48 components, 34 hooks, 3 contexts |
+| hooks & contexts used (unresolved) | 440 (0) | 193 (0) |
+| renders in the tree / of package components | 177 / 1259 | 62 / — |
+| routes, to a brick | 25, 21 (4 are `<Navigate>`) | 11, 7 |
+| HTTP calls matched | **68/68**, 0 ambiguous | 27 (no backend linked) |
+| endpoints no frontend call reaches | 2 of 63: `GET /healthz`, `GET /check-items/items/:id` | — |
+| scan time | 0.6 s cold, 0.27 s with the backend cached | 0.08 s |
+
+The spec's hand measurement said 3 unreached. The bridge's scoring matched
+one that a first-match regex had missed.
+
+**Findings the scan turned up in chronus:**
+
+- **18 components call the request layer directly**, not through a hook,
+  against the frontend's own convention. For example, `FolderTree` imports
+  `createFolder` and `deleteFolder`.
+- **3 import paths name no file.** `ExplorerTree/utils.ts` reaches five
+  levels up, out of `src/`. `CheckItemFilterBar` imports
+  `../hooks/useCheckItemFilters`, which is one level too shallow. And
+  `timeTrackDB.ts` imports a `types/` path that does not exist.
+- **Unseen components**, reached by nothing in the tree: `DesktopLayout`,
+  `Layout`, `SidebarToggleIconInverted`, `Error`, `FolderTree`,
+  `NotesBrowser`, `DesktopTagListView`, `ProtectedRoute`, and a second
+  `NoteActionsGrid`.
+
+**The workbench.** Serving chronus/frontend joins 249 frontend and 271
+backend bricks, with 68 HTTP edges. `NotePage` at depth 5 hits the node cap
+inside the frontend, because its UI fan-out is wide. The **data path**
+switch keeps only the bricks that lead to the backend. With it, depth 6
+draws 176 bricks from `AppRoutes` through 36 frontend bricks and 55 HTTP
+edges down to repositories and hydrators, and nothing is cut. There are no
+console errors, and clicking through from a request function to its action
+works.
+
+**What the real code taught the design:**
+
+- **Mounts are not renders.** `<Route element={<Page/>}>` is a mount, so a
+  page's grip reads `route`.
+- **Components are also passed as values** (`slots={{ item: … }}`). Those
+  count as uses.
+- **A name in a comment, a string, JSX text or an import is not a use.** The
+  walker now reports those ranges.
+- **Helpers beside a hook get a brick.** One of the 68 HTTP calls lived in a
+  non-exported helper, and was missed until they did.
+- **A Vite `package.json` is `"type": "module"`,** so a CommonJS
+  `arch.config.js` fails there. `.cjs` and `.mjs` configs are found, and an
+  ES module config's default export is read.
+- **Two more places assumed `.ts`:** the watcher, and change mode's
+  `baseFileMap`. On a frontend the first missed `.tsx` saves, and the second
+  dropped every component from a commit.
+- **The `layers` view hard-coded the nestjs profile's 11 tiers.** Its planes
+  now come from the model.
+
+The backend models of chronus and omega are identical before and after, on
+every key, checked against a worktree of the spec commit after each step.
 
 ## Out of scope
 

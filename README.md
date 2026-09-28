@@ -3,7 +3,9 @@
 Point it at a NestJS backend and get seven interactive views of its architecture,
 a list of every place the code breaks its own rules, and a live workbench where
 you can pick up any class, see what it is snapped into, and replay a PR against
-the code it touches.
+the code it touches. Point it at the React frontend too, and the workbench
+follows a page from its route, through its hooks and the HTTP call it makes,
+down to the repository that answers it.
 
 Nothing in the output is drawn or written by hand. Every box is a directory that
 exists, every line is an `import` a file actually writes, and every sentence is
@@ -153,6 +155,12 @@ followed to the class that fills it. One that cannot be followed is a
 `socket-unresolved` diagnostic that names the parameter and why: no class of
 that name in the tree, a class from a package metatron does not know, or a
 parameter it cannot read. The count is on the `wiring` line of the scan.
+
+A local import that names no file is `import-unresolved`. The rest belong to a
+frontend (see **Frontend**): `http-unmatched`, `http-ambiguous` and
+`http-unread` for calls the bridge could not place, `route-path-unread` for a
+`<Route path>` it cannot read, and `backend-unavailable` when the linked
+backend cannot be loaded.
 
 ---
 
@@ -350,6 +358,71 @@ the head commit is not local, the workbench prints the `git fetch` to run and
 does not fetch it for you. `metatron-nest diff` ends with a link to the same
 range on the workbench.
 
+## Frontend
+
+A React + TypeScript frontend is scanned into the same model as the backend:
+components, hooks and contexts are the bricks, and the calls it makes through
+its API client are matched to the backend endpoints they reach.
+
+Put a config beside its `src/`. A Vite project's `package.json` says
+`"type": "module"`, so name it `arch.config.cjs`:
+
+```js
+// frontend/arch.config.cjs
+module.exports = {
+  extends: 'react',
+  root: 'src',
+  aliases: { '@': 'src' },   // as in vite.config / tsconfig paths
+  backend: '../backend',     // the backend's config directory (optional)
+  apiPrefix: '/api',         // what the HTTP client prepends
+};
+```
+
+`metatron-nest scan` in that directory prints:
+
+```
+coverage 211/212 (99.5%)
+wiring 440 hooks & contexts used · 120 in the tree · 320 framework · 0 unresolved
+renders 177 of components in the tree · 1259 of package components · 25 routes
+studs 287 · 233 used by a brick · 14 mounted by a route · 40 unseen
+http 68/68 calls matched a backend endpoint (../backend) · 0 ambiguous · 0 unmatched · 0 unread
+     2 of 63 endpoints reached by no frontend call: GET /check-items/items/:id, GET /healthz
+```
+
+The same words as the backend, read off React:
+
+| | backend | frontend |
+|---|---|---|
+| brick | a class, util file, port | a component (`memo`/`forwardRef` too), a hook, a context, a file of functions |
+| socket | a constructor parameter | a hook it calls, a context it reads |
+| stud | a public method | a component's render (with its props), a hook, an exported function |
+| call | `this.x.method(` | a render (`<Child/>`), a mount (`<Route element>`), a hook, a function called or passed, an HTTP call |
+
+**The bridge.** Every `api.get/post/put/patch/delete(…)` on an axios
+instance the tree creates is read for its URL, which can be a literal, a
+template, or a local `const` holding one. The prefix is stripped, the query
+ignored, and the URL matched against the backend's endpoints by verb and
+path. A `${…}` hole prefers a `:param`, and a literal prefers an equal
+literal. A tie is reported as ambiguous, never picked.
+
+**The profile's one rule** comes from how these frontends are meant to work:
+components reach the API through hooks. A component that imports the request
+layer directly is a `component>request` skip, like the backend's layer skips.
+
+**One stack.** `metatron-nest serve` in a frontend with `backend` set serves
+both as one workbench:
+
+- The frontend's tiers sit above the backend's, with a line where requests
+  leave the browser.
+- Each matched HTTP call is a teal edge from the request function to the
+  backend action.
+- A request function lists every call it makes and the endpoint each lands
+  on. Click through to the action.
+- **data path** keeps only the frontend bricks that lead to the backend. At
+  depth 6 a page is drawn down to its repositories.
+
+Brick ids are namespaced `fe:` and `be:`, and saves on either side re-scan.
+
 ## On a new machine
 
 ```bash
@@ -511,8 +584,12 @@ Working on metatron itself: `npm test` runs the fixture suite.
 
 | key | meaning |
 |-----|---------|
-| `extends` | base profile. `nestjs` is the only one so far. |
+| `extends` | base profile: `nestjs` (the default) or `react`. |
 | `root` | scanned directory, relative to the config file. |
+| `extensions` | file extensions scanned. `['.ts']` for `nestjs`, `['.ts', '.tsx']` for `react`. |
+| `aliases` | import prefixes and the directory each names, relative to the config: `{ '@': 'src' }`. |
+| `backend` | (`react`) the linked backend's config directory, for the bridge and the joined workbench. |
+| `apiPrefix` | (`react`) the prefix the HTTP client adds, stripped before matching: `'/api'`. |
 | `name` | shown in the views. Defaults to the project folder, skipping generic wrappers like `backend/`. |
 | `outDir` | where output lands. Default `.metatron`. |
 | `addPatterns` | patterns *prepended* to the profile — refine without restating everything. |
@@ -608,6 +685,12 @@ DevTools protocol instead (`--remote-debugging-port`): navigate, wait, then
   Only `endpoints[].flat` and the wiring model's `calls` follow real calls
   through method bodies: `this.x.method(` through an injected dependency, a
   function imported from a util file, and `Cls.method(` on a static.
+- **On a frontend, only an axios client is read.** An `api.get(…)` on an
+  instance the tree creates with `axios.create`, or on `axios` itself.
+  `fetch()` and other clients are not matched to endpoints, and neither is a
+  URL that is built rather than written (`http-unread`). A render records
+  that a parent renders a child, not the props it passes. State libraries
+  beyond context (Redux, Zustand) are not read.
 - **Calls in other shapes are invisible.** A destructured dependency
   (`const { repo } = this`), a call through a local alias
   (`const r = this.repo`), a subclass calling what its parent injected, and
@@ -653,8 +736,12 @@ claims) · `coupling` (co-change pairs) · `bricks` (one per class, util file,
 port or script: its `sockets`, the constructor parameters with where each is
 resolved; its `studs`, the public methods with their `grip`; and its
 `internals`, each with a line range) · `wires` (injection edges between bricks)
-· `calls` (every call site from one brick into another, with its line) ·
-`wiringMeta` (the `wiring` and `studs` coverage counts).
+· `calls` (every call site from one brick into another, with its line; on a
+frontend each has a `kind`: `render`, `mount`, `hook`, `context`, `provide`,
+`call` or `http`) · `wiringMeta` (the `wiring` and `studs` coverage counts) ·
+`routes` (a frontend's `<Route>` tree: path, component, parent) · `bridge` (a
+frontend's HTTP calls against its backend: matched, ambiguous, unmatched,
+unread, and the endpoints no call reaches).
 
 ## Prior art
 
