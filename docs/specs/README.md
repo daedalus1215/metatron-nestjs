@@ -9,9 +9,9 @@ tags: [index, roadmap]
 
 # Specs
 
-Ten changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
-were written 2026-09-17 against `d11ba66`; 09 and 10 were written 2026-09-26
-(09 against `ca8be31`, 10 against `b319797`). Numbered by dependency, not by
+Eleven changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
+were written 2026-09-17 against `d11ba66`; 09–11 were written 2026-09-26
+(09 against `ca8be31`, 10 against `b319797`, 11 against `5b4f3da`). Numbered by dependency, not by
 importance.
 
 ## Layout
@@ -33,6 +33,7 @@ work lands. One spec per unit of work.
 | 08 | [Focus lens (`?focus=`, city view)](08-focus-lens.md) | lens | 04 |
 | 09 | [Wiring model — bricks, sockets, studs](09-wiring-model.md) | model | 05, 07 |
 | 10 | [Workbench (`metatron serve`)](10-workbench.md) | lens, server | 09 |
+| 11 | [Change overlay](11-change-overlay.md) | lens, analysis | 04, 09, 10 |
 
 ## Suggested order
 
