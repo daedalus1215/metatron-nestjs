@@ -214,6 +214,14 @@ console.log(`  ${model.stats.files} files · ${model.stats.edges} imports · ${m
 console.log(`  ${model.stats.endpoints} endpoints · ${model.stats.hops} traced hops`);
 console.log(`  ${skips} layer-skipping links · ${model.findings.filter((f) => f.tone === 'warn').length} deviations · ${model.findings.filter((f) => f.tone === 'good').length} rules upheld`);
 console.log(`  coverage ${c.classified}/${c.files} (${(100 - c.unclassifiedPct).toFixed(1)}%)${c.unclassifiedPct > 25 ? '  !!' : c.unclassifiedPct > 10 ? '  !' : ''}`);
+// Spec 09: how much of the wiring was followed. No warning threshold yet —
+// one measurement is not enough to calibrate one.
+const W = model.wiringMeta;
+if (W) {
+  const pct = W.sockets ? ((W.resolved / W.sockets) * 100).toFixed(1) : '100.0';
+  console.log(`  wiring ${W.resolved}/${W.sockets} sockets resolved (${pct}%) · ${W.framework} framework · ${W.unresolved} unresolved`);
+  console.log(`  studs ${W.studs.total} · ${W.studs.brick} gripped by a brick · ${W.studs.route} by a route · ${W.studs.unseen} unseen`);
+}
 
 // A route we could not parse must be visible. Dropping it silently is how the
 // two-space-indentation bug survived four projects unnoticed.
