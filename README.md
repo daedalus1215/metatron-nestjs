@@ -28,10 +28,13 @@ layout that means `backend/arch.config.js`:
 ```js
 module.exports = {
   extends: 'nestjs',
-  name: 'my-api',
   root: 'src',
 };
 ```
+
+The project name is taken from the folder. Set `name` only if you want to
+override it — and if you copy a config between projects, metatron warns when the
+name no longer matches where it sits.
 
 **3. Run it.**
 
@@ -145,7 +148,7 @@ metatron --help
 |-----|---------|
 | `extends` | base profile. `nestjs` is the only one so far. |
 | `root` | scanned directory, relative to the config file. |
-| `name` | shown in the views. Defaults to the directory name. |
+| `name` | shown in the views. Defaults to the project folder, skipping generic wrappers like `backend/`. |
 | `outDir` | where output lands. Default `.metatron`. |
 | `addPatterns` | patterns *prepended* to the profile — refine without restating everything. |
 | `patterns` | replace the profile's list wholesale. |

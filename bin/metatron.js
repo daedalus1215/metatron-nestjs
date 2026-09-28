@@ -59,6 +59,8 @@ const filter = rest;
 let cfg;
 try { cfg = load(where); } catch (e) { console.error(e.message); process.exit(1); }
 
+if (cfg.__nameWarning) console.warn('warning: ' + cfg.__nameWarning + '\n');
+
 const outDir = path.resolve(cfg.__dir, cfg.outDir || '.metatron');
 fs.mkdirSync(outDir, { recursive: true });
 const modelPath = path.join(outDir, 'model.json');
