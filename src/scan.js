@@ -801,7 +801,7 @@ module.exports = function scan(cfg, opts = {}) {
   endpoints.sort((a, b) => a.module.localeCompare(b.module) || a.route.localeCompare(b.route) || a.verb.localeCompare(b.verb));
 
   // ---- wiring (spec 09)
-  const { bricks, wires, wiringMeta } = wiringOf({
+  const { bricks, wires, calls, wiringMeta } = wiringOf({
     files, text, info, decl, tiers: TIERS, injectsOf, symbolIndex, diagnostics, EXTERNAL_TYPES, endpoints,
   });
 
@@ -1334,7 +1334,7 @@ module.exports = function scan(cfg, opts = {}) {
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
     fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, coupling, diagnostics, bindings, tests,
-    bricks, wires, wiringMeta,
+    bricks, wires, calls, wiringMeta,
   };
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);

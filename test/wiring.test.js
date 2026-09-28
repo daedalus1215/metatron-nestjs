@@ -127,3 +127,37 @@ test('a hollow port brick offers its interface as declared studs', () => {
   const b = brick('things/domain/ports/thing.port.ts');
   assert.deepStrictEqual(b.studs.map((s) => [s.name, s.kind, s.of]), [['ping', 'declared', 'ThingPort']]);
 });
+
+const callsFrom = (id) => model.calls.filter((c) => c.from === id)
+  .map((c) => [c.fromMethod, c.to, c.toMethod, !!c.static]);
+const UTILS = 'things/domain/utils/date.utils.ts';
+const PORT = 'things/domain/ports/thing.port.ts';
+
+test('calls go where the socket goes, through a port to both ends', () => {
+  assert.deepStrictEqual(callsFrom(ACTION), [
+    ['execute', PORT, 'ping', false],
+    ['execute', SVC + '#ThingService', 'find', false],
+  ]);
+  const viaPort = model.calls.find((c) => c.to === PORT);
+  assert.strictEqual(viaPort.boundTo, 'things/apps/adapters/thing.adapter.ts#ThingAdapter');
+});
+
+test('calls into a function brick name the calling method; self-calls are not recorded', () => {
+  assert.deepStrictEqual(callsFrom(SVC + '#ThingService'), [
+    ['find', UTILS, 'formatDate', false],
+    ['find', REPO, 'findById', false],
+  ]);
+  assert.ok(!model.calls.some((c) => c.from === UTILS), 'formatDate -> pad stays inside the brick');
+});
+
+test('a static call is recorded with no wire behind it', () => {
+  assert.deepStrictEqual(callsFrom(SVC + '#ThingAuditor'), [
+    ['audit', SVC + '#ThingService', 'create', true],
+    ['audit', REPO, 'count', false],
+  ]);
+  assert.ok(!model.wires.some((w) => w.from === SVC + '#ThingAuditor' && w.to === SVC + '#ThingService'));
+});
+
+test('calls through a framework socket are not calls between bricks', () => {
+  assert.deepStrictEqual(callsFrom(REPO), []);
+});
