@@ -102,16 +102,31 @@ body.metatron-locked { overflow:hidden; }
   return html + filler;
 }
 
+/**
+ * `findings[].instances` exists so violations can be fingerprinted for the
+ * baseline. No lens reads it, so it does not belong in a browser payload.
+ */
+function forLens(model) {
+  return Object.assign({}, model, {
+    findings: (model.findings || []).map((f) => {
+      const g = Object.assign({}, f);
+      delete g.instances;
+      return g;
+    }),
+  });
+}
+
 function buildOne(model, name, tpl) {
   const hits = tpl.split('__DATA__').length - 1;
   if (hits !== 1) throw new Error(`expected exactly one __DATA__ token, found ${hits}`);
 
-  let payload = model;
+  const lensModel = forLens(model);
+  let payload = lensModel;
   let via = 'full model';
   const adapter = path.join(ADAPTERS, name + '.js');
   if (fs.existsSync(adapter)) {
     delete require.cache[require.resolve(adapter)];
-    payload = require(adapter)(model);
+    payload = require(adapter)(lensModel);
     via = 'adapters/' + name + '.js';
   }
 
