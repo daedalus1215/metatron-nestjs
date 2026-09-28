@@ -139,6 +139,9 @@ function summarise(count, pairs) {
 
 // ------------------------------------------------------------------ git
 const { execFileSync } = require('child_process');
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const scan = require('./scan');
 const D = require('./diff');
@@ -150,6 +153,8 @@ const D = require('./diff');
  *   {}             merge base of the default branch and HEAD ... working tree
  *   { range }      merge base of A and B ... commit B
  *   { pr }         the PR's merge base ... the PR's head commit
+ *   { commits }    the parent of the oldest ... those commits alone, applied
+ *                  in order (a hand-picked set, or one commit)
  *
  * Frames are the first-parent commits from base to head, oldest first, so a
  * merge from the base branch is one frame, not a replay of it. Work in
@@ -170,6 +175,9 @@ function resolveChange(cfg, spec = {}, opts = {}) {
   };
 
   let label, base, head;
+  if (spec.commits) {
+    return resolveSet(spec.commits, { dir, gitRoot, relRoot, commit, git });
+  }
   if (spec.pr) {
     const n = String(spec.pr).replace(/^#/, '');
     if (!/^\d+$/.test(n)) throw new Error('not a PR number: ' + spec.pr);
@@ -211,6 +219,103 @@ function resolveChange(cfg, spec = {}, opts = {}) {
   return { label, base, head, frames, gitRoot, relRoot };
 }
 
+/**
+ * A set of commits, not a range. The base is the first parent of the oldest;
+ * frame k is that base with the first k commits of the set applied in order.
+ * While the set is an unbroken first-parent chain from the base, a frame is
+ * simply that commit. Past the first gap it is built (`applyFrame`).
+ */
+function resolveSet(list, ctx) {
+  const { commit, git, gitRoot, relRoot } = ctx;
+  const refs = (Array.isArray(list) ? list : String(list).split(/[\s,]+/)).filter(Boolean);
+  if (!refs.length) throw new Error('no commits given');
+  const shas = [];
+  for (const ref of refs) {
+    const sha = commit(ref);
+    if (!sha) throw new Error('not a commit: ' + ref);
+    if (!shas.includes(sha)) shas.push(sha);
+  }
+  // Oldest first, by ancestry, not by clock: commits made in the same second
+  // sort arbitrarily by time. Walk topologically from the set's common
+  // ancestor; commits on unrelated lines keep git's order between them.
+  let order = shas;
+  try {
+    const mb = git(['merge-base', '--octopus'].concat(shas)).trim();
+    const walked = git(['rev-list', '--topo-order', '--reverse'].concat(shas, ['^' + mb])).split('\n');
+    order = (shas.includes(mb) ? [mb] : []).concat(walked.filter((x) => shas.includes(x)));
+  } catch { /* no common ancestor: keep the order given */ }
+  const info = {};
+  for (const line of git(['log', '--no-walk', '--format=%H%x09%P%x09%s'].concat(shas)).split('\n')) {
+    if (!line) continue;
+    const [sha, parents, subject] = line.split('\t');
+    info[sha] = { sha, parent: parents.split(' ')[0] || null, subject };
+  }
+  const picked = order.map((sha) => info[sha]);
+  if (!picked[0].parent) throw new Error(`${picked[0].sha.slice(0, 7)} is a root commit: it has no parent to compare with`);
+  const base = picked[0].parent;
+  const frames = [{ sha: base, subject: '(base)' }];
+  let chain = true;
+  picked.forEach((c, i) => {
+    chain = chain && c.parent === (i ? picked[i - 1].sha : base);
+    const f = { sha: c.sha, subject: c.subject };
+    if (!chain) {
+      // Built, not checked out: its key names exactly which commits it holds.
+      f.rev = 'set-' + crypto.createHash('sha1').update(picked.slice(0, i + 1).map((x) => x.sha).join(',')).digest('hex').slice(0, 16);
+      f.apply = picked.slice(0, i + 1);
+    }
+    frames.push(f);
+  });
+  const label = picked.length === 1
+    ? `${picked[0].sha.slice(0, 7)} ${picked[0].subject}`
+    : `${picked.length} commits: ` + picked.map((c) => c.sha.slice(0, 7)).join(', ');
+  return { label, base, head: null, set: picked.map((c) => c.sha), frames, gitRoot, relRoot };
+}
+
+/**
+ * The tree of a built frame, read without touching the repository: a
+ * temporary index, and a temporary object store with the repository's as an
+ * alternate. `git apply --cached` writes the blobs it makes there, and the
+ * directory is removed after. A commit that does not apply without one left
+ * out of the set is refused, by name.
+ */
+function applyFrame(r, frame, cfg) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'metatron-set-'));
+  try {
+    const objects = path.join(tmp, 'objects');
+    fs.mkdirSync(objects);
+    const env = Object.assign({}, process.env, {
+      GIT_INDEX_FILE: path.join(tmp, 'index'),
+      GIT_OBJECT_DIRECTORY: objects,
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: D.git(r.gitRoot, ['rev-parse', '--path-format=absolute', '--git-path', 'objects']).trim(),
+    });
+    const g = (args, input) => execFileSync('git', args, {
+      cwd: r.gitRoot, env, input, encoding: 'utf8', maxBuffer: 96 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    g(['read-tree', r.base]);
+    for (const c of frame.apply) {
+      const patch = g(['diff', '--binary', '--full-index', c.parent, c.sha, '--', r.relRoot]);
+      if (!patch.trim()) continue;
+      try { g(['apply', '--cached', '--whitespace=nowarn'], patch); }
+      catch (e) {
+        const why = String(e.stderr || e.message).trim().split('\n')[0];
+        throw new Error(`${c.sha.slice(0, 7)} "${c.subject}" does not apply without commits left out of the set.\n  ${why}`);
+      }
+    }
+    const files = D.indexFileMap(r.gitRoot, r.relRoot, cfg, env);
+    const prefix = r.relRoot === '.' ? '' : r.relRoot + '/';
+    const renames = [];
+    for (const line of g(['diff-index', '-M', '--cached', '--name-status', r.base, '--', r.relRoot]).split('\n')) {
+      const p = line.split('\t');
+      if (p[0] && p[0][0] === 'R' && p[1].startsWith(prefix) && p[2].startsWith(prefix)) {
+        renames.push([p[1].slice(prefix.length), p[2].slice(prefix.length)]);
+      }
+    }
+    return { files, renames };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 function ghPr(dir, n) {
   let out;
   try {
@@ -237,14 +342,14 @@ function renamesBetween(r, sha) {
   return out;
 }
 
-/** Scans by commit, keeping the last few: scrubbing must not re-scan. */
+/** Scans by key (a commit, or a built frame), keeping the last few: scrubbing must not re-scan. */
 function modelCache(size = 8) {
   const map = new Map();
   return {
-    get(cfg, r, sha) {
-      if (map.has(sha)) { const m = map.get(sha); map.delete(sha); map.set(sha, m); return m; }
-      const m = scan(cfg, { files: D.baseFileMap(r.gitRoot, r.relRoot, sha, cfg), churnAt: sha });
-      map.set(sha, m);
+    get(key, load) {
+      if (map.has(key)) { const m = map.get(key); map.delete(key); map.set(key, m); return m; }
+      const m = load();
+      map.set(key, m);
       if (map.size > size) map.delete(map.keys().next().value);
       return m;
     },
@@ -261,15 +366,29 @@ function changeAt(cfg, spec, opts = {}) {
   const last = r.frames.length - 1;
   const frame = opts.frame === undefined || opts.frame === null ? last : Math.max(0, Math.min(last, Number(opts.frame)));
   const at = r.frames[frame];
-  const baseModel = cache.get(cfg, r, r.base);
-  const headModel = at.sha ? cache.get(cfg, r, at.sha) : (opts.current || scan(cfg));
-  const cmp = compare(baseModel, headModel, renamesBetween(r, at.sha));
+  const atCommit = (sha) => cache.get(sha, () => ({
+    model: scan(cfg, { files: D.baseFileMap(r.gitRoot, r.relRoot, sha, cfg), churnAt: sha }),
+  }));
+  const baseModel = atCommit(r.base).model;
+  let headModel, renames;
+  if (at.apply) {
+    const built = cache.get(at.rev, () => {
+      const t = applyFrame(r, at, cfg);
+      return { model: scan(cfg, { files: t.files, churnAt: at.sha }), renames: t.renames };
+    });
+    headModel = built.model;
+    renames = built.renames;
+  } else {
+    headModel = at.sha ? atCommit(at.sha).model : (opts.current || scan(cfg));
+    renames = renamesBetween(r, at.sha);
+  }
+  const cmp = compare(baseModel, headModel, renames);
   return {
     model: headModel,
     base: baseModel,
     change: Object.assign({
-      label: r.label, base: r.base, head: r.head, frame, rev: at.sha,
-      frames: r.frames.map((f) => ({ sha: f.sha, subject: f.subject })),
+      label: r.label, base: r.base, head: r.head, set: r.set || null, frame, rev: at.rev || at.sha,
+      frames: r.frames.map((f) => ({ sha: f.sha, subject: f.subject, built: !!f.apply })),
     }, cmp),
   };
 }

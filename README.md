@@ -322,8 +322,11 @@ scan does not read, are invisible to it.
 
 ### A change on the workbench
 
-Type a range (`main...feat/x`), a PR (`#12`), or nothing (work in progress)
-into the bar. The bench switches to a **change map**: every brick the change
+Type a range (`main...feat/x`), a PR (`#12`), one or more commits
+(`a1b2c3d, e4f5a6b`), or nothing (work in progress) into the bar. A set of
+commits is shown on its own, applied in order onto the parent of the oldest,
+and nothing is written to the repository. A commit that needs one you left
+out is refused, by name. The bench switches to a **change map**: every brick the change
 added or edited, and both ends of every connection it made, in tier rows.
 New connections are coloured by which of their ends already existed:
 

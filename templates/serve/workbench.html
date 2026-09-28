@@ -212,7 +212,7 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
   <span class="err" id="err" hidden></span>
   <span class="spacer"></span>
   <form class="chg" id="chgform" aria-label="Show a change">
-    <input id="chg" placeholder="main...feat/x · #12 · empty: work in progress" aria-label="Range, PR, or empty for work in progress">
+    <input id="chg" placeholder="main...feat/x · #12 · a1b2c3d, e4f5a6b · empty: work in progress" aria-label="Range, PR, commits, or empty for work in progress">
     <button type="submit">show change</button>
     <button type="button" id="chgclear" hidden>clear</button>
   </form>
@@ -728,11 +728,14 @@ async function load() {
 // ------------------------------------------------------------------ change mode (spec 11)
 function specQuery(spec) {
   if (spec === 'wip' || spec === '') return '';
+  if (spec.startsWith('commits:')) return 'commits=' + encodeURIComponent(spec.slice(8));
   const pr = spec.match(/^(?:pr:|#)(\d+)$/);
   return pr ? 'pr=' + pr[1] : 'range=' + encodeURIComponent(spec);
 }
 async function loadChange(spec, frame, map) {
   spec = (spec.trim() || 'wip').replace(/^#(\d+)$/, 'pr:$1');
+  // One commit or a hand-picked set: hashes separated by commas or spaces.
+  if (/^[0-9a-f]{7,40}([\s,]+[0-9a-f]{7,40})*$/i.test(spec)) spec = 'commits:' + spec.split(/[\s,]+/).join(',');
   $('bench').innerHTML = '<div class="empty">Scanning the change…</div>';
   const q = specQuery(spec);
   const url = 'api/change?' + q + (frame !== null && frame !== undefined && frame !== '' ? (q ? '&' : '') + 'frame=' + frame : '');
@@ -755,7 +758,7 @@ async function loadChange(spec, frame, map) {
     add(S.out, p.from, p.to); add(S.inc, p.to, p.from);
   }
   S.pairCls = new Map(d.change.pairs.map((p) => [p.from + '>' + p.to, p.class]));
-  $('chg').value = spec === 'wip' ? '' : spec.replace(/^pr:/, '#');
+  $('chg').value = spec === 'wip' ? '' : spec.replace(/^pr:/, '#').replace(/^commits:/, '').replace(/,/g, ', ');
   $('chgclear').hidden = false;
   renderPats(); status(); renderChangePanel();
   const h = readHash();
@@ -781,7 +784,8 @@ function renderScrub() {
     $('frame').max = C.frames.length - 1;
     $('frame').value = C.frame;
     const f = C.frames[C.frame];
-    $('framelabel').innerHTML = `<strong>${C.frame}/${C.frames.length - 1}</strong> ${f.sha ? esc(f.sha.slice(0, 7)) + ' ' : ''}${esc(f.subject)}`;
+    $('framelabel').innerHTML = `<strong>${C.frame}/${C.frames.length - 1}</strong> ${f.sha ? esc(f.sha.slice(0, 7)) + ' ' : ''}${esc(f.subject)}`
+      + (f.built ? ' <span class="muted">· built: the base plus the picked commits so far</span>' : '');
   }
 }
 function renderChangePanel() {
@@ -813,7 +817,9 @@ function renderChangePanel() {
 }
 $('chgform').addEventListener('submit', (e) => {
   e.preventDefault();
+  // A new change starts on its map, not on whatever was focused before.
   S.focus = null;
+  history.pushState(null, '', location.pathname);
   loadChange($('chg').value, null, true).then(() => writeHash(true));
 });
 $('chgclear').addEventListener('click', () => {

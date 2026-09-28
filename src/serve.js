@@ -98,7 +98,8 @@ function createWorkbench(cfg, opts = {}) {
     }
     if (url.pathname === '/api/change') {
       const q = url.searchParams;
-      const spec = q.get('pr') ? { pr: q.get('pr') } : q.get('range') ? { range: q.get('range') } : {};
+      const spec = q.get('pr') ? { pr: q.get('pr') } : q.get('range') ? { range: q.get('range') }
+        : q.get('commits') ? { commits: q.get('commits') } : {};
       let out;
       try {
         out = changeAt(cfg, spec, { cache, current: state.model, frame: q.has('frame') ? q.get('frame') : undefined });

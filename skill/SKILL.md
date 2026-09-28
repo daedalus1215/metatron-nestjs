@@ -146,7 +146,8 @@ For questions you can answer yourself, read the wiring model in
 
 To show a change structurally (what a PR adds, and where it meets the
 existing code), open the workbench at `http://127.0.0.1:4477/#change=<range>`
-(or `#change=pr:<N>`, or `#change=wip`). The same analysis is in
+(or `#change=pr:<N>`, `#change=commits:<sha>,<sha>` for a hand-picked set or
+one commit, or `#change=wip`). The same analysis is in
 `src/change.js` (`changeAt(cfg, { range })`). Its `summary.attachments`
 (new code leaning on existing bricks), `summary.grafts` (existing bricks
 changed to reach new code) and `summary.rewires` answer "how does this change

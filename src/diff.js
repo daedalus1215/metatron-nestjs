@@ -24,10 +24,11 @@ const scan = require('./scan');
 const BL = require('./baseline');
 const { violationsOf, fingerprint } = require('./violations');
 
-function git(dir, args) {
+/** `env` lets a caller point git at a temporary index and object store. */
+function git(dir, args, env) {
   return execFileSync('git', args, {
     cwd: dir, encoding: 'utf8', maxBuffer: 96 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'ignore'],
+    stdio: ['ignore', 'pipe', 'ignore'], env: env || process.env,
   });
 }
 
@@ -123,14 +124,14 @@ function baseFileMap(gitRoot, relRoot, base, cfg) {
   return map;
 }
 
-function catBatch(dir, shas) {
+function catBatch(dir, shas, env) {
   if (!shas.length) return {};
   const out = {};
   let buf;
   try {
     buf = execFileSync('git', ['cat-file', '--batch'], {
       cwd: dir, input: shas.join('\n') + '\n',
-      maxBuffer: 96 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'],
+      maxBuffer: 96 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'], env: env || process.env,
     });
   } catch { return {}; }
   let off = 0;
@@ -153,8 +154,8 @@ function baseModel(cfg, base, gitRoot, relRoot) {
  * The staged tree: `ls-files -s` names the index's blobs, read in one batch
  * as the base is. Unstaged edits and untracked files are not in it.
  */
-function indexFileMap(gitRoot, relRoot, cfg) {
-  const list = git(gitRoot, ['ls-files', '-s', '--', relRoot]);
+function indexFileMap(gitRoot, relRoot, cfg, env) {
+  const list = git(gitRoot, ['ls-files', '-s', '--', relRoot], env);
   const prefix = relRoot === '.' ? '' : relRoot + '/';
   const entries = [];
   for (const line of list.split('\n')) {
@@ -168,7 +169,7 @@ function indexFileMap(gitRoot, relRoot, cfg) {
     if ((cfg.ignore || []).some((re) => re.test(path.join(gitRoot, relRoot, rel)))) continue;
     entries.push([sha, rel]);
   }
-  const blobs = catBatch(gitRoot, entries.map(([s]) => s));
+  const blobs = catBatch(gitRoot, entries.map(([s]) => s), env);
   const map = {};
   for (const [s, rel] of entries) if (blobs[s] !== undefined) map[rel] = blobs[s];
   return map;
@@ -530,5 +531,5 @@ function renderJson(r) {
   return JSON.stringify(r, null, 2);
 }
 
-module.exports = { analyze, resolve, changeSet, baseModel, baseFileMap, git, defaultBranch, reachable, affectedEndpoints,
+module.exports = { analyze, resolve, changeSet, baseModel, baseFileMap, indexFileMap, git, defaultBranch, reachable, affectedEndpoints,
                    violationDelta, renderTerminal, renderMarkdown, renderJson };
