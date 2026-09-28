@@ -125,6 +125,7 @@ you share it.
 | `traffic` | What happens when a request arrives? Every endpoint as an animated trace with the real payload at each hop. |
 | `city` | What shape is each module, and can I walk around it? One tower per module, one floor per directory, with a projection toggle — see below. |
 | `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
+| `schema` | What does the data look like? Entities, columns, and references — including the ones the ORM never hears about. |
 
 ### Isometric or perspective?
 
@@ -148,6 +149,31 @@ perspective   s = focal / depth-of-this-point       scale falls off with depth
 Measured on a real project: in isometric every tower draws at exactly 5.105
 pixels per unit of height; in perspective that ranges from 4.13 to 5.25 across
 the same towers.
+
+### Implicit references
+
+Declaring a TypeORM relation across a bounded context couples the two contexts,
+so plenty of codebases store a bare `noteId` column instead. That reference is
+real — application code has to honour it — but the ORM cannot see it, the
+database has no constraint, and no schema tool will draw it.
+
+The `schema` view infers those from column names: a column ending `Id` or `_id`
+whose stem matches an entity class or table name. `parentId` reads as a
+self-reference. A column matching no entity is left alone rather than guessed at.
+
+On one real backend that turns 4 declared relations into 14 real ones, 10 of
+which cross a context boundary.
+
+## Churn and hotspots
+
+If the scanned tree is inside a git repository, metatron reads `git log
+--numstat` and records commits, lines added and removed, first and last touch,
+and distinct authors per file. Set `churnSince: '2 years ago'` in the config to
+bound it. Outside a repo it is skipped silently — `churnMeta.available` says
+which.
+
+The `hotspots` finding ranks files by commits multiplied by dependents. High on
+both is where refactoring pays for itself and where a mistake travels furthest.
 
 ## Commands
 
@@ -182,6 +208,7 @@ metatron --help
 | `infraModules` | modules that are plumbing, not bounded contexts. |
 | `crossDomainGateways` | the only patterns a cross-context import may land on. |
 | `moduleOf` | `(rel) => string`, if the first path segment isn't the module. |
+| `churnSince` | git revision-range date, e.g. `'2 years ago'`, to bound history. |
 
 **Declare the flow, get the rules.** Write
 
@@ -263,7 +290,8 @@ glyphs. Look at the picture.
 graph) · `fileNodes` / `fileLinks` (file graph, links tagged with the rule they
 break) · `modules`, `domainModules`, `platformModules` · `allModuleEdges`,
 `domainEdges` · `cycles` (Tarjan SCCs with sanctioned carve-outs applied
-progressively) · `crossDomain` · `ports` · `endpoints` · `shape` · `findings`.
+progressively) · `crossDomain` · `ports` · `endpoints` · `shape` · `findings` · `dataModel` (entities, columns, declared and inferred
+relations) · `orphans` · `churn` / `churnMeta`.
 
 ## Prior art
 
