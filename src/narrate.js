@@ -196,6 +196,11 @@ module.exports = function narrate(m) {
         (busiest.f !== top.f ? `${mono(busiest.f)} changes most often (${busiest.commits}), ` : '') +
         `${mono(central.f)} is depended on by the most files (${central.deps}). ` +
         `A file high on one axis alone is usually fine; it is the overlap that costs.`;
+      if (m.tests && m.tests.meta && m.tests.meta.reliable) {
+        const ringed = pts.filter((x) => !m.tests.bySource[x.f]).length;
+        N.hotspots += ` ${num(ringed)} of the ${num(pts.length)} files with history have no test file — the dashed rings — and a ring in the corner is where to test first. ` +
+          `"Tested" means a spec file was located by name, not that the spec asserts anything: presence, not quality.`;
+      }
     }
   }
 

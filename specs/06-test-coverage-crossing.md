@@ -1,11 +1,11 @@
 ---
 title: Test Presence Crossed With Risk
-status: draft
+status: implemented
 project: metatron-nestjs
 location: specs/06-test-coverage-crossing.md
 created: 2026-08-24
 tags: [analysis, testing, hotspots, findings]
----
+implemented: 2026-09-16
 
 # Test Presence Crossed With Risk
 
@@ -147,3 +147,79 @@ suite to have been run and metatron's whole premise is static.
   test findings.
 - `aggregator 0/7` appears without anyone having typed it.
 - The hotspots ring toggle is screenshot-verified in both themes.
+
+## Implementation notes (2026-09-16)
+
+Landed in `src/defaults/nestjs.js` (the three default `testLocators`, exactly
+the spec's list), `src/scan.js` (forward pass, reverse check, `byPattern`,
+the two findings, the reliability gate), `adapters/hotspots.js` (passes
+`tests` through only when `meta.reliable`), `templates/hotspots.html` (ring,
+toggle, stat, legend, inspector section) and `bin/metatron.js` (the warning).
+
+**Re-measured on the real projects, 2026-09-16.** The project set moved
+since the spec was written and then settled: chronus, kairos, omega,
+cereberus, nous and vereveil — only vereveil carries an `arch.config.js`.
+Chronus's numbers grew from the spec's 13 `__specs__/` dirs / 22 spec files
+to 19 / 28.
+
+| project | spec files | matched | reliable | outcome |
+|---|---|---|---|---|
+| chronus | 28 | 25 | yes | findings reported; `aggregator 0/7` present |
+| kairos | 0 | 0 | yes | reliable zero; ranked finding fires (15 files) |
+| omega | 12 | 11 | yes | findings reported |
+| cereberus | 3 | 3 | yes | findings reported |
+| nous | 9 | 7 | yes | findings reported; mixed layout, both locators used |
+| vereveil | 20 | 14 | **no** | findings suppressed, CLI warns |
+
+Chronus's three unmatched specs were all checked against the tree: one
+`converter/__specs__/` directory whose source file no longer exists (a true
+orphan), one spec placed in the parent's `__specs__/` instead of its source's
+own, and one spec named after the feature rather than the file. The reverse
+check is doing its job: they are listed, not silently dropped.
+
+Nous is the mixed case: six of its seven matches come from the `__specs__`
+locator and one from the sibling locator, and its two unmatched specs are the
+same class as chronus's — one named after the feature rather than the file
+(`extract-links-from-html.spec.ts` for `...-from-html.transaction.script.ts`),
+one filed in the parent's `__specs__/` (`users.domain` for a service one level
+deeper).
+
+Vereveil is the first project the self-check actually suppressed: its specs
+are named after concepts (`cell-ts.spec.ts`, `invite-lifecycle-ts.spec.ts`),
+not after source files, so 6 of 20 (30%) match nothing. The hotspots view for
+that project ships with `tests: null` — no toggle, no stat, no rings — and its
+findings are byte-identical to `main`'s.
+
+**Deviations from the spec:**
+
+- The acceptance criterion "22 of 22 matched" is met in spirit, not in
+  number: the tree changed under the spec. The property it exists to test —
+  `reliable: true` on a layout the locator fits — still holds, with the
+  remainder genuinely unmatched.
+- `untested-risk` skips the scanner's usual skip set (spec, test-util,
+  migration, bootstrap), so wiring files like `app.module.ts` never rank as
+  "high-risk untested" even though they still get their ring in the lens —
+  the ring is a per-file fact, the finding is a ranked shortlist.
+- `meta.matched` counts spec files claimed by exactly one source, not source
+  files that found a spec; the two are equal when every match is 1:1.
+- `meta.strategy` records the dominant strategy — the one that produced the
+  most matches — not the first one tried. Nous mixes layouts (six `__specs__`
+  matches, one sibling) and reports `index 0`.
+
+**Lens.** The ring is a dashed circle at radius +2.6, toggled by a default-on
+`untested` button in the bar, with a legend entry and an `untested in view`
+stat. The inspector gains a Test section: the spec path, or `none`. When the
+locator is unreliable the whole feature is absent from the page, not merely
+empty. Screenshot-verified in both themes on chronus and nous; the
+suppressed state screenshot-verified on vereveil.
+
+`npm test` runs 43 tests; 11 are new, over `test/fixtures/tests/` (both
+locators, the orphan, the ratio finding, both suppression triggers, and the
+ranked finding over a temporary git repository so the churn numbers are
+deterministic).
+
+Scanned all six projects with this branch and with `main` in a worktree:
+every part of the model outside `tests`, `generatedAt` and the two new
+findings is byte-identical; on vereveil, where the findings are suppressed,
+even the findings list is byte-identical. Headless Chromium logs no console
+errors on any of the views.
