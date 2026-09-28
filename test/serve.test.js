@@ -133,3 +133,14 @@ test('with watching on, saving a .ts file re-scans once per burst', async () => 
     fs.rmSync(wdir, { recursive: true, force: true });
   }
 });
+
+test('/api/change on a directory that is not a repository is a 400 that says why', async () => {
+  const r = await get('/api/change');
+  assert.strictEqual(r.status, 400);
+  assert.match((await r.json()).error, /not a git repository/);
+});
+
+test('/api/source?rev= answers only for a head this server scanned', async () => {
+  const r = await get('/api/source?file=' + encodeURIComponent('things/domain/utils/date.utils.ts') + '&rev=' + 'a'.repeat(40));
+  assert.strictEqual(r.status, 404);
+});
