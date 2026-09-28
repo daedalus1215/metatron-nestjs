@@ -12,10 +12,16 @@ module.exports = function flyover(D) {
   const nodesByMod = {};
   for (const n of D.nodes) {
     if (n.tier > SHOW_TIER_MAX) continue;
-    (nodesByMod[n.module] = nodesByMod[n.module] || []).push({
-      id: n.id, label: n.label, tier: n.tier, count: n.count, patterns: n.patterns,
-      files: n.files.map((f) => ({ f: f.f.slice(n.id.length + 1) || f.f, p: f.p })),
-    });
+  (nodesByMod[n.module] = nodesByMod[n.module] || []).push({
+    id: n.id, label: n.label, tier: n.tier, count: n.count, patterns: n.patterns,
+    // The path is module-relative, not node-relative: a node's id carries its
+    // label (module/(root), module/domain/services) and slicing on it mangles
+    // files that sit directly under the module.
+    files: n.files.map((f) => ({
+      f: f.f.startsWith(n.module + '/') ? f.f.slice(n.module.length + 1) : f.f,
+      p: f.p,
+    })),
+  });
   }
 
   // findings are reported as file paths, so a tower can carry its own deviations
