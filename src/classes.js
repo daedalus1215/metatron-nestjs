@@ -200,8 +200,13 @@ function parse(src) {
         start: lineAt(start), end: lineAt(Math.max(start, end - 1)), endIdx: end,
       });
     }
-    // A property: `x = …`, `x: T = …`, `x: T;`. An arrow value makes it a method.
-    if (src[j] === ':') j = until(j + 1, '=;\n');
+    // A property: `x = …`, `x: T = …`, `x: T;`. An arrow value makes it a
+    // method; anything else is a field, kept with its type and initialiser so
+    // a call on it can say what it lands on (`this.logger.log(` is a library
+    // call, not a gap in a trace).
+    let type = null;
+    if (src[j] === ':') { const t = j + 1; j = until(t, '=;\n'); type = flat(t, j) || null; }
+    const field = (init) => ({ name, type, init, static: out.static, line: lineAt(start) });
     if (src[j] === '=' && src[j + 1] !== '>') {
       const a = arrowAt(j + 1);
       if (a) {
@@ -212,13 +217,14 @@ function parse(src) {
           start: lineAt(start), end: lineAt(Math.max(start, a.end - 1)), endIdx: a.end,
         });
       }
-      return { end: until(j + 1, ';\n') + 1 };
+      const e = until(j + 1, ';\n');
+      return { end: e + 1, field: field(flat(j + 1, e) || null) };
     }
-    return { end: Math.min(bodyEnd, until(j, ';\n') + 1) };
+    return { end: Math.min(bodyEnd, until(j, ';\n') + 1), field: field(null) };
   }
 
   function classBody(open, bodyClose) {
-    const members = [];
+    const members = [], fields = [];
     let i = open + 1, decos = [], mods = new Set(), start = -1;
     while (i < bodyClose) {
       i = ws(i);
@@ -235,10 +241,11 @@ function parse(src) {
       }
       const m = member(start, i, decos, mods, bodyClose);
       if (m.name) members.push(m);
+      else if (m.field) fields.push(m.field);
       i = m.endIdx !== undefined ? m.endIdx : Math.max(m.end, i + 1);
       decos = []; mods = new Set(); start = -1;
     }
-    return members;
+    return { members, fields };
   }
 
   function interfaceBody(open, bodyClose) {
@@ -301,7 +308,7 @@ function parse(src) {
         name, exported: mods.has('export'), default: mods.has('default'), abstract: mods.has('abstract'),
         extends: ext ? ext[1] : null, implements: implementsList, decorators: decos,
         start: lineAt(start), end: lineAt(bodyClose), startIdx: start, open, close: bodyClose,
-        members: classBody(open, bodyClose),
+        ...classBody(open, bodyClose),
       });
       i = bodyClose + 1; reset(); continue;
     }

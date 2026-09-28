@@ -380,7 +380,9 @@ list now reads as leads.
 - **Calls through anything other than `this.x.method(`**: destructured
   deps, `this.x?.method(`, calls through a local alias. `trace()` doesn't
   follow these today either. If they matter, they are one fix that improves
-  both.
+  both. *(2026-09-27: `this.x?.method(` and calls through fields are now
+  followed, see the follow-ups below. Destructuring, aliases and inheritance
+  were measured first and left out.)*
 - **Inheritance.** A class that `extends` another inherits its
   constructor and methods. Recording `extends` as a field is cheap and is
   included. Merging an inherited constructor's sockets is not: the base
@@ -390,3 +392,37 @@ list now reads as leads.
   chosen so it could take one: a component is a brick, its props and the
   hooks and context it consumes are its sockets, and what it renders are
   its connections. None of that is built here.
+
+## Follow-ups (2026-09-27)
+
+### Calls through fields, and `this.x?.method(`
+
+The walker now records each class's **fields**, with their declared type and
+initialiser. A call on `this.x` where `x` is not injected is resolved
+through them, the same way in `trace()` and in `calls`:
+
+| field | result |
+|---|---|
+| typed as, or made with `new`, a class in the tree | followed. The trace hop carries `viaField`, the call carries `field: <name>`, and no wire is drawn, because nothing was injected |
+| typed as, or made with, anything else (`Logger`, `Map`, `Repository<…>`) | a library call: passed over, no stall |
+| untyped and set from an expression (an object literal, a factory call) | `trace-stalled`, reason `field-unknown` |
+| not declared at all | `trace-stalled`, reason `dep-not-injected`, as before |
+
+On chronus all 6 `trace-stalled` diagnostics were library calls: `Logger`
+fields in four audio classes (`HermesRemoteCaller` twice), a `Map` in
+`AudioFileCache`, and a `Repository<TagNote>` set from
+`dataSource.getRepository` in `TagNoteRepository`. They are now 0. Hops (307) and calls (387) are
+unchanged, so nothing real was lost. Omega had none. Spec 07's fixture has
+an object-literal field, and its stall now reads `field-unknown` instead of
+`dep-not-injected`.
+
+`this.x?.method(` is matched wherever `this.x.method(` is.
+
+### Measured and left out
+
+Destructured dependencies (`const { repo } = this`), local aliases
+(`const r = this.repo`) and in-tree inheritance occur **zero times** in
+chronus and omega, the only NestJS backends here. The only base classes are
+Nest's `PassportStrategy` and `AuthGuard`. Parsing for shapes no codebase
+uses would be tested only against fixtures, so they stay listed under *What
+it can't see* in the README until a real codebase needs them.

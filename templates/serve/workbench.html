@@ -170,6 +170,11 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
 .edge.c-rewire { stroke:var(--violet); opacity:1; stroke-width:2.6; }
 .edge.c-territory { stroke:var(--green); opacity:.75; stroke-width:1.4; }
 .edge.c-kept { stroke:var(--blue); opacity:.9; stroke-width:1.8; }
+.edge.c-detached { stroke:var(--rose); opacity:.85; stroke-width:1.8; stroke-dasharray:6 4; }
+.brick.removed rect.body { fill:var(--paper); stroke:var(--rose); stroke-dasharray:6 3; }
+.brick.removed .name { text-decoration:line-through; fill:var(--ink2); }
+.brick.removed { opacity:.8; }
+.chip.removed { background:color-mix(in srgb, var(--rose) 18%, var(--surface)); color:var(--rose); }
 .ring { fill:none; stroke-width:2; pointer-events:none; }
 .ring.added { stroke:var(--green); } .ring.edited { stroke:var(--amber); }
 .cp { border-bottom:1px solid var(--rule); padding:8px 0 10px; max-height:55%; overflow:auto; font-size:12.5px; }
@@ -207,7 +212,7 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
   <span class="err" id="err" hidden></span>
   <span class="spacer"></span>
   <form class="chg" id="chgform" aria-label="Show a change">
-    <input id="chg" placeholder="main...feat/x · #12 · empty: work in progress" aria-label="Range, PR, or empty for work in progress">
+    <input id="chg" placeholder="main...feat/x · #12 · a1b2c3d, e4f5a6b · empty: work in progress" aria-label="Range, PR, commits, or empty for work in progress">
     <button type="submit">show change</button>
     <button type="button" id="chgclear" hidden>clear</button>
   </form>
@@ -328,7 +333,8 @@ function changeNodes() {
     if (b && !nodes.has(id) && !S.hidden.has(b.pattern) && nodes.size < 120) nodes.set(id, 0);
   };
   for (const [id, st] of Object.entries(C.bricks)) if (st === 'added' || st === 'edited') put(id);
-  for (const p of C.pairs) if (p.class !== 'detached') { put(p.from); put(p.to); }
+  for (const p of C.pairs) { put(p.from); put(p.to); }
+  for (const r of C.removed) put(r.id);
   return { nodes, cut: 0 };
 }
 
@@ -419,6 +425,15 @@ function renderBench() {
       }
     });
   }
+  // What the change detached: in the base, gone at the head. Drawn from the
+  // pairs, since the head model has no wire or call left to draw.
+  if (S.change) {
+    for (const d of S.change.pairs) {
+      if (d.class !== 'detached' || !P.has(d.from) || !P.has(d.to)) continue;
+      const p = P.get(d.from), q = P.get(d.to);
+      edges += `<path class="edge c-detached" data-from="${esc(d.from)}" data-to="${esc(d.to)}" d="${curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+    }
+  }
   // A call with no wire behind it: a function brick, a static call, main.ts.
   for (const id of nodes.keys()) {
     const seen = new Set();
@@ -433,7 +448,7 @@ function renderBench() {
   for (const [id] of nodes) {
     const b = S.byId.get(id), p = P.get(id), col = tierVar(b.tier);
     const cst = S.change ? S.change.bricks[id] : null;
-    const paint = cst === 'added' || cst === 'edited' ? cst : (S.change && mapMode ? 'ctx' : '');
+    const paint = b.ghost ? 'removed' : cst === 'added' || cst === 'edited' ? cst : (S.change && mapMode ? 'ctx' : '');
     let g = `<g class="brick ${b.shape === 'port' ? 'port' : ''} ${id === S.focus && !mapMode ? 'focus' : ''} ${paint}" data-id="${esc(id)}">`
       + `<rect class="body" x="${p.x}" y="${p.y}" width="${p.w}" height="${BH}" rx="5" stroke="${col}"/>`
       + `<rect x="${p.x}" y="${p.y}" width="5" height="${BH}" rx="2" fill="${col}"/>`
@@ -477,7 +492,8 @@ function legend() {
     ${S.change ? `<span><i class="sw" style="background:var(--green)"></i>attachment: new → existing</span>
     <span><i class="sw" style="background:var(--amber)"></i>graft: existing → new</span>
     <span><i class="sw" style="background:var(--violet)"></i>rewire: existing → existing</span>
-    <span><i class="sw" style="background:var(--blue)"></i>new calls on a kept wire</span>` : ''}</div>`;
+    <span><i class="sw" style="background:var(--blue)"></i>new calls on a kept wire</span>
+    <span><i class="sw" style="background:var(--rose)"></i>detached · a dashed brick was removed</span>` : ''}</div>`;
 }
 
 // ------------------------------------------------------------------ hover
@@ -545,6 +561,7 @@ function renderInspector() {
     <div class="chips"><span class="chip">${esc(b.pattern)}</span><span class="chip">${esc(b.module)}</span>
     <span class="chip">${esc(tier ? tier.name : b.tier)}</span><span class="chip">${esc(b.shape)}</span>
     ${S.change && S.change.bricks[b.id] && S.change.bricks[b.id] !== 'unchanged' ? `<span class="chip ${esc(S.change.bricks[b.id])}">${esc(S.change.bricks[b.id])} in this change</span>` : ''}
+    ${b.ghost ? '<span class="chip removed">removed in this change · shown as it was</span>' : ''}
     ${b.extends ? `<span class="chip">extends ${esc(b.extends)}</span>` : ''}</div>`;
   let h = '';
   const row = (lines, inner, extra = '') => `<button class="row" data-lines="${lines[0]}-${lines[1]}">${inner}${extra}</button>`;
@@ -609,7 +626,8 @@ function highlight(lines) {
   });
 }
 async function renderSource(b) {
-  const rev = S.change ? S.change.rev : null;
+  // A removed brick is read at the base; everything else at this frame.
+  const rev = S.change ? (b.ghost ? S.change.base : S.change.rev) : null;
   const key = S.version + '|' + (rev || '') + '|' + b.file;
   const box = $('src');
   if (!S.src.has(key)) {
@@ -710,11 +728,14 @@ async function load() {
 // ------------------------------------------------------------------ change mode (spec 11)
 function specQuery(spec) {
   if (spec === 'wip' || spec === '') return '';
+  if (spec.startsWith('commits:')) return 'commits=' + encodeURIComponent(spec.slice(8));
   const pr = spec.match(/^(?:pr:|#)(\d+)$/);
   return pr ? 'pr=' + pr[1] : 'range=' + encodeURIComponent(spec);
 }
 async function loadChange(spec, frame, map) {
   spec = (spec.trim() || 'wip').replace(/^#(\d+)$/, 'pr:$1');
+  // One commit or a hand-picked set: hashes separated by commas or spaces.
+  if (/^[0-9a-f]{7,40}([\s,]+[0-9a-f]{7,40})*$/i.test(spec)) spec = 'commits:' + spec.split(/[\s,]+/).join(',');
   $('bench').innerHTML = '<div class="empty">Scanning the change…</div>';
   const q = specQuery(spec);
   const url = 'api/change?' + q + (frame !== null && frame !== undefined && frame !== '' ? (q ? '&' : '') + 'frame=' + frame : '');
@@ -729,8 +750,15 @@ async function loadChange(spec, frame, map) {
   S.spec = spec;
   S.change = d.change;
   index(d);
+  // Removed bricks are not in the head model: add them as ghosts, as they
+  // were at the base, linked by the pairs the change detached.
+  for (const r of d.change.removed) S.byId.set(r.id, Object.assign({}, r, { ghost: true }));
+  for (const p of d.change.pairs) {
+    if (p.class !== 'detached' || !(S.byId.get(p.from)?.ghost || S.byId.get(p.to)?.ghost)) continue;
+    add(S.out, p.from, p.to); add(S.inc, p.to, p.from);
+  }
   S.pairCls = new Map(d.change.pairs.map((p) => [p.from + '>' + p.to, p.class]));
-  $('chg').value = spec === 'wip' ? '' : spec.replace(/^pr:/, '#');
+  $('chg').value = spec === 'wip' ? '' : spec.replace(/^pr:/, '#').replace(/^commits:/, '').replace(/,/g, ', ');
   $('chgclear').hidden = false;
   renderPats(); status(); renderChangePanel();
   const h = readHash();
@@ -756,7 +784,8 @@ function renderScrub() {
     $('frame').max = C.frames.length - 1;
     $('frame').value = C.frame;
     const f = C.frames[C.frame];
-    $('framelabel').innerHTML = `<strong>${C.frame}/${C.frames.length - 1}</strong> ${f.sha ? esc(f.sha.slice(0, 7)) + ' ' : ''}${esc(f.subject)}`;
+    $('framelabel').innerHTML = `<strong>${C.frame}/${C.frames.length - 1}</strong> ${f.sha ? esc(f.sha.slice(0, 7)) + ' ' : ''}${esc(f.subject)}`
+      + (f.built ? ' <span class="muted">· built: the base plus the picked commits so far</span>' : '');
   }
 }
 function renderChangePanel() {
@@ -782,13 +811,15 @@ function renderChangePanel() {
     const st = Object.entries(C.studs[k] || {}).filter(([, v]) => v !== 'unchanged');
     return `<div class="it">${link(k)} <span class="muted">${st.length ? st.map(([n, v]) => esc(n) + (v === 'edited' ? '' : ' (' + v + ')')).join(', ') : 'constructor, fields or decorators'}</span></div>`;
   }).join('');
-  if (C.removed.length) h += `<h4>removed</h4>` + C.removed.map((r) => `<div class="it muted">${esc(r.name)} · ${esc(r.file)}</div>`).join('');
+  if (C.removed.length) h += `<h4><i class="sw" style="background:var(--rose)"></i>removed</h4>` + C.removed.map((r) => `<div class="it">${link(r.id)} <span class="muted">${esc(r.pattern)}</span></div>`).join('');
   if (s.detached) h += `<div class="it muted">${s.detached} connection${s.detached === 1 ? '' : 's'} detached</div>`;
   cp.innerHTML = h;
 }
 $('chgform').addEventListener('submit', (e) => {
   e.preventDefault();
+  // A new change starts on its map, not on whatever was focused before.
   S.focus = null;
+  history.pushState(null, '', location.pathname);
   loadChange($('chg').value, null, true).then(() => writeHash(true));
 });
 $('chgclear').addEventListener('click', () => {

@@ -52,10 +52,12 @@ test('an unaccepted shape stalls with body-not-found', () => {
   assert.strictEqual(d[0].depth, 1);
 });
 
-test('a this.x on a class field stalls with dep-not-injected, and the trace continues', () => {
+test('a this.x on an untyped field stalls with field-unknown, and the trace continues', () => {
+  // `private cache = { warm: … }`: a field, but its value is an object literal
+  // whose methods metatron cannot follow.
   const d = stall('meet/domain/services/meet.service.ts', 'findOne');
   assert.strictEqual(d.length, 1);
-  assert.strictEqual(d[0].reason, 'dep-not-injected');
+  assert.strictEqual(d[0].reason, 'field-unknown');
   assert.ok(flat('/meets/:id').some((h) => h.method === 'findById'));
 });
 

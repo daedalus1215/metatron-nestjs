@@ -132,9 +132,8 @@ For a range of several commits, frame *k* compares the base with commit
 come from `git rev-list --reverse --first-parent base..head`, so a merge
 from the base branch into the PR is one frame, not a replay of main.
 
-A commit set that is not a contiguous range (a cherry-picked handful) is
-out of scope. Per-commit overlays would each need their own base, and a
-summary of the set would need its own definition.
+A commit set that is not a contiguous range was out of scope in the first
+cut. It is now built. See *Follow-up: commit sets* below.
 
 ### The page
 
@@ -149,8 +148,10 @@ summary of the set would need its own definition.
   - `added` bricks are tinted green, and `edited` ones amber
   - edges are coloured by class, with `attachment` and `graft` the loudest
   - a stud pip is outlined by its own status
-- **Removed bricks** are listed in the change panel, not drawn: the head
-  model has no position for them.
+- **Removed bricks** are drawn as ghosts, dashed and struck through, as
+  they were at the base. `removed` carries each whole brick, and detached
+  connections are dashed red. Their source is served at the base commit.
+  *(Added 2026-09-27; first cut listed them only.)*
 - **The left column gains a change panel**, built from the summary:
   attachments grouped by the existing brick they land on, grafts, rewires,
   and edited bricks with their edited studs. Every row focuses a brick.
@@ -213,14 +214,78 @@ relative to the repository root, so it matched nothing, and #177 read as 35
 added and 34 removed. Every pathspec command now runs from the repository
 root, and the test repository keeps its config in `backend/`.
 
-**Not changed here:** `metatron diff <A>...<B>` still scans the working
-tree as its head (spec 04). For a branch that is not checked out, its blast
-radius describes the wrong tree. The overlay reads the head from git
-objects, so the two can disagree on such a range. Fixing `diff` is a
-separate change to spec 04's behaviour.
+**Resolved later (2026-09-27):** `metatron diff <A>...<B>` scanned the
+working tree as its head, so on a branch that was not checked out it
+disagreed with the overlay. `diff` now reads its head from git too. See the
+amendment at the end of spec 04.
 
 ## Out of scope
 
-- **Commit sets that are not a range.** See Frames.
 - **Posting anything to a PR.** The overlay reads.
-- **Drawing removed bricks on the bench.**
+
+## Follow-up (2026-09-27): removed bricks on the bench
+
+The head model has no removed brick, so the first cut listed removed
+bricks and drew nothing. Now:
+
+- `compare()` puts the **whole base brick** in `removed`: studs, sockets,
+  internals and lines.
+- The page adds each one as a **ghost**, dashed and struck through, linked
+  by the pairs the change detached. The change map includes the ghosts and
+  both ends of every detached pair.
+- **Detached pairs** are drawn dashed red, straight from `pairs`, since the
+  head has no wire or call left to draw them from.
+- **The server keeps the base's text** as well as the head's, so a ghost's
+  source panel shows the file as it was (`/api/source?rev=<base>`).
+
+On chronus #178 the map draws 2 of its 4 removed bricks (the other two are
+DTOs, hidden by default), and 15 detached edges. `CreateTagAction` is one of
+the two: it was deleted in `b14b886`, *"drop the never-registered
+create-tag"*. Clicking it shows its source at the base and its three severed
+connections. `test/change-git.test.js` covers the whole-brick payload and
+the base-side source.
+
+## Follow-up (2026-09-27): commit sets
+
+`commits=a,b,c` (or, in the bar, hashes separated by commas or spaces)
+shows **those commits alone**. One definition covers every case:
+
+- **The base** is the first parent of the oldest commit in the set.
+- **Frame *k*** is the base with the set's first *k* commits applied in
+  order.
+- **The summary** is the last frame compared with the base, like any other
+  change.
+
+A single commit is the special case of a set of one: it is shown against its
+parent.
+
+**Order comes from ancestry, not the clock.** Commits made in the same
+second sort arbitrarily by time, which broke the first version. The set is
+ordered by a topological walk bounded at its common ancestor.
+
+**Frames are commits where they can be.** While the set is an unbroken
+first-parent chain from the base, a frame is simply that commit, read like a
+range's. Past the first gap, a frame is **built**:
+
+1. `read-tree` the base into a temporary index.
+2. For each commit, `git diff --binary <parent> <commit> -- <root>` piped
+   into `git apply --cached`.
+3. Read the blobs back through the same index.
+
+The temporary index lives in a temporary object directory, which uses the
+repository's own as an alternate, so the blobs `apply` creates never enter
+the repository. Nothing is written to it: the test checks `count-objects`
+before and after, and so did the chronus run below. A built frame's `rev`
+is `set-<hash of its commits>`, so the source panel can read it back.
+
+**Refusal.** A commit that does not apply without one left out of the set is
+refused, with its name and git's first line of complaint. Earlier frames
+still work.
+
+On chronus, from PR #178:
+
+| set | result |
+|---|---|
+| `791a16c, b14b886` (folder move and tags through `TagService`, skipping `FolderService`) | frame 2 is built: 7 rewires, 6 detached, 3 removed |
+| `6a867cd` (`FolderService` alone) | shown against its parent: 6 grafts |
+| `cffc7a3, 6a867cd` (`FolderService` without the move it needs) | refused: *patch failed: …/bulk-reparent.action.ts:1* |

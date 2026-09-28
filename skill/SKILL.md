@@ -1,9 +1,10 @@
 ---
-name: metatron
-description: Build or refresh visual architecture views of a NestJS/TypeScript backend, and check a codebase against its own stated architecture rules. Use when asked to map/visualise/diagram a backend's architecture, to bootstrap architecture views in a project that has none, to refresh them after changes, to add a new visual style, or to find layering violations, cross-context leaks, dead code and naming drift.
+name: metatron-nest
+description: Build or refresh visual architecture views of a NestJS/TypeScript backend, and check a codebase against its own stated architecture rules. Use when asked to map/visualise/diagram a backend's architecture, to bootstrap architecture views in a project that has none, to refresh them after changes, to add a new visual style, to find layering violations, cross-context leaks, dead code and naming drift, to explore how classes are wired together (the workbench), or to see how a PR, a branch or a set of commits touches existing code.
+tags: [nestjs, architecture, visualization, code-review]
 ---
 
-# metatron
+# metatron-nest
 
 Compiles a NestJS/TypeScript backend into a measured model and renders it through
 visual lenses. Repo: `github:daedalus1215/metatron-nestjs`.
@@ -13,10 +14,10 @@ visual lenses. Repo: `github:daedalus1215/metatron-nestjs`.
 If the project already has `arch.config.js`:
 
 ```bash
-npx metatron                # scan + build every lens
-npx metatron scan           # model only
-npx metatron views          # re-render from the cached model
-npx metatron views layers   # one lens
+npx metatron-nest                # scan + build every lens
+npx metatron-nest scan           # model only
+npx metatron-nest views          # re-render from the cached model
+npx metatron-nest views layers   # one lens
 open .metatron/index.html
 ```
 
@@ -89,8 +90,8 @@ have happened.
 If the project has `arch.baseline.json` beside its config, it is enforcing:
 
 ```bash
-npx metatron check              # 0 clean · 1 new violations · 2 tool/config error
-npx metatron baseline --update  # accept the current state, keeping `note` fields
+npx metatron-nest check         # 0 clean · 1 new violations · 2 tool/config error
+npx metatron-nest baseline --update  # accept the current state, keeping `note` fields
 ```
 
 Never run `baseline --update` to make a failing check pass unless the user has
@@ -105,10 +106,10 @@ When asked what a change touches, what its blast radius is, or what a commit/PR
 would affect:
 
 ```bash
-npx metatron diff                   # <merge-base with default branch>...HEAD
-npx metatron diff <range>           # e.g. main...HEAD, HEAD~1...HEAD
-npx metatron diff --staged          # what is staged
-npx metatron diff --format markdown # pasteable into a PR description
+npx metatron-nest diff                   # <merge-base with default branch>...HEAD
+npx metatron-nest diff <range>           # e.g. main...HEAD, HEAD~1...HEAD
+npx metatron-nest diff --staged          # what is staged
+npx metatron-nest diff --format markdown # pasteable into a PR description
 ```
 
 It is a report, not a gate: stdout only, exit 0, no network, no PR required.
@@ -129,7 +130,7 @@ When the user wants to explore how classes fit together interactively, or
 inspect a class and what calls it:
 
 ```bash
-npx metatron serve                  # http://127.0.0.1:4477/, re-scans on save
+npx metatron-nest serve                  # http://127.0.0.1:4477/, re-scans on save
 ```
 
 It is a long-running local server (bound to 127.0.0.1), so start it in the
@@ -146,7 +147,8 @@ For questions you can answer yourself, read the wiring model in
 
 To show a change structurally (what a PR adds, and where it meets the
 existing code), open the workbench at `http://127.0.0.1:4477/#change=<range>`
-(or `#change=pr:<N>`, or `#change=wip`). The same analysis is in
+(or `#change=pr:<N>`, `#change=commits:<sha>,<sha>` for a hand-picked set or
+one commit, or `#change=wip`). The same analysis is in
 `src/change.js` (`changeAt(cfg, { range })`). Its `summary.attachments`
 (new code leaning on existing bricks), `summary.grafts` (existing bricks
 changed to reach new code) and `summary.rewires` answer "how does this change
@@ -182,7 +184,7 @@ the sentence is generated from the model at build time. Slots:
   a trace stopped at a port metatron would not follow (`port-unbound`,
   `port-ambiguous`), or a trace was cut mid-chain (`trace-stalled`, with
   `body-not-found`, `dep-not-injected` or `depth-cap`) — the endpoint's
-  `flat` is then shorter than the request's real path, and `metatron diff`
+  `flat` is then shorter than the request's real path, and `metatron-nest diff`
   sees less of it. Coverage does not cover this — coverage measures
   classification only.
 - **Check `tests.meta.reliable` before trusting any test finding.** When more

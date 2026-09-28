@@ -41,7 +41,7 @@ name no longer matches where it sits.
 **3. Run it.**
 
 ```bash
-metatron            # or `npx metatron` if you installed it into the project
+metatron-nest       # or `npx metatron-nest` if you installed it into the project
 ```
 
 **4. Open the result.**
@@ -56,7 +56,7 @@ any login to look at them — they're just files.
 You can also run it without `cd`-ing anywhere:
 
 ```bash
-metatron ~/code/my-api/backend
+metatron-nest ~/code/my-api/backend
 ```
 
 ---
@@ -132,12 +132,20 @@ or is declared in the tree and provided nowhere. `port-ambiguous` means two
 modules bind the same token to different classes. Nest settles that by module
 scope, which metatron does not model, so it declines to pick.
 
-A third kind concerns the middle of a trace. When a call inside a method
-body cannot be followed — the method's body is in a shape metatron does not
-read, the `this.x` is a class field rather than an injected dependency, or
-the trace is deeper than five classes — the hop stops and a `trace-stalled`
-diagnostic says where and why. A trace that ends is either short or cut;
-the diagnostics tell which.
+A third kind concerns the middle of a trace. A call on `this.x` is followed
+when `x` is injected, or is a field typed as, or created with `new`, a class
+in the tree. A call on a field holding a library object (`this.logger.log`,
+`this.cache.get` on a `Map`) is a library call, not a gap, and is passed over
+quietly. When a call cannot be followed, the hop stops and a `trace-stalled`
+diagnostic says where and why:
+
+- the method's body is in a shape metatron does not read
+- `this.x` is neither injected nor declared (`dep-not-injected`)
+- `this.x` is a field whose type metatron cannot read, such as an object
+  literal (`field-unknown`)
+- the trace is deeper than five classes (`depth-cap`)
+
+A trace that ends is either short or cut; the diagnostics tell which.
 
 A fourth kind concerns the wiring model behind the workbench. Every
 constructor parameter of a class Nest builds is a socket, and each one is
@@ -154,8 +162,8 @@ metatron observes by default. To make it *enforce*, record today's violations as
 accepted and fail the build when a new one appears:
 
 ```bash
-metatron baseline     # writes arch.baseline.json
-metatron check        # exit 0 clean, 1 new violations, 2 tool/config error
+metatron-nest baseline     # writes arch.baseline.json
+metatron-nest check        # exit 0 clean, 1 new violations, 2 tool/config error
 ```
 
 ```
@@ -169,7 +177,7 @@ metatron check · chronus
 
   known, unchanged      42
 
-FAIL — 1 new violation. Fix it, or run `metatron baseline --update` to accept it.
+FAIL — 1 new violation. Fix it, or run `metatron-nest baseline --update` to accept it.
 ```
 
 The baseline sits **beside `arch.config.js`**, not in the output directory —
@@ -198,8 +206,8 @@ says so.
 Adopting mid-stream on a codebase you do not want to clean up first:
 
 ```bash
-metatron check --allow-new 3      # ratchet the number down over time
-metatron check --rule orphans     # or gate one rule, everything else advisory
+metatron-nest check --allow-new 3      # ratchet the number down over time
+metatron-nest check --rule orphans     # or gate one rule, everything else advisory
 ```
 
 Violations that are **fixed** are reported but never removed automatically. A
@@ -208,7 +216,7 @@ real debt, and it would come back later as a "new" violation with no history.
 
 Aggregate findings — `dag` reports cycle totals, `app-apps` reports a spelling
 split — carry `gate: false` and never become violations. They are worth printing
-and meaningless to ratchet. `metatron baseline` lists which ones are excluded.
+and meaningless to ratchet. `metatron-nest baseline` lists which ones are excluded.
 
 ---
 
@@ -218,9 +226,9 @@ and meaningless to ratchet. `metatron baseline` lists which ones are excluded.
 change touch?":
 
 ```bash
-metatron diff               # <merge-base with the default branch>...HEAD
-metatron diff main...HEAD   # an explicit range
-metatron diff --staged      # what is about to be committed
+metatron-nest diff               # <merge-base with the default branch>...HEAD
+metatron-nest diff main...HEAD   # an explicit range
+metatron-nest diff --staged      # what is about to be committed
 ```
 
 ```
@@ -251,7 +259,7 @@ pipeline should branch on. `--format=markdown` is pasteable into a PR
 description, `--json` is for tooling. The report ends with a `focus:` line:
 a URL that opens the city view with only the changed files' towers lit, for
 the files that have towers. If the views have not been built it says
-`build the view first (metatron views)` instead of printing a dead link.
+`build the view first (metatron-nest views)` instead of printing a dead link.
 
 Three things the report refuses to do:
 
@@ -260,9 +268,12 @@ Three things the report refuses to do:
   no request actually reaches through the traced path is not an affected
   endpoint.
 - **Report a deleted file as having no impact.** A deleted file has no node in
-  the current model, so `diff` scans twice: once at the base of the range, with
-  the file contents resolved from git objects. The working tree is never
-  checked out or stashed, so the command is safe to run mid-edit. A rename is
+  the current model, so `diff` scans twice, once at each end of the range,
+  with the file contents resolved from git objects. The head is the range's
+  head commit (or the index, with `--staged`), not the working tree: a branch
+  you have not checked out is measured as it is on that branch, and uncommitted
+  edits never leak into a committed range. Nothing is checked out or stashed,
+  so the command is safe to run mid-edit. A rename is
   one change, not a deletion plus an addition: a violation that merely moved
   with a renamed file is folded, not reported as one new and one fixed.
 - **Blame the diff for a new violation in untouched code.** That is labelled a
@@ -273,8 +284,8 @@ Three things the report refuses to do:
 ## Workbench
 
 ```bash
-metatron serve              # http://127.0.0.1:4477/
-metatron serve --port 5000 --no-watch
+metatron-nest serve              # http://127.0.0.1:4477/
+metatron-nest serve --port 5000 --no-watch
 ```
 
 The views above are pictures. The workbench is somewhere to pick the code
@@ -298,7 +309,7 @@ links to the brick it lands in.
 It is a local server, bound to `127.0.0.1` only, because it serves source
 code. It re-scans when you save a `.ts` file, and the open page redraws
 with your place kept. The data comes from the wiring model (`bricks`,
-`wires`, `calls` in `model.json`). `metatron scan` prints its coverage line:
+`wires`, `calls` in `model.json`). `metatron-nest scan` prints its coverage line:
 
 ```
 wiring 271/271 sockets resolved (100.0%) · 30 framework · 0 unresolved
@@ -311,8 +322,11 @@ scan does not read, are invisible to it.
 
 ### A change on the workbench
 
-Type a range (`main...feat/x`), a PR (`#12`), or nothing (work in progress)
-into the bar. The bench switches to a **change map**: every brick the change
+Type a range (`main...feat/x`), a PR (`#12`), one or more commits
+(`a1b2c3d, e4f5a6b`), or nothing (work in progress) into the bar. A set of
+commits is shown on its own, applied in order onto the parent of the oldest,
+and nothing is written to the repository. A commit that needs one you left
+out is refused, by name. The bench switches to a **change map**: every brick the change
 added or edited, and both ends of every connection it made, in tier rows.
 New connections are coloured by which of their ends already existed:
 
@@ -321,6 +335,10 @@ New connections are coloured by which of their ends already existed:
 | **attachment** | new code plugging into an existing brick |
 | **graft** | an existing brick changed to reach new code |
 | **rewire** | two existing bricks newly connected: the old code's shape moved |
+| **detached** | a connection the change removed, drawn dashed red |
+
+A removed brick is drawn as a ghost, dashed and struck through, as it was
+before the change. Click it to read its source as it was.
 
 The panel on the left leads with where the change meets the codebase,
 grouped by the existing brick. A range with several commits gets a scrubber
@@ -329,7 +347,7 @@ that replays it one commit at a time.
 The head of a range is read from git objects, so a PR can be reviewed from
 any branch without checking it out. `#12` asks `gh` for the PR's commits. If
 the head commit is not local, the workbench prints the `git fetch` to run and
-does not fetch it for you. `metatron diff` ends with a link to the same
+does not fetch it for you. `metatron-nest diff` ends with a link to the same
 range on the workbench.
 
 ## On a new machine
@@ -337,12 +355,22 @@ range on the workbench.
 ```bash
 git clone https://github.com/daedalus1215/metatron-nestjs
 cd metatron-nestjs
-npm link          # puts `metatron` on your PATH
-metatron skill    # lets agent sessions use it without being told how
+npm link          # puts `metatron-nest` on your PATH
+metatron-nest skill    # lets agent sessions use it without being told how
 ```
 
-`metatron skill` copies the bundled skill to
-`~/.agents/skills/metatron/SKILL.md`. After that, a new agent session in **any**
+`metatron-nest skill` copies the bundled skill to
+`~/.agents/skills/metatron-nest/SKILL.md`. If you keep your skills in a
+version-controlled folder and link them into your agents, install it there
+instead and link it:
+
+```bash
+metatron-nest skill --dest ~/Projects/skills/skills/software-development
+ln -s ~/Projects/skills/skills/software-development/metatron-nest ~/.agents/skills/metatron-nest
+```
+
+Re-run the same `skill` command after updating metatron-nest to refresh the
+copy. After that, a new agent session in **any**
 repo already knows this tool exists — you can say "set up metatron here" or "map
 this backend" and it knows the whole procedure. Without it, you'd have to say
 "read the README in metatron-nestjs and use it", which also works.
@@ -353,13 +381,8 @@ installing a package shouldn't write into your home directory.
 Needs Node 18+. Chromium is optional, only for checking a view renders before
 you share it.
 
-If `metatron --help` prints something else, another tool of the same name is
-earlier on your PATH (the Rust sibling, `metatron-rust`, installs one through
-cargo). Run this one by its path, or give it an alias:
-
-```bash
-alias mtn='node ~/path/to/metatron-nestjs/bin/metatron.js'
-```
+The command is `metatron-nest`, not `metatron`, so it can sit beside the Rust
+sibling (`metatron-rust`), whose cargo-installed binary is called `metatron`.
 
 ---
 
@@ -462,19 +485,20 @@ churn does.
 ## Commands
 
 ```bash
-metatron [path]           scan and build everything
-metatron scan [path]      model only, no views
-metatron views [path]     rebuild views from the cached model
-metatron views layers     just one view
-metatron baseline         record today's violations as accepted
-metatron baseline --update   rewrite it, keeping hand-written notes
-metatron check            fail if new violations appeared
-metatron diff             what does this change touch? (report on stdout)
-metatron diff main...HEAD   an explicit range
-metatron diff --staged      what is about to be committed
-metatron serve            the workbench (local server, live re-scan)
-metatron skill            install the agent skill
-metatron --help
+metatron-nest [path]           scan and build everything
+metatron-nest scan [path]      model only, no views
+metatron-nest views [path]     rebuild views from the cached model
+metatron-nest views layers     just one view
+metatron-nest baseline         record today's violations as accepted
+metatron-nest baseline --update   rewrite it, keeping hand-written notes
+metatron-nest check            fail if new violations appeared
+metatron-nest diff             what does this change touch? (report on stdout)
+metatron-nest diff main...HEAD   an explicit range
+metatron-nest diff --staged      what is about to be committed
+metatron-nest serve            the workbench (local server, live re-scan)
+metatron-nest skill            install the agent skill
+metatron-nest skill --dest <dir>   ... into <dir>/metatron-nest/ instead
+metatron-nest --help
 ```
 
 Working on metatron itself: `npm test` runs the fixture suite.
@@ -584,9 +608,11 @@ DevTools protocol instead (`--remote-debugging-port`): navigate, wait, then
   Only `endpoints[].flat` and the wiring model's `calls` follow real calls
   through method bodies: `this.x.method(` through an injected dependency, a
   function imported from a util file, and `Cls.method(` on a static.
-- **Calls in other shapes are invisible.** A destructured dependency,
-  `this.x?.method(`, a call through a local alias, and callers outside the
-  scanned tree reach nothing. That is why a public method no call reaches is
+- **Calls in other shapes are invisible.** A destructured dependency
+  (`const { repo } = this`), a call through a local alias
+  (`const r = this.repo`), a subclass calling what its parent injected, and
+  callers outside the scanned tree reach nothing. (`this.x?.method(` and calls
+  through typed fields are followed.) That is why a public method no call reaches is
   `unseen` on the workbench, never "dead".
 - **Ports are followed only as far as a module file says.** A call through
   `@Inject(TOKEN)` continues into the class a module binds with `useClass` or

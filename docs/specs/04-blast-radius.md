@@ -64,7 +64,7 @@ in its `flat` trace, or is the endpoint's own file. This is the strongest signal
 in the report because it is call-based, not import-based — it says which HTTP
 surface actually executes the changed code.
 
-**3. Violation delta.** Scan the working tree, compare fingerprints against
+**3. Violation delta.** Scan the head (see the 2026-09-27 amendment below), compare fingerprints against
 `arch.baseline.json`, and attribute each new violation to whether it involves a
 changed file. A new violation in untouched code is a scan difference and should
 be labelled as such, not blamed on the diff.
@@ -213,3 +213,34 @@ arrow-function properties. Where a service declares its methods as arrow
 properties (Kairos's `MeetingService`), traces stop at the constructor, so
 the endpoint list is understated for that code; the blast radius is
 import-based and is not affected.
+
+## Amendment (2026-09-27): the head is read from git
+
+As first built, `analyze` scanned the **working tree** as the head of every
+range. That was right only when the range's head was checked out with a
+clean tree. It was wrong in two ways:
+
+- **A branch that was not checked out** was measured against whatever was:
+  `metatron diff main...feature` run from `main` reported violations and
+  reach as they are on `main`.
+- **Uncommitted edits leaked in.** An edit not yet committed to a file the
+  range changed showed up as part of the range.
+
+`--staged` had the same flaw: its change set was the index, and its model
+was the working tree.
+
+The head is now read the way the base always was, with nothing checked out:
+
+- **a range:** its head commit (`rev-parse <head>^{commit}`), through
+  `baseFileMap`
+- **`--staged`:** the index (`ls-files -s`, stage 0), through the same
+  batched `cat-file`
+
+Churn is bounded at the head commit, or at `HEAD` for the index.
+
+Three tests in `test/diff.test.js` cover it: a range whose head is not
+checked out, an uncommitted edit to a file the range changed, and a staged
+import undone in the working tree. All three fail against the old
+working-tree head. Found while building the change overlay (spec 11), which
+reads its head from git objects and so disagreed with `diff` on such
+ranges.

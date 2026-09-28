@@ -215,6 +215,7 @@ test('a removed brick is listed, with where it lived', () => {
   delete files['a/domain/services/new-helper.service.ts'];
   const r = compare(head, model(files));
   assert.deepStrictEqual(r.removed.map((x) => x.id), [HELP]);
+  assert.deepStrictEqual(r.removed[0].studs.map((x) => x.name), ['help'], 'the whole brick, as it was');
   assert.strictEqual(r.pairs.find((p) => p.to === HELP).class, 'detached');
 });
 

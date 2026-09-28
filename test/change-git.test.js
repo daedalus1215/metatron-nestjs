@@ -127,3 +127,72 @@ test('a moved file is a rename, not a removal plus an addition', () => {
   assert.strictEqual(change.bricks[id('repo/moved/a.repository.ts', 'ARepository')], 'unchanged');
   assert.strictEqual(change.summary.added, 0);
 });
+
+test('the workbench serves a removed brick, and its source at the base', async () => {
+  const { createWorkbench } = require('../src/serve');
+  git('checkout', '-q', '-b', 'trim', 'feat');
+  git('rm', '-q', 'backend/src/' + USE);
+  git('commit', '-q', '-m', 'drop UserService');
+  git('checkout', '-q', 'main');
+  const wb = createWorkbench(cfg(), { watch: false, log: () => {} });
+  const url = await wb.listen(0);
+  try {
+    const d = await (await fetch(url + 'api/change?range=feat...trim')).json();
+    assert.deepStrictEqual(d.change.removed.map((b) => [b.id, b.studs.map((s) => s.name)]),
+      [[id(USE, 'UserService'), ['run']]]);
+    assert.ok(d.change.pairs.some((p) => p.class === 'detached' && p.from === id(USE, 'UserService')));
+    const src = await fetch(url + 'api/source?file=' + encodeURIComponent(USE) + '&rev=' + d.change.base);
+    assert.strictEqual(src.status, 200);
+    assert.match(await src.text(), /class UserService/);
+  } finally {
+    await wb.close();
+  }
+});
+
+// ---------------------------------------------------------------- commit sets
+// A branch of three independent additions and one edit that needs the
+// second: pick1 adds P1, pick2 adds P2, pick3 adds P3, pick4 edits P2.
+let p1, p2, p3, p4;
+const P = (n) => `picks/p${n}.service.ts`;
+const objectCount = () => git('count-objects', '-v');
+test('commit sets: setup', () => {
+  git('checkout', '-q', '-b', 'picks', 'main');
+  const add = (n) => { write(P(n), svc(`P${n}Service`)); git('add', '.'); git('commit', '-q', '-m', `add P${n}`); return git('rev-parse', 'HEAD'); };
+  p1 = add(1); p2 = add(2); p3 = add(3);
+  write(P(2), svc('P2Service', [], 'return 2;'));
+  git('add', '.'); git('commit', '-q', '-m', 'edit P2');
+  p4 = git('rev-parse', 'HEAD');
+  git('checkout', '-q', 'main');
+});
+
+test('a set that skips a commit is built from the base plus exactly those commits', () => {
+  const before = objectCount();
+  const { change, model } = changeAt(cfg(), { commits: [p3, p1] });          // any order
+  assert.deepStrictEqual(change.frames.map((f) => [f.sha, f.built]), [[base, false], [p1, false], [p3, true]]);
+  assert.strictEqual(change.base, base);
+  assert.deepStrictEqual(Object.keys(change.bricks).filter((k) => change.bricks[k] === 'added').sort(),
+    [id(P(1), 'P1Service'), id(P(3), 'P3Service')]);
+  assert.ok(!model.bricks.some((b) => b.name === 'P2Service'), 'the skipped commit is not in the head');
+  assert.match(change.rev, /^set-[0-9a-f]{16}$/);
+  assert.strictEqual(objectCount(), before, 'nothing was written to the repository');
+});
+
+test('an unbroken chain uses the commits themselves', () => {
+  const { change } = changeAt(cfg(), { commits: `${p1},${p2}` });
+  assert.deepStrictEqual(change.frames.map((f) => f.built), [false, false, false]);
+  assert.strictEqual(change.rev, p2);
+});
+
+test('one commit is shown against its parent', () => {
+  const { change } = changeAt(cfg(), { commits: p2 });
+  assert.strictEqual(change.base, p1);
+  assert.deepStrictEqual(Object.keys(change.bricks).filter((k) => change.bricks[k] === 'added'), [id(P(2), 'P2Service')]);
+  assert.match(change.label, /^[0-9a-f]{7} add P2$/);
+});
+
+test('a commit that needs one left out of the set is refused, by name', () => {
+  assert.throws(() => changeAt(cfg(), { commits: [p1, p4] }),
+    /[0-9a-f]{7} "edit P2" does not apply without commits left out of the set/);
+  // The frames before it still work.
+  assert.strictEqual(changeAt(cfg(), { commits: [p1, p4] }, { frame: 1 }).change.summary.added, 1);
+});

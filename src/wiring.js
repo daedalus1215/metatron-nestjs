@@ -293,6 +293,17 @@ function callsOf(ctx, bricks) {
     return { brick: rel + '#' + c.name, method: m ? (m.kind === 'constructor' ? 'constructor' : m.name) : null };
   };
   const fileBrick = (rel) => (byId.has(rel) ? rel : null);
+  /** The class brick a field holds, when it is typed as or made with `new` one. */
+  const fieldBrick = (rel, cls, prop) => {
+    const f = cls && cls.fields.find((x) => x.name === prop && !x.static);
+    if (!f) return null;
+    const made = f.init && f.init.match(/^new\s+([A-Za-z_$][\w$]*)/);
+    const typed = f.type && f.type.match(/^([A-Za-z_$][\w$]*)/);
+    const type = made ? made[1] : typed ? typed[1] : null;
+    if (!type) return null;
+    const file = ctx.symbolIndex[rel][type] || rel;
+    return byId.has(file + '#' + type) ? file + '#' + type : null;
+  };
 
   // Imported names, keeping the name as exported: `import { a as b }`.
   const importsOf = (rel) => {
@@ -315,20 +326,28 @@ function callsOf(ctx, bricks) {
     const src = text[rel];
     if (!ranges[rel].length && !fileBrick(rel)) continue;
 
-    // this.x.method( through a socket
+    // this.x.method( (or this.x?.method() through a socket, or through a
+    // field typed as, or created with `new`, a class brick
     for (const r of ranges[rel]) {
       const b = byId.get(r.brick);
-      if (!b.sockets || !b.sockets.length) continue;
-      const re = /this\.(\w+)\.(\w+)\s*\(/g;
+      if (b.shape !== 'class') continue;
+      const cls = decl[rel].classes.find((x) => rel + '#' + x.name === b.id);
+      const re = /this\.(\w+)\??\.(\w+)\s*\(/g;
       re.lastIndex = r.from;
       let m;
       while ((m = re.exec(src)) && m.index < r.to) {
         if (at(rel, m.index) !== r) continue;          // inside a nested member, counted there
         const s = b.sockets.find((x) => x.prop === m[1]);
-        if (!s || !(s.status === 'resolved' || s.status === 'port')) continue;
-        const c = { from: b.id, fromMethod: r.method, to: s.to || s.boundTo, toMethod: m[2], line: lineAt[rel](m.index) };
-        if (s.status === 'port') c.boundTo = s.boundTo;
-        calls.push(c);
+        const line = lineAt[rel](m.index);
+        if (s) {
+          if (!(s.status === 'resolved' || s.status === 'port')) continue;
+          const c = { from: b.id, fromMethod: r.method, to: s.to || s.boundTo, toMethod: m[2], line };
+          if (s.status === 'port') c.boundTo = s.boundTo;
+          calls.push(c);
+          continue;
+        }
+        const to = fieldBrick(rel, cls, m[1]);
+        if (to && to !== b.id) calls.push({ from: b.id, fromMethod: r.method, to, toMethod: m[2], line, field: m[1] });
       }
     }
 

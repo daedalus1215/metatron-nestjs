@@ -241,3 +241,12 @@ scripts, `meeting.repository.ts`, the mappers, the assemblers and
 `npm test` runs 65 tests; 7 are new, over `test/fixtures/arrows/` (the
 three arrow shapes, the getter stall, the dep-not-injected stall, the
 depth-cap stall, and the fixture's exact stall count).
+
+## Amendment (2026-09-27)
+
+A call on `this.x` where `x` is a declared field is no longer
+`dep-not-injected`. A field holding a library object is passed over. A
+field typed as, or made with `new`, an in-tree class is followed. An
+untyped field set from an expression stalls as `field-unknown`, which is
+what this spec's object-literal fixture (`private cache = { warm: … }`) now
+reports. See spec 09, *Follow-ups*.
