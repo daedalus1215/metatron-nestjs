@@ -90,7 +90,10 @@ focus when the focused brick still exists.
 
 A scan that throws does not replace the model. The error is sent as an
 event, and the page shows it in its status bar, with the last good model
-still drawn. A half-typed file must not blank the workbench.
+still drawn. The scanner itself is tolerant: a half-typed file re-scans
+with whatever still parses, and does not throw. What throws is the scan as
+a whole, for example the root going missing, and that must not blank the
+workbench.
 
 `--no-watch` turns this off, and so does a platform without recursive
 watch. The status bar then says the model is static.
@@ -177,8 +180,8 @@ which focuses the target brick when clicked.
    other path, including `../arch.config.js`, an absolute path, and a
    `.ts` file under the root that `ignore` excludes.
 3. Editing a file under the root pushes a new `version`, and an open page
-   redraws with its focus kept. A syntax error in the edited file leaves
-   the previous model drawn, with the error in the status bar.
+   redraws with its focus kept. A scan that throws leaves the previous
+   model drawn, with the error in the status bar.
 4. Focusing `NoteService` on chronus draws its actions above and its
    transaction scripts, repositories and aggregators below. Hovering a stud
    lights exactly the calls in `calls` whose `toMethod` is that stud.
