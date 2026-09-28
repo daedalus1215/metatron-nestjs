@@ -229,6 +229,7 @@ you share it.
 | `layers` | Does the layering hold? Every file on the plane of its tier — a link that skips a plane is a violation. |
 | `schema` | What does the data look like? Entities, columns, and references — including the ones the ORM never hears about. |
 | `hotspots` | Where does refactoring pay? Every file plotted by change frequency against how much depends on it. Files with no test carry a dashed ring, so the corner doubles as a test backlog. Needs git history. |
+| `coupling` | Which files change together without referencing each other? A co-change matrix crossed with the import graph — the cells it cannot explain are duplicated rules or missing abstractions. Needs git history. |
 
 ### Isometric or perspective?
 
@@ -288,6 +289,28 @@ file must be claimed by exactly one source file; when too many are unmatched
 the locator does not fit the project and both findings suppress themselves
 rather than report a confident wrong number. The CLI says so.
 
+## Coupling
+
+Every graph metatron draws comes from `import` statements, and there is a
+definition of coupling that is structurally blind to it: **two files with no
+import relationship that keep changing together.** That is usually a missing
+abstraction, a duplicated invariant, or shotgun surgery — it can only be found
+by reading the history.
+
+`coupling` keeps the per-commit file set (the co-change signal `hotspots`
+discarded), scores each pair by Jaccard degree over the trusted commits, and
+crosses the result against the import graph. Two guards keep the numbers
+honest: commits touching more than `couplingMaxFiles` files (25) are mass
+renames or formatting sweeps and are ignored — the count is reported — and a
+pair is only eligible when both files changed at least `couplingMinChanges`
+times (5). The `logical-coupling` finding reports the pairs that co-change
+above 60% **with no import edge between them**: the ones worth reading.
+
+The lens is a dependency structure matrix: modules on both axes by default,
+files on toggle, click a block to zoom, a threshold slider, and the import
+overlay so the unexplained cells stand out. Outside a repo it degrades the way
+churn does.
+
 ## Commands
 
 ```bash
@@ -328,6 +351,9 @@ Working on metatron itself: `npm test` runs the fixture suite.
 | `moduleOf` | `(rel) => string`, if the first path segment isn't the module. |
 | `churnSince` | git revision-range date, e.g. `'2 years ago'`, to bound history. |
 | `testLocators` | ordered `(relPath) => relPath` strategies that locate a source file's test. First hit wins; see Churn and hotspots. |
+| `couplingMaxFiles` | commits touching more files than this are ignored for co-change — a 200-file rename couples everything to everything. Default 25. |
+| `couplingMinChanges` | per-file support floor before a pair is eligible. Default 5. |
+| `couplingMinDegree` | Jaccard floor for a pair to enter the model; the lens slider opens here. Default 0.3. |
 
 **Declare the flow, get the rules.** Write
 

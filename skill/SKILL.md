@@ -114,7 +114,8 @@ it is discovered automatically. Optional `adapters/<name>.js` exporting
 **Never type a finding into a template.** Use `<p data-narr="layering"></p>` and
 the sentence is generated from the model at build time. Slots:
 `scale`, `flow`, `layering`, `crossDomain`, `absent`, `skyline`, `cycles`,
-`upheld`, `deviations`, `endpoints`, `provenance`, `caveats`. Add new ones in
+`upheld`, `deviations`, `endpoints`, `schema`, `hotspots`, `coupling`,
+`provenance`, `caveats`. Add new ones in
 `src/narrate.js`.
 
 ## Reporting findings honestly
@@ -129,6 +130,11 @@ the sentence is generated from the model at build time. Slots:
   not fit the project, and the test findings suppress themselves; the CLI
   prints the unmatched specs. Fix the locators rather than reporting the
   numbers — a confident wrong coverage report is worse than none.
+- **Read co-change as correlation, not mechanism.** The `coupling` numbers come
+  from commit sets: one team's commit granularity is not another's, and commits
+  over `couplingMaxFiles` are ignored — but a sweeping rename under the cap
+  still couples the files it dragged. Absence of coupling in young code is not
+  evidence of independence.
 - `findings[].tone` is `good` (a rule the code upholds), `warn` (a deviation) or
   `note`. Report the upheld rules too — "zero upward calls across 1,047 imports"
   is a real result, not an absence of news.
