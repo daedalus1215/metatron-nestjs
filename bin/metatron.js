@@ -117,7 +117,17 @@ if (cmd === 'diff') {
   console.log(format === 'json' ? D.renderJson(report)
     : format === 'markdown' ? D.renderMarkdown(report)
     : D.renderTerminal(report));
-  process.exit(0);
+  if (format !== 'terminal' || flags.staged) process.exit(0);
+  // Spec 11: the same range on the workbench, as a picture. A link only when
+  // a workbench is actually listening; otherwise the command to start one.
+  const url = 'http://127.0.0.1:4477/#change=' + encodeURIComponent(report.range).replace(/%2F/g, '/').replace(/%5E/g, '^');
+  const probe = fetch('http://127.0.0.1:4477/api/model', { signal: AbortSignal.timeout(400) })
+    .then((r) => r.ok, () => false);
+  probe.then((up) => {
+    console.log(up ? 'workbench: ' + url : 'workbench: run `metatron serve`, then open ' + url);
+    process.exit(0);
+  });
+  return;
 }
 
 if (cmd === 'serve') {
