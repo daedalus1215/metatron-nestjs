@@ -148,6 +148,9 @@ if (cmd === 'serve') {
     const W = wb.state.model.wiringMeta;
     console.log(`metatron workbench · ${wb.state.model.project}`);
     console.log(`  ${wb.state.model.bricks.length} bricks · ${W.sockets} sockets · ${wb.state.model.calls.length} calls`);
+    const be = wb.state.model.__backend, B = wb.state.model.bridge;
+    if (be) console.log(`  joined with the backend in ${be.label}: ${be.model.bricks.length} bricks · http ${B.matched}/${B.calls} matched`);
+    else if (B && B.error) console.log(`  backend unavailable: ${B.error}`);
     console.log(`  ${wb.state.watching ? 'watching for changes' : 'static (not watching)'}`);
     console.log(`\n  ${url}\n`);
   }, (e) => {
