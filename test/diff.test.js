@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Spec 04 - blast radius (`metatron diff`). See specs/04-blast-radius.md.
+ * Spec 04 - blast radius (`metatron diff`). See docs/specs/04-blast-radius.md.
  */
 const test = require('node:test');
 const assert = require('node:assert');

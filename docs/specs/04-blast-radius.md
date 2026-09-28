@@ -2,7 +2,7 @@
 title: Blast Radius (`metatron diff`)
 status: draft
 project: metatron-nestjs
-location: specs/04-blast-radius.md
+location: docs/specs/04-blast-radius.md
 created: 2026-08-24
 tags: [ci, pr-review, impact-analysis, reachability]
 ---

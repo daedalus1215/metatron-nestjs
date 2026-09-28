@@ -2,7 +2,7 @@
 /**
  * Spec 06 — test presence crossed with risk, with a self-check that suppresses
  * the findings when the locator does not fit the project. See
- * specs/06-test-coverage-crossing.md.
+ * docs/specs/06-test-coverage-crossing.md.
  */
 const test = require('node:test');
 const assert = require('node:assert');

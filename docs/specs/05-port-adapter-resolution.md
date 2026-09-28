@@ -2,7 +2,7 @@
 title: Port / Adapter Resolution Through Module Providers
 status: implemented
 project: metatron-nestjs
-location: specs/05-port-adapter-resolution.md
+location: docs/specs/05-port-adapter-resolution.md
 created: 2026-08-24
 tags: [scanner, dependency-injection, call-graph, hexagonal]
 implemented: 2026-09-14
