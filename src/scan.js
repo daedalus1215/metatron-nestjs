@@ -14,6 +14,25 @@ const { violationsOf } = require('./violations');
 const declarations = require('./classes');
 const { wiringOf } = require('./wiring');
 const { reactWiringOf } = require('./react-wiring');
+const { bridgeOf } = require('./bridge');
+
+// A frontend's linked backend, scanned once and reused until one of its
+// files changes (serve re-scans the frontend on every save).
+const backendCache = new Map();
+function linkedBackend(cfg, scanFn) {
+  const { load } = require('./config');
+  const bcfg = load(path.resolve(cfg.__dir, cfg.backend));
+  const root = path.resolve(bcfg.__dir, bcfg.root);
+  const files = walk(root, bcfg.ignore || [], bcfg.extensions || ['.ts']);
+  let newest = 0;
+  for (const f of files) { try { newest = Math.max(newest, fs.statSync(f).mtimeMs); } catch { /* raced a delete */ } }
+  const sig = files.length + ':' + newest;
+  const hit = backendCache.get(bcfg.__dir);
+  if (hit && hit.sig === sig) return hit;
+  const entry = { sig, cfg: bcfg, model: scanFn(bcfg), label: path.relative(cfg.__dir, bcfg.__dir) || '.' };
+  backendCache.set(bcfg.__dir, entry);
+  return entry;
+}
 
 // ------------------------------------------------------------------ helpers
 
@@ -183,7 +202,8 @@ const EXTERNAL_TYPES = new Set([
 
 // ------------------------------------------------------------------- scanner
 
-module.exports = function scan(cfg, opts = {}) {
+module.exports = scan;
+function scan(cfg, opts = {}) {
   const ROOT = path.resolve(cfg.__dir, cfg.root);
   if (!fs.existsSync(ROOT)) {
     throw new Error(`root not found: ${ROOT}\nSet \`root\` in arch.config.js (it is relative to the config file).`);
@@ -1397,5 +1417,19 @@ module.exports = function scan(cfg, opts = {}) {
   // The scanned text, for the workbench's source panel (spec 10). Not
   // enumerable, so it never reaches model.json or a view.
   Object.defineProperty(model, '__text', { value: text });
+
+  // The bridge (spec 12): a frontend's HTTP calls against its backend's
+  // endpoints. A backend that cannot be loaded is reported, not fatal.
+  if (cfg.wiring === 'react' && cfg.backend) {
+    try {
+      const be = linkedBackend(cfg, scan);
+      model.bridge = bridgeOf(model, be.model, cfg, be.label);
+      Object.defineProperty(model, '__backend', { value: be });
+    } catch (e) {
+      model.bridge = { error: e.message.split('\n')[0] };
+      diagnostics.push({ kind: 'backend-unavailable', file: path.relative(cfg.__dir, cfg.__file || cfg.__dir) || 'arch.config.js',
+        line: 0, detail: `backend '${cfg.backend}': ${e.message.split('\n')[0]}` });
+    }
+  }
   return model;
 };

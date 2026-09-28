@@ -83,15 +83,18 @@ test('a function is used when it is called or passed', () => {
   assert.deepStrictEqual(calls('call').map((c) => [c.from.split('#')[1], c.toMethod, !!c.ref]).sort(), [
     ['ThingPage', 'fetchThing', false], ['ThingRow', 'deleteThing', false], ['useThings', 'fetchThings', true]]);
   assert.deepStrictEqual(brick(REQ).studs.map((s) => [s.name, s.grip]), [
-    ['fetchThings', 'brick'], ['fetchThing', 'brick'], ['deleteThing', 'brick'], ['renameThing', 'unseen'], ['pingMissing', 'unseen']]);
+    ['fetchThings', 'brick'], ['fetchThing', 'brick'], ['deleteThing', 'brick'], ['renameThing', 'unseen'], ['pingMissing', 'unseen'],
+    ['fetchView', 'unseen'], ['fetchBuilt', 'unseen']]);
 });
 
 test('HTTP: every call through the client, with its verb and URL, helpers included', () => {
   assert.deepStrictEqual(calls('http').map((c) => [c.fromMethod, c.verb, c.path]).sort(), [
     ['deleteThing', 'DELETE', '/api/things/${id}'],
+    ['fetchBuilt', 'GET', null],
     ['fetchName', 'GET', '/things/${id}/name'],
     ['fetchThing', 'GET', '/things/${id}'],
     ['fetchThings', 'GET', '/things?sort=name'],
+    ['fetchView', 'GET', '/views/${view}'],
     ['pingMissing', 'GET', '/nowhere'],
     ['renameThing', 'PATCH', '/things/${id}/name'],
   ]);
@@ -107,6 +110,6 @@ test('routes: literal and constant paths, nesting joined, a computed path kept a
 
 test('wiringMeta counts it all', () => {
   const W = model.wiringMeta;
-  assert.deepStrictEqual([W.sockets, W.framework, W.unresolved, W.renders, W.http.calls], [12, 7, 1, 7, 6]);
-  assert.deepStrictEqual(W.studs, { total: 18, brick: 12, route: 3, framework: 0, unseen: 3 });
+  assert.deepStrictEqual([W.sockets, W.framework, W.unresolved, W.renders, W.http.calls, W.http.unread], [12, 7, 1, 7, 8, 1]);
+  assert.deepStrictEqual(W.studs, { total: 20, brick: 12, route: 3, framework: 0, unseen: 5 });
 });

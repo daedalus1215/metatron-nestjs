@@ -26,3 +26,14 @@ export const renameThing = async (id: number, name: string) => {
 export const pingMissing = async () => {
   await api.get('/nowhere');
 };
+
+// Ambiguous: the hole matches /views/archived and /views/recent equally.
+export const fetchView = async (view: string) => {
+  await api.get(`/views/${view}`);
+};
+
+// Unread: the URL is built by a call.
+const buildUrl = (id: number) => ['/things', id].join('/');
+export const fetchBuilt = async (id: number) => {
+  await api.get(buildUrl(id));
+};

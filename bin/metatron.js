@@ -265,7 +265,16 @@ if (W && W.http) {
   console.log(`  wiring ${W.sockets} hooks & contexts used · ${inTree} in the tree · ${W.framework} framework · ${W.unresolved} unresolved`);
   console.log(`  renders ${W.renders} of components in the tree · ${W.frameworkRenders} of package components · ${(model.routes || []).length} routes`);
   console.log(`  studs ${W.studs.total} · ${W.studs.brick} used by a brick · ${W.studs.route} mounted by a route · ${W.studs.unseen} unseen`);
-  console.log(`  http ${W.http.calls} calls through the API client · ${W.http.unread} with a URL metatron cannot read`);
+  const B = model.bridge;
+  if (B && B.error) console.log(`  http ${W.http.calls} calls · backend unavailable: ${B.error}  !`);
+  else if (B) {
+    const bad = B.ambiguous + B.unmatched + B.unread;
+    console.log(`  http ${B.matched}/${B.calls} calls matched a backend endpoint (${B.backend}) · ${B.ambiguous} ambiguous · ${B.unmatched} unmatched · ${B.unread} unread${bad ? '  !' : ''}`);
+    if (B.unreached.length) {
+      const show = B.unreached.slice(0, 4).map((id) => id.split('#')[0]).join(', ');
+      console.log(`       ${B.unreached.length} of ${B.endpoints} endpoints reached by no frontend call: ${show}${B.unreached.length > 4 ? ', …' : ''}`);
+    }
+  } else console.log(`  http ${W.http.calls} calls through the API client · ${W.http.unread} with a URL metatron cannot read · no backend linked`);
 } else if (W) {
   const pct = W.sockets ? ((W.resolved / W.sockets) * 100).toFixed(1) : '100.0';
   console.log(`  wiring ${W.resolved}/${W.sockets} sockets resolved (${pct}%) · ${W.framework} framework · ${W.unresolved} unresolved`);
