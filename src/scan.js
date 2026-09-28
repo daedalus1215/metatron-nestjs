@@ -185,10 +185,16 @@ module.exports = function scan(cfg, opts = {}) {
     throw new Error(`root not found: ${ROOT}\nSet \`root\` in arch.config.js (it is relative to the config file).`);
   }
 
-  const ignore = cfg.ignore || [];
-  const absFiles = walk(ROOT, ignore);
+  // `opts.files` is a pre-read { relPath: content } map (spec 04 scans a git
+  // commit without touching the working tree). The caller applies `ignore`.
   const text = {};
-  for (const abs of absFiles) text[path.relative(ROOT, abs).split(path.sep).join('/')] = fs.readFileSync(abs, 'utf8');
+  if (opts.files) {
+    Object.assign(text, opts.files);
+  } else {
+    const ignore = cfg.ignore || [];
+    const absFiles = walk(ROOT, ignore);
+    for (const abs of absFiles) text[path.relative(ROOT, abs).split(path.sep).join('/')] = fs.readFileSync(abs, 'utf8');
+  }
   const files = Object.keys(text);
   const fileSet = new Set(files);
   if (!files.length) throw new Error(`no .ts files under ${ROOT}`);
@@ -762,6 +768,9 @@ module.exports = function scan(cfg, opts = {}) {
     const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'],
       { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     const args = ['log', '--no-merges', '--numstat', '--format=%x01%H%x02%at%x02%an'];
+    // `opts.churnAt` bounds the history to a commit, so a base-side scan
+    // (spec 04) measures churn as it was at that point, not up to HEAD.
+    if (opts.churnAt) args.push(opts.churnAt);
     if (cfg.churnSince) args.push('--since=' + cfg.churnSince);
     args.push('--', ROOT);
     const out = execFileSync('git', args, { cwd: gitRoot, encoding: 'utf8', maxBuffer: 96 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });

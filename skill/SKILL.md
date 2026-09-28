@@ -99,6 +99,26 @@ drift upward quietly. Report what `check` said and let them choose.
 
 `--allow-new <n>` and `--rule <id>` exist for adopting the gate mid-stream.
 
+## Blast radius of a change
+
+When asked what a change touches, what its blast radius is, or what a commit/PR
+would affect:
+
+```bash
+npx metatron diff                   # <merge-base with default branch>...HEAD
+npx metatron diff <range>           # e.g. main...HEAD, HEAD~1...HEAD
+npx metatron diff --staged          # what is staged
+npx metatron diff --format markdown # pasteable into a PR description
+```
+
+It is a report, not a gate: stdout only, exit 0, no network, no PR required.
+Read it the same way you read the other findings: affected endpoints are
+call-based (a changed file in the endpoint's traced path), not import-based;
+deleted files are traced from a scan of the base commit, so a deletion reports
+a real blast radius; a new violation in untouched code is labelled a scan
+difference, not the diff's doing. A rename folds its moved violation rather
+than showing one new plus one fixed.
+
 ## Tests
 
 `npm test` runs the fixture suite in `test/`. Add a fixture whenever you fix a
