@@ -1338,5 +1338,8 @@ module.exports = function scan(cfg, opts = {}) {
   };
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);
+  // The scanned text, for the workbench's source panel (spec 10). Not
+  // enumerable, so it never reaches model.json or a view.
+  Object.defineProperty(model, '__text', { value: text });
   return model;
 };
