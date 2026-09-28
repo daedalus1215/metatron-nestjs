@@ -196,3 +196,26 @@ test('a commit that needs one left out of the set is refused, by name', () => {
   // The frames before it still work.
   assert.strictEqual(changeAt(cfg(), { commits: [p1, p4] }, { frame: 1 }).change.summary.added, 1);
 });
+
+test('a frontend change reads its .tsx files from git', () => {
+  const fdir = fs.mkdtempSync(path.join(os.tmpdir(), 'metatron-fe-change-'));
+  try {
+    fs.cpSync(path.join(__dirname, 'fixtures', 'react', 'src'), path.join(fdir, 'src'), { recursive: true });
+    const g = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: fdir, stdio: 'ignore' });
+    g('init', '-q', '-b', 'main'); g('add', '.'); g('commit', '-q', '-m', 'base');
+    g('checkout', '-q', '-b', 'feat');
+    fs.writeFileSync(path.join(fdir, 'src', 'components', 'Badge.tsx'),
+      "import { Header } from './Header/Header';\nexport const Badge = () => <Header title=\"badge\" />;\n");
+    g('add', '.'); g('commit', '-q', '-m', 'add Badge');
+    g('checkout', '-q', 'main');
+    const react = require('../src/defaults/react');
+    const fcfg = Object.assign({}, react, { name: 'fe', root: 'src', aliases: { '@': 'src' }, __dir: fdir });
+    const { change, model } = changeAt(fcfg, { range: 'main...feat' });
+    assert.strictEqual(change.bricks['components/Badge.tsx#Badge'], 'added');
+    assert.ok(model.bricks.some((b) => b.id === 'pages/ThingsPage/ThingsPage.tsx#ThingsPage'), '.tsx read from the commit');
+    assert.deepStrictEqual(change.summary.attachments.map((a) => [a.brick, a.with]),
+      [['components/Header/Header.tsx#Header', ['components/Badge.tsx#Badge']]]);
+  } finally {
+    fs.rmSync(fdir, { recursive: true, force: true });
+  }
+});

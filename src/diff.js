@@ -113,7 +113,7 @@ function baseFileMap(gitRoot, relRoot, base, cfg) {
     const p = line.slice(tab + 1);
     if (!p.startsWith(prefix)) continue;
     const rel = p.slice(prefix.length);
-    if (!rel.endsWith('.ts')) continue;
+    if (!(cfg.extensions || ['.ts']).some((x) => rel.endsWith(x))) continue;
     if ((cfg.ignore || []).some((re) => re.test(path.join(gitRoot, relRoot, rel)))) continue;
     entries.push([line.slice(0, tab).split(' ')[2], rel]);
   }
@@ -165,7 +165,7 @@ function indexFileMap(gitRoot, relRoot, cfg, env) {
     const p = line.slice(tab + 1);
     if (stage !== '0' || !p.startsWith(prefix)) continue;
     const rel = p.slice(prefix.length);
-    if (!rel.endsWith('.ts')) continue;
+    if (!(cfg.extensions || ['.ts']).some((x) => rel.endsWith(x))) continue;
     if ((cfg.ignore || []).some((re) => re.test(path.join(gitRoot, relRoot, rel)))) continue;
     entries.push([sha, rel]);
   }
