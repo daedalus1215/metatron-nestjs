@@ -595,10 +595,6 @@ module.exports = function scan(cfg, opts = {}) {
   }));
   const seenLink = new Set();
   const fileLinks = [];
-  // ---- wiring (spec 09)
-  const { bricks, wires, wiringMeta } = wiringOf({
-    files, text, info, decl, tiers: TIERS, injectsOf, symbolIndex, diagnostics, EXTERNAL_TYPES,
-  });
 
   for (const e of fileEdges) {
     const a = info[e.from], b = info[e.to];
@@ -803,6 +799,11 @@ module.exports = function scan(cfg, opts = {}) {
   };
   for (const e of endpoints) e.flat = flatten(trace(e.file, e.handler, new Set([e.file + '#' + e.handler]), 0), [], 1);
   endpoints.sort((a, b) => a.module.localeCompare(b.module) || a.route.localeCompare(b.route) || a.verb.localeCompare(b.verb));
+
+  // ---- wiring (spec 09)
+  const { bricks, wires, wiringMeta } = wiringOf({
+    files, text, info, decl, tiers: TIERS, injectsOf, symbolIndex, diagnostics, EXTERNAL_TYPES, endpoints,
+  });
 
   // ---- churn, from git history
   //

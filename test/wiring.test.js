@@ -91,3 +91,39 @@ test('the trace reads the constructor of the class that owns the method', () => 
     ['ThingRepository', 'findById'],
   ]);
 });
+
+const studs = (id) => brick(id).studs.map((s) => s.name);
+
+test('studs are public methods; private ones are internals; accessors are neither', () => {
+  const b = brick(SVC + '#ThingService');
+  assert.deepStrictEqual(studs(b.id), ['create', 'find', 'onlyFromInside']);
+  assert.deepStrictEqual(b.internals.map((s) => [s.name, s.access]), [['helper', 'private']]);
+  assert.ok(!b.studs.concat(b.internals).some((s) => s.name === 'size' || s.name === 'constructor'));
+});
+
+test('a static method is a stud marked static', () => {
+  const s = brick(SVC + '#ThingService').studs.find((x) => x.name === 'create');
+  assert.deepStrictEqual([s.static, s.kind, s.sig], [true, 'method', 'create(): ThingService']);
+});
+
+test('arrow-property methods are studs (spec 07 shapes)', () => {
+  const [s] = brick('things/domain/services/thing-arrow.service.ts#ThingArrowService').studs;
+  assert.deepStrictEqual([s.name, s.async, s.sig], ['load', true, 'load(id: number)']);
+});
+
+test('a route handler is a stud carrying its endpoint', () => {
+  const [s] = brick(ACTION).studs;
+  assert.deepStrictEqual([s.name, s.route], ['execute', 'GET /things/:id#execute']);
+});
+
+test('function bricks: exported functions are studs, the rest internals', () => {
+  const b = brick('things/domain/utils/date.utils.ts');
+  assert.deepStrictEqual(studs(b.id), ['formatDate', 'parseDate', 'isoWeek']);
+  assert.deepStrictEqual(b.internals.map((s) => s.name), ['pad']);
+  assert.ok(b.studs.every((s) => s.kind === 'function'));
+});
+
+test('a hollow port brick offers its interface as declared studs', () => {
+  const b = brick('things/domain/ports/thing.port.ts');
+  assert.deepStrictEqual(b.studs.map((s) => [s.name, s.kind, s.of]), [['ping', 'declared', 'ThingPort']]);
+});
