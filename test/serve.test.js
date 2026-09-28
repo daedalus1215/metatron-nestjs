@@ -111,3 +111,25 @@ test('a re-scan bumps the version and is announced; a failed one keeps the last 
   assert.match(events.at(-1).error, /root not found/);
   ctrl.abort();
 });
+
+test('with watching on, saving a .ts file re-scans once per burst', async () => {
+  const wdir = fs.mkdtempSync(path.join(os.tmpdir(), 'metatron-watch-'));
+  fs.cpSync(path.join(__dirname, 'fixtures', 'wiring'), path.join(wdir, 'src'), { recursive: true });
+  const live = createWorkbench(Object.assign({}, nestjs, { name: 'w', root: 'src', __dir: wdir }),
+    { debounceMs: 50, log: () => {} });
+  try {
+    if (!live.state.watching) return;          // no recursive watch on this platform
+    const v0 = live.state.version;
+    const f = path.join(wdir, 'src', 'things', 'domain', 'utils', 'watched.utils.ts');
+    fs.writeFileSync(f, 'export function a(): number { return 1; }\n');
+    fs.appendFileSync(f, 'export function b(): number { return 2; }\n');
+    for (let i = 0; i < 60 && live.state.version === v0; i++) await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 200));  // any second re-scan would have landed by now
+    assert.strictEqual(live.state.version, v0 + 1);
+    const b = live.state.model.bricks.find((x) => x.id === 'things/domain/utils/watched.utils.ts');
+    assert.deepStrictEqual(b.studs.map((s) => s.name), ['a', 'b']);
+  } finally {
+    await live.close();
+    fs.rmSync(wdir, { recursive: true, force: true });
+  }
+});
