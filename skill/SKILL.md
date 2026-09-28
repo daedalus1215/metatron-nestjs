@@ -74,6 +74,10 @@ chromium --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
   --screenshot=/tmp/shot.png "file://$PWD/.metatron/layers.html"
 ```
 
+Add `--force-device-scale-factor=2` and crop with `magick` for detail. Headless
+defaults to the dark theme; `--blink-settings=preferredColorScheme=1` forces
+light, `--force-dark-mode --blink-settings=preferredColorScheme=0` forces dark.
+
 Then read the PNG. The large `--virtual-time-budget` is required — canvas lenses
 draw on `requestAnimationFrame` and a short budget captures a blank canvas.
 Static checks cannot catch mirrored text transforms, washed-out colour blends,
