@@ -123,7 +123,24 @@ bricks: [{
 
 ### Sockets: what a brick needs
 
-One socket per constructor parameter, in declaration order:
+One socket per constructor parameter, in declaration order, on classes
+Nest constructs. That means a class decorated `@Injectable`, `@Controller`,
+`@Resolver`, `@WebSocketGateway`, `@Catch` or `@Module`, or one with an
+`@Inject…(…)` parameter. Without such a decorator TypeScript emits no
+parameter metadata, and Nest cannot inject a class-typed parameter. The
+constructor is then an ordinary one, called with `new`.
+
+Measured on chronus and omega, every class with constructor parameters and
+none of those decorators is a response DTO wrapping an entity or a number
+(18 in all). Counting those as unresolved sockets would have filled the
+diagnostics with `id: number`.
+
+`FRAMEWORK_PKG` (`@nestjs/*`, `typeorm`, `@mikro-orm/*`, `mongoose`,
+`@prisma/*`) extends `framework` to types imported from those packages, such
+as `Reflector` or `ModuleRef`. A class imported from any other package is
+`unresolved`, with reason `package`: it is outside the tree, and nothing
+says Nest provides it.
+
 
 ```js
 { prop: 'noteRepository', type: 'NoteRepository', line: 15,
