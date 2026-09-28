@@ -417,6 +417,30 @@ module.exports = function scan(cfg, opts = {}) {
     }
     if (!injects[rel]) injects[rel] = [];
   }
+  /**
+   * What a call on `this.<prop>` lands on when `prop` is a declared field
+   * rather than an injected dependency, in the class declaring `method`:
+   *
+   *   { follow: file, type }  typed as, or created with `new`, a class in the tree
+   *   { external: type }      anything else it is typed as: a Logger, a Map, a
+   *                           Repository<…> — a library call, not a gap
+   *   { unknown: true }       an untyped field set from an expression
+   *   null                    no such field: `this.x` is not declared at all
+   */
+  function fieldTarget(rel, method, prop) {
+    const classes = decl[rel] ? decl[rel].classes : [];
+    const own = classes.find((c) => c.members.some((m) => m.name === method)) || classes[0];
+    const f = own && own.fields.find((x) => x.name === prop && !x.static);
+    if (!f) return null;
+    const made = f.init && f.init.match(/^new\s+([A-Za-z_$][\w$]*)/);
+    const typed = f.type && f.type.match(/^([A-Za-z_$][\w$]*)/);
+    const type = made ? made[1] : typed ? typed[1] : null;
+    if (!type) return { unknown: true };
+    const file = EXTERNAL_TYPES.has(type) ? null
+      : symbolIndex[rel][type] || (declaresClass(rel, type) ? rel : null);
+    return file && declaresClass(file, type) ? { follow: file, type } : { external: type };
+  }
+
   /** The injections of the class in `rel` that declares `method`. */
   const injectsFor = (rel, method) => {
     const own = (decl[rel] ? decl[rel].classes : []).find((c) => injectsOf[rel][c.name]
@@ -742,7 +766,7 @@ module.exports = function scan(cfg, opts = {}) {
     const mine = injectsFor(rel, method);
     const calls = [];
     if (body) {
-      const re = /this\.(\w+)\.(\w+)\s*\(/g;
+      const re = /this\.(\w+)\??\.(\w+)\s*\(/g;
       let m;
       while ((m = re.exec(body))) {
         if (!calls.some((c) => c.prop === m[1] && c.method === m[2])) calls.push({ prop: m[1], method: m[2] });
@@ -752,13 +776,18 @@ module.exports = function scan(cfg, opts = {}) {
     for (const c of calls) {
       const inj = mine.find((i) => i.prop === c.prop);
       // A port has no method bodies; continue into the class its module binds.
-      const tgt = inj && (inj.boundTo || inj.file);
-      if (!tgt) {
-        // this.x on something the constructor never injected: the call goes
-        // somewhere the scan cannot see.
-        if (!inj) stall(rel, method, depth, 'dep-not-injected');
-        continue;
+      let tgt = inj && (inj.boundTo || inj.file);
+      let viaField = false;
+      if (!inj) {
+        // Not injected: a field, or nothing the class declares at all.
+        const f = fieldTarget(rel, method, c.prop);
+        if (!f) { stall(rel, method, depth, 'dep-not-injected'); continue; }
+        if (f.unknown) { stall(rel, method, depth, 'field-unknown'); continue; }
+        if (f.external) continue;          // a library object: nothing to follow
+        tgt = f.follow;
+        viaField = true;
       }
+      if (!tgt) continue;
       const key = tgt + '#' + c.method;
       if (seenKeys.has(key)) continue;
       seenKeys.add(key);
@@ -766,7 +795,7 @@ module.exports = function scan(cfg, opts = {}) {
         file: tgt, cls: className(tgt), kind: info[tgt].pattern,
         tier: info[tgt].tier, module: info[tgt].module,
         method: c.method, prop: c.prop, sig: methodSig(tgt, c.method),
-      }, viaPortOf(inj), {
+      }, viaField ? { viaField: true } : viaPortOf(inj), {
         children: trace(tgt, c.method, seenKeys, depth + 1),
       }));
     }
@@ -795,6 +824,7 @@ module.exports = function scan(cfg, opts = {}) {
       const hop = { file: n.file, cls: n.cls, kind: n.kind, tier: n.tier, module: n.module,
         method: n.method, prop: n.prop, sig: n.sig, depth: d, inferred: !!n.inferred };
       if (n.viaPort) Object.assign(hop, { viaPort: n.viaPort, token: n.token, boundIn: n.boundIn });
+      if (n.viaField) hop.viaField = true;
       acc.push(hop);
       flatten(n.children, acc, d + 1);
     }

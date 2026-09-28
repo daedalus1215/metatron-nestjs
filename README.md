@@ -132,12 +132,20 @@ or is declared in the tree and provided nowhere. `port-ambiguous` means two
 modules bind the same token to different classes. Nest settles that by module
 scope, which metatron does not model, so it declines to pick.
 
-A third kind concerns the middle of a trace. When a call inside a method
-body cannot be followed — the method's body is in a shape metatron does not
-read, the `this.x` is a class field rather than an injected dependency, or
-the trace is deeper than five classes — the hop stops and a `trace-stalled`
-diagnostic says where and why. A trace that ends is either short or cut;
-the diagnostics tell which.
+A third kind concerns the middle of a trace. A call on `this.x` is followed
+when `x` is injected, or is a field typed as, or created with `new`, a class
+in the tree. A call on a field holding a library object (`this.logger.log`,
+`this.cache.get` on a `Map`) is a library call, not a gap, and is passed over
+quietly. When a call cannot be followed, the hop stops and a `trace-stalled`
+diagnostic says where and why:
+
+- the method's body is in a shape metatron does not read
+- `this.x` is neither injected nor declared (`dep-not-injected`)
+- `this.x` is a field whose type metatron cannot read, such as an object
+  literal (`field-unknown`)
+- the trace is deeper than five classes (`depth-cap`)
+
+A trace that ends is either short or cut; the diagnostics tell which.
 
 A fourth kind concerns the wiring model behind the workbench. Every
 constructor parameter of a class Nest builds is a socket, and each one is
@@ -587,9 +595,11 @@ DevTools protocol instead (`--remote-debugging-port`): navigate, wait, then
   Only `endpoints[].flat` and the wiring model's `calls` follow real calls
   through method bodies: `this.x.method(` through an injected dependency, a
   function imported from a util file, and `Cls.method(` on a static.
-- **Calls in other shapes are invisible.** A destructured dependency,
-  `this.x?.method(`, a call through a local alias, and callers outside the
-  scanned tree reach nothing. That is why a public method no call reaches is
+- **Calls in other shapes are invisible.** A destructured dependency
+  (`const { repo } = this`), a call through a local alias
+  (`const r = this.repo`), a subclass calling what its parent injected, and
+  callers outside the scanned tree reach nothing. (`this.x?.method(` and calls
+  through typed fields are followed.) That is why a public method no call reaches is
   `unseen` on the workbench, never "dead".
 - **Ports are followed only as far as a module file says.** A call through
   `@Inject(TOKEN)` continues into the class a module binds with `useClass` or

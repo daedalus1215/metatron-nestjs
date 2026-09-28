@@ -259,7 +259,8 @@ if (W) {
 const STALL_REASON = {
   'depth-cap': 'deeper than five classes',
   'body-not-found': 'method body not found',
-  'dep-not-injected': 'calls this.x on something the constructor does not inject',
+  'dep-not-injected': 'calls this.x, which is neither injected nor a declared field',
+  'field-unknown': 'calls this.x on a field whose type metatron cannot read',
 };
 const diagWhere = (d) => (d.line !== undefined ? `${d.file}:${d.line}` : `${d.file}#${d.method}`);
 const diagWhat = (d) => d.detail
