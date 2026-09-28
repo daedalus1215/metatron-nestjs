@@ -11,23 +11,23 @@ const { ungated } = require('../src/violations');
 const args = process.argv.slice(2);
 
 if (args[0] === '--help' || args[0] === '-h') {
-  console.log(`metatron — compile a NestJS backend into an architecture model and visual lenses
+  console.log(`metatron-nest — compile a NestJS backend into an architecture model and visual lenses
 
-  metatron [path]           scan and build every lens
-  metatron scan [path]      model only
-  metatron views [path]     re-render from the cached model
-  metatron views layers     one lens by name
-  metatron baseline [path]  record today's violations as accepted
-  metatron baseline --update   rewrite it, keeping hand-written notes
-  metatron check [path]     fail if new violations appeared since the baseline
-  metatron diff [range]     blast radius of a change set
-  metatron diff main...HEAD     explicit range
-  metatron diff                 the default branch's merge base ... HEAD
-  metatron diff --staged        what is about to be committed
-  metatron serve [path]     the workbench: bricks, wiring and source, live
-  metatron serve --port 4477 --no-watch
-  metatron skill            install the agent skill into ~/.agents/skills
-  metatron skill --where    print where the skill would be installed
+  metatron-nest [path]           scan and build every lens
+  metatron-nest scan [path]      model only
+  metatron-nest views [path]     re-render from the cached model
+  metatron-nest views layers     one lens by name
+  metatron-nest baseline [path]  record today's violations as accepted
+  metatron-nest baseline --update   rewrite it, keeping hand-written notes
+  metatron-nest check [path]     fail if new violations appeared since the baseline
+  metatron-nest diff [range]     blast radius of a change set
+  metatron-nest diff main...HEAD     explicit range
+  metatron-nest diff                 the default branch's merge base ... HEAD
+  metatron-nest diff --staged        what is about to be committed
+  metatron-nest serve [path]     the workbench: bricks, wiring and source, live
+  metatron-nest serve --port 4477 --no-watch
+  metatron-nest skill            install the agent skill into ~/.agents/skills
+  metatron-nest skill --where    print where the skill would be installed
 
 check flags:
   --rule <id>        gate on this rule only (repeatable)
@@ -124,7 +124,7 @@ if (cmd === 'diff') {
   const probe = fetch('http://127.0.0.1:4477/api/model', { signal: AbortSignal.timeout(400) })
     .then((r) => r.ok, () => false);
   probe.then((up) => {
-    console.log(up ? 'workbench: ' + url : 'workbench: run `metatron serve`, then open ' + url);
+    console.log(up ? 'workbench: ' + url : 'workbench: run `metatron-nest serve`, then open ' + url);
     process.exit(0);
   });
   return;
@@ -170,7 +170,7 @@ if (cmd === 'baseline') {
   if (existing && !flags.update) {
     console.error(
       `${rel(BL.fileFor(cfg))} already exists.\n` +
-      'Run `metatron baseline --update` to rewrite it. Hand-written `note` fields are preserved.'
+      'Run `metatron-nest baseline --update` to rewrite it. Hand-written `note` fields are preserved.'
     );
     process.exit(2);
   }
@@ -184,7 +184,7 @@ if (cmd === 'baseline') {
   }
   const ung = ungated(model);
   if (ung.length) console.log(`  not gated, aggregate findings: ${ung.join(', ')}`);
-  console.log('\n  Commit this file. `metatron check` fails when a violation appears that is not in it.');
+  console.log('\n  Commit this file. `metatron-nest check` fails when a violation appears that is not in it.');
   process.exit(0);
 }
 
@@ -192,7 +192,7 @@ if (cmd === 'check') {
   let baseline;
   try { baseline = BL.read(cfg); } catch (e) { console.error(e.message); process.exit(2); }
   if (!baseline) {
-    console.error(`No ${BL.FILENAME} beside ${rel(cfg.__file)}.\nCreate one with \`metatron baseline\`.`);
+    console.error(`No ${BL.FILENAME} beside ${rel(cfg.__file)}.\nCreate one with \`metatron-nest baseline\`.`);
     process.exit(2);
   }
   const r = BL.compare(model, baseline, flags.rule);
@@ -227,12 +227,12 @@ if (cmd === 'check') {
     const n = r.added.length;
     console.log(`\nFAIL — ${n} new violation${n === 1 ? '' : 's'}` +
       (flags.allowNew ? ` (allowed ${flags.allowNew})` : '') +
-      '. Fix it, or run `metatron baseline --update` to accept it.');
+      '. Fix it, or run `metatron-nest baseline --update` to accept it.');
   } else if (r.fixed.length && flags.fixed) {
     // Not removed automatically: a scan that temporarily fails to parse a file
     // would otherwise retire a real debt, and it would return later as "new".
     console.log('\nPASS — no new violations. ' +
-      `${r.fixed.length} fixed; run \`metatron baseline --update\` to record that.`);
+      `${r.fixed.length} fixed; run \`metatron-nest baseline --update\` to record that.`);
   } else {
     console.log('\nPASS — no new violations.');
   }

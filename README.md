@@ -41,7 +41,7 @@ name no longer matches where it sits.
 **3. Run it.**
 
 ```bash
-metatron            # or `npx metatron` if you installed it into the project
+metatron-nest       # or `npx metatron-nest` if you installed it into the project
 ```
 
 **4. Open the result.**
@@ -56,7 +56,7 @@ any login to look at them — they're just files.
 You can also run it without `cd`-ing anywhere:
 
 ```bash
-metatron ~/code/my-api/backend
+metatron-nest ~/code/my-api/backend
 ```
 
 ---
@@ -162,8 +162,8 @@ metatron observes by default. To make it *enforce*, record today's violations as
 accepted and fail the build when a new one appears:
 
 ```bash
-metatron baseline     # writes arch.baseline.json
-metatron check        # exit 0 clean, 1 new violations, 2 tool/config error
+metatron-nest baseline     # writes arch.baseline.json
+metatron-nest check        # exit 0 clean, 1 new violations, 2 tool/config error
 ```
 
 ```
@@ -177,7 +177,7 @@ metatron check · chronus
 
   known, unchanged      42
 
-FAIL — 1 new violation. Fix it, or run `metatron baseline --update` to accept it.
+FAIL — 1 new violation. Fix it, or run `metatron-nest baseline --update` to accept it.
 ```
 
 The baseline sits **beside `arch.config.js`**, not in the output directory —
@@ -206,8 +206,8 @@ says so.
 Adopting mid-stream on a codebase you do not want to clean up first:
 
 ```bash
-metatron check --allow-new 3      # ratchet the number down over time
-metatron check --rule orphans     # or gate one rule, everything else advisory
+metatron-nest check --allow-new 3      # ratchet the number down over time
+metatron-nest check --rule orphans     # or gate one rule, everything else advisory
 ```
 
 Violations that are **fixed** are reported but never removed automatically. A
@@ -216,7 +216,7 @@ real debt, and it would come back later as a "new" violation with no history.
 
 Aggregate findings — `dag` reports cycle totals, `app-apps` reports a spelling
 split — carry `gate: false` and never become violations. They are worth printing
-and meaningless to ratchet. `metatron baseline` lists which ones are excluded.
+and meaningless to ratchet. `metatron-nest baseline` lists which ones are excluded.
 
 ---
 
@@ -226,9 +226,9 @@ and meaningless to ratchet. `metatron baseline` lists which ones are excluded.
 change touch?":
 
 ```bash
-metatron diff               # <merge-base with the default branch>...HEAD
-metatron diff main...HEAD   # an explicit range
-metatron diff --staged      # what is about to be committed
+metatron-nest diff               # <merge-base with the default branch>...HEAD
+metatron-nest diff main...HEAD   # an explicit range
+metatron-nest diff --staged      # what is about to be committed
 ```
 
 ```
@@ -259,7 +259,7 @@ pipeline should branch on. `--format=markdown` is pasteable into a PR
 description, `--json` is for tooling. The report ends with a `focus:` line:
 a URL that opens the city view with only the changed files' towers lit, for
 the files that have towers. If the views have not been built it says
-`build the view first (metatron views)` instead of printing a dead link.
+`build the view first (metatron-nest views)` instead of printing a dead link.
 
 Three things the report refuses to do:
 
@@ -284,8 +284,8 @@ Three things the report refuses to do:
 ## Workbench
 
 ```bash
-metatron serve              # http://127.0.0.1:4477/
-metatron serve --port 5000 --no-watch
+metatron-nest serve              # http://127.0.0.1:4477/
+metatron-nest serve --port 5000 --no-watch
 ```
 
 The views above are pictures. The workbench is somewhere to pick the code
@@ -309,7 +309,7 @@ links to the brick it lands in.
 It is a local server, bound to `127.0.0.1` only, because it serves source
 code. It re-scans when you save a `.ts` file, and the open page redraws
 with your place kept. The data comes from the wiring model (`bricks`,
-`wires`, `calls` in `model.json`). `metatron scan` prints its coverage line:
+`wires`, `calls` in `model.json`). `metatron-nest scan` prints its coverage line:
 
 ```
 wiring 271/271 sockets resolved (100.0%) · 30 framework · 0 unresolved
@@ -347,7 +347,7 @@ that replays it one commit at a time.
 The head of a range is read from git objects, so a PR can be reviewed from
 any branch without checking it out. `#12` asks `gh` for the PR's commits. If
 the head commit is not local, the workbench prints the `git fetch` to run and
-does not fetch it for you. `metatron diff` ends with a link to the same
+does not fetch it for you. `metatron-nest diff` ends with a link to the same
 range on the workbench.
 
 ## On a new machine
@@ -355,11 +355,11 @@ range on the workbench.
 ```bash
 git clone https://github.com/daedalus1215/metatron-nestjs
 cd metatron-nestjs
-npm link          # puts `metatron` on your PATH
-metatron skill    # lets agent sessions use it without being told how
+npm link          # puts `metatron-nest` on your PATH
+metatron-nest skill    # lets agent sessions use it without being told how
 ```
 
-`metatron skill` copies the bundled skill to
+`metatron-nest skill` copies the bundled skill to
 `~/.agents/skills/metatron/SKILL.md`. After that, a new agent session in **any**
 repo already knows this tool exists — you can say "set up metatron here" or "map
 this backend" and it knows the whole procedure. Without it, you'd have to say
@@ -371,13 +371,8 @@ installing a package shouldn't write into your home directory.
 Needs Node 18+. Chromium is optional, only for checking a view renders before
 you share it.
 
-If `metatron --help` prints something else, another tool of the same name is
-earlier on your PATH (the Rust sibling, `metatron-rust`, installs one through
-cargo). Run this one by its path, or give it an alias:
-
-```bash
-alias mtn='node ~/path/to/metatron-nestjs/bin/metatron.js'
-```
+The command is `metatron-nest`, not `metatron`, so it can sit beside the Rust
+sibling (`metatron-rust`), whose cargo-installed binary is called `metatron`.
 
 ---
 
@@ -480,19 +475,19 @@ churn does.
 ## Commands
 
 ```bash
-metatron [path]           scan and build everything
-metatron scan [path]      model only, no views
-metatron views [path]     rebuild views from the cached model
-metatron views layers     just one view
-metatron baseline         record today's violations as accepted
-metatron baseline --update   rewrite it, keeping hand-written notes
-metatron check            fail if new violations appeared
-metatron diff             what does this change touch? (report on stdout)
-metatron diff main...HEAD   an explicit range
-metatron diff --staged      what is about to be committed
-metatron serve            the workbench (local server, live re-scan)
-metatron skill            install the agent skill
-metatron --help
+metatron-nest [path]           scan and build everything
+metatron-nest scan [path]      model only, no views
+metatron-nest views [path]     rebuild views from the cached model
+metatron-nest views layers     just one view
+metatron-nest baseline         record today's violations as accepted
+metatron-nest baseline --update   rewrite it, keeping hand-written notes
+metatron-nest check            fail if new violations appeared
+metatron-nest diff             what does this change touch? (report on stdout)
+metatron-nest diff main...HEAD   an explicit range
+metatron-nest diff --staged      what is about to be committed
+metatron-nest serve            the workbench (local server, live re-scan)
+metatron-nest skill            install the agent skill
+metatron-nest --help
 ```
 
 Working on metatron itself: `npm test` runs the fixture suite.

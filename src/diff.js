@@ -58,7 +58,7 @@ function resolve(dir, arg, staged) {
     const def = defaultBranch(dir);
     if (!def) throw new Error(
       'cannot determine the default branch (no origin/HEAD, no local main or master).\n' +
-      'Pass a range: metatron diff <base>...<head>');
+      'Pass a range: metatron-nest diff <base>...<head>');
     arg = def + '...HEAD';
   }
   const m = arg.match(/^(.+?)\.\.\.(.+)$/) || arg.match(/^(.+?)\.\.(.+)$/);
@@ -458,7 +458,7 @@ function renderTerminal(r) {
     L.push('');
     L.push(r.focus.url
       ? 'focus: ' + r.focus.url
-      : 'focus: build the view first (metatron views)');
+      : 'focus: build the view first (metatron-nest views)');
   }
   return L.join('\n') + '\n';
 }
@@ -507,7 +507,7 @@ function renderMarkdown(r) {
     L.push('');
     L.push(r.focus.url
       ? '**Focus** — `' + r.focus.url + '`'
-      : '**Focus** — build the view first (`metatron views`)');
+      : '**Focus** — build the view first (`metatron-nest views`)');
   }
   return L.join('\n') + '\n';
 }

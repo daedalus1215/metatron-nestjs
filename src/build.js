@@ -182,7 +182,7 @@ function writeIndex(outDir, model, built) {
   <h1>${esc(model.project)}</h1>
   <p class="meta">scanned ${when} · ${model.stats.files} files · ${model.stats.edges} imports · ${model.stats.endpoints} endpoints · ${cov}% classified</p>
 ${rows}
-  <footer>Regenerate with <code>npx metatron</code>. Self-contained — no server needed, just open them.</footer>
+  <footer>Regenerate with <code>npx metatron-nest</code>. Self-contained — no server needed, just open them.</footer>
 </main></body></html>`);
 }
 

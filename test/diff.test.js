@@ -238,7 +238,7 @@ test('the report ends with a focus line that names the built view', () => {
     touch(SVC, '\n// c1\n'); commit('c1');
     // no view built yet: the report refuses to print a dead link
     const none = execFileSync(process.execPath, [BIN, 'diff', 'main~1...main'], { cwd: tmp, encoding: 'utf8' });
-    assert.ok(none.includes('build the view first (metatron views)'), none);
+    assert.ok(none.includes('build the view first (metatron-nest views)'), none);
     const jnone = JSON.parse(execFileSync(process.execPath, [BIN, 'diff', 'main~1...main', '--json'], { cwd: tmp, encoding: 'utf8' }));
     assert.equal(jnone.focus.url, null);
     assert.deepEqual(jnone.focus.paths, [SVC]);

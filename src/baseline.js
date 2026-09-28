@@ -22,7 +22,7 @@ function read(cfg) {
   try { parsed = JSON.parse(fs.readFileSync(p, 'utf8')); }
   catch (e) { throw new Error(`${p} is not valid JSON: ${e.message}`); }
   if (!parsed || typeof parsed.violations !== 'object' || parsed.violations === null) {
-    throw new Error(`${p} has no "violations" object — delete it and re-run \`metatron baseline\`.`);
+    throw new Error(`${p} has no "violations" object — delete it and re-run \`metatron-nest baseline\`.`);
   }
   return parsed;
 }
