@@ -11,3 +11,7 @@ export function isoWeek(d: Date): number {
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
+
+export function Audited(): MethodDecorator {
+  return () => undefined;
+}

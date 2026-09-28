@@ -37,6 +37,12 @@ function bricksOf(ctx) {
       bricks.push(Object.assign({ id: rel, name: baseName(rel), shape: 'functions' }, base, {
         lines: [1, fi.loc], decorators: [], extends: null,
       }));
+    } else if (!d.classes.length && d.functions.length) {
+      // A script: top-level functions, none exported (main.ts). Not a part
+      // anything plugs into, but where the calls it makes start from.
+      bricks.push(Object.assign({ id: rel, name: baseName(rel), shape: 'script' }, base, {
+        lines: [1, fi.loc], decorators: [], extends: null,
+      }));
     } else if (!d.classes.length && fi.pattern === 'port') {
       // A port is a hollow brick: a shape with no body. Leaving it out would
       // hide the indirection spec 05 preserves.
@@ -186,6 +192,7 @@ function studsOf(ctx, bricks) {
   const routeOf = new Map((endpoints || []).map((e) => [e.file + '#' + e.cls + '#' + e.handler, e.id]));
   const shape = (m, kind) => ({
     name: m.name, sig: m.sig, lines: [m.start, m.end], async: !!m.async, kind, static: !!m.static,
+    decorators: m.decorators || [],
   });
   for (const b of bricks) {
     b.studs = [];
@@ -207,9 +214,10 @@ function studsOf(ctx, bricks) {
         const s = shape(m, m.abstract ? 'declared' : 'method');
         if (m.access !== 'public') { s.access = m.access; b.internals.push(s); continue; }
         s.route = routeOf.get(b.file + '#' + b.name + '#' + m.name) || null;
+        s.framework = frameworkCaller(c, m);
         b.studs.push(s);
       }
-    } else if (b.shape === 'functions') {
+    } else if (b.shape === 'functions' || b.shape === 'script') {
       for (const f of d.functions) {
         const s = shape(f, 'function');
         if (f.exported) { s.route = null; b.studs.push(s); } else b.internals.push(s);
@@ -218,7 +226,7 @@ function studsOf(ctx, bricks) {
       for (const i of d.interfaces) {
         for (const m of i.members) {
           b.studs.push({ name: m.name, sig: m.sig, lines: [m.start, m.end], async: false,
-            kind: 'declared', static: false, route: null, of: i.name });
+            kind: 'declared', static: false, decorators: [], route: null, of: i.name });
         }
       }
     }
@@ -273,6 +281,16 @@ function callsOf(ctx, bricks) {
       if (idx > r.from && idx < r.to && (!best || r.to - r.from < best.to - best.from)) best = r;
     }
     return best;
+  };
+  // Outside every body but inside a class's span: a decorator's arguments
+  // (`@ProtectedAction(…)`). It belongs to the member it decorates, or to
+  // the class when it decorates the class itself.
+  const decoratorAt = (rel, idx) => {
+    const c = decl[rel].classes.find((x) => idx >= x.startIdx && idx < x.close);
+    if (!c || !byId.has(rel + '#' + c.name)) return null;
+    const line = lineAt[rel](idx);
+    const m = c.members.find((x) => line >= x.start && line <= x.end);
+    return { brick: rel + '#' + c.name, method: m ? (m.kind === 'constructor' ? 'constructor' : m.name) : null };
   };
   const fileBrick = (rel) => (byId.has(rel) ? rel : null);
 
@@ -336,7 +354,7 @@ function callsOf(ctx, bricks) {
         const idx = m.index + m[1].length;
         const method = t.cls ? m[2] : t.method();
         if (t.cls && !t.cls.studs.some((s) => s.static && s.name === method)) continue;
-        const r = at(rel, idx);
+        const r = at(rel, idx) || decoratorAt(rel, idx);
         const from = r ? r.brick : fileBrick(rel);
         if (!from || from === t.to) continue;           // a call inside one brick
         const c = { from, fromMethod: r ? r.method : null, to: t.to, toMethod: method, line: lineAt[rel](idx) };
@@ -355,6 +373,9 @@ function callsOf(ctx, bricks) {
  *   brick    another brick calls it (a call through a port grips both the
  *            port's stud and the stud of the class bound to it)
  *   route    no brick calls it, but it is a route handler: HTTP grips it
+ *   framework  no brick calls it, but Nest does: an event or schedule
+ *            decorator, a lifecycle hook, or the method an implemented Nest
+ *            contract names (`frameworkCaller`)
  *   unseen   no call metatron can read reaches it
  *
  * `unseen`, not `none`: call shapes the scan cannot read, and callers outside
@@ -367,15 +388,54 @@ function gripsOf(bricks, calls) {
     gripped.add(c.to + '\u0000' + c.toMethod);
     if (c.boundTo) gripped.add(c.boundTo + '\u0000' + c.toMethod);
   }
-  const count = { total: 0, brick: 0, route: 0, unseen: 0 };
+  const count = { total: 0, brick: 0, route: 0, framework: 0, unseen: 0 };
   for (const b of bricks) {
     for (const s of b.studs) {
-      s.grip = gripped.has(b.id + '\u0000' + s.name) ? 'brick' : s.route ? 'route' : 'unseen';
+      s.grip = gripped.has(b.id + '\u0000' + s.name) ? 'brick'
+        : s.route ? 'route' : s.framework ? 'framework' : 'unseen';
       count.total++;
       count[s.grip]++;
     }
   }
   return count;
+}
+
+// Method decorators whose method Nest (or a Nest package) calls.
+const CALLED_BY_DECORATOR = new Set([
+  'OnEvent', 'Cron', 'Interval', 'Timeout',
+  'SubscribeMessage', 'MessagePattern', 'EventPattern',
+  'Process', 'OnWorkerEvent', 'OnQueueEvent', 'OnQueueActive', 'OnQueueCompleted', 'OnQueueFailed',
+  'Query', 'Mutation', 'Subscription', 'ResolveField',
+]);
+// Lifecycle hooks: Nest calls these on any provider that has them.
+const LIFECYCLE = new Set(['onModuleInit', 'onModuleDestroy', 'onApplicationBootstrap',
+  'onApplicationShutdown', 'beforeApplicationShutdown']);
+// Methods a Nest contract names, and what marks the class as keeping it: an
+// interface it implements, a class it extends, or a class decorator.
+const CONTRACTS = {
+  handleConnection: ['OnGatewayConnection', 'WebSocketGateway'],
+  handleDisconnect: ['OnGatewayDisconnect', 'WebSocketGateway'],
+  afterInit: ['OnGatewayInit', 'WebSocketGateway'],
+  canActivate: ['CanActivate', 'AuthGuard'],
+  intercept: ['NestInterceptor'],
+  transform: ['PipeTransform'],
+  catch: ['ExceptionFilter', 'BaseExceptionFilter', 'Catch'],
+  use: ['NestMiddleware'],
+  validate: ['PassportStrategy'],
+  up: ['MigrationInterface'],
+  down: ['MigrationInterface'],
+};
+
+/** What makes Nest call this method, or null. */
+function frameworkCaller(cls, m) {
+  const deco = (m.decorators || []).find((d) => CALLED_BY_DECORATOR.has(d));
+  if (deco) return '@' + deco;
+  if (LIFECYCLE.has(m.name)) return 'lifecycle';
+  const marks = CONTRACTS[m.name];
+  if (!marks) return null;
+  const has = [...(cls.implements || []), cls.extends, ...cls.decorators].filter(Boolean);
+  const hit = marks.find((x) => has.includes(x));
+  return hit || null;
 }
 
 module.exports = { bricksOf, wiringOf };
