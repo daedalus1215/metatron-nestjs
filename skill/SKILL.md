@@ -124,6 +124,11 @@ the sentence is generated from the model at build time. Slots:
   or a trace stopped at a port metatron would not follow (`port-unbound`,
   `port-ambiguous`). Coverage does not cover this — coverage measures
   classification only.
+- **Check `tests.meta.reliable` before trusting any test finding.** When more
+  than 25% of spec files match no source file, the `testLocators` layout does
+  not fit the project, and the test findings suppress themselves; the CLI
+  prints the unmatched specs. Fix the locators rather than reporting the
+  numbers — a confident wrong coverage report is worse than none.
 - `findings[].tone` is `good` (a rule the code upholds), `warn` (a deviation) or
   `note`. Report the upheld rules too — "zero upward calls across 1,047 imports"
   is a real result, not an absence of news.

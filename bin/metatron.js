@@ -199,6 +199,23 @@ if (D.length) {
   }
 }
 
+// Test findings are only trusted when the reverse check passes: every spec
+// must be claimed by exactly one source. Otherwise they suppress themselves
+// and say so here, because a confident wrong coverage report is worse than none.
+const T = model.tests;
+if (T && T.meta) {
+  if (!T.meta.reliable) {
+    const un = T.meta.specFiles - T.meta.matched;
+    console.log(`  ${un} of ${T.meta.specFiles} spec files could not be matched to a source file.  !!`);
+    console.log(`    The \`testLocators\` config does not fit this project's layout.`);
+    console.log(`    Test findings suppressed — they would be wrong.`);
+    T.unmatchedSpecs.slice(0, 3).forEach((s) => console.log(`      ${s}`));
+    if (T.unmatchedSpecs.length > 3) console.log(`      ... ${T.unmatchedSpecs.length - 3} more`);
+  } else if (T.meta.specFiles === 0) {
+    console.log(`  0 test files found — every source file counts as untested.`);
+  }
+}
+
 if (c.unclassifiedPct > 10) {
   console.log(`\n  ${c.unclassifiedCount} files matched no pattern. Add them to \`addPatterns\` in ${path.relative(process.cwd(), cfg.__file)}:`);
   const bySuffix = {};
