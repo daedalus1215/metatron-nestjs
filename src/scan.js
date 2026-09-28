@@ -405,7 +405,10 @@ module.exports = function scan(cfg, opts = {}) {
         const clean = p.replace(/@\w+\([^)]*\)/g, ' ').replace(/@\w+/g, ' ').trim();
         const m = clean.match(/(?:private|public|protected|readonly|\s)*\s*(\w+)\s*:\s*([A-Za-z_]\w*)/);
         if (!m) return { prop: clean.replace(/\s+/g, ' '), type: null, raw: p, line, unread: true };
-        const inj = { prop: m[1], type: m[2], file: EXTERNAL_TYPES.has(m[2]) ? null : symbolIndex[rel][m[2]] || null };
+        // A class declared in this same file is never imported, so the
+        // symbol index cannot see it.
+        const inj = { prop: m[1], type: m[2], file: EXTERNAL_TYPES.has(m[2]) ? null
+          : symbolIndex[rel][m[2]] || (declaresClass(rel, m[2]) ? rel : null) };
         const tm = p.match(INJECT_RE);
         if (tm) bindInjection(rel, inj, tm[1], line);
         return Object.assign(inj, { raw: p, line });
