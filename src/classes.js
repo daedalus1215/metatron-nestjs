@@ -292,11 +292,15 @@ function parse(src) {
       if (open >= n || src[open] !== '{') { i = j; reset(); continue; }
       const header = src.slice(j, open);
       const ext = header.match(/\bextends\s+([\w$.]+)/);
+      const impl = header.match(/\bimplements\s+([\s\S]+)$/);
+      const implementsList = impl
+        ? impl[1].replace(/<[^<>]*>/g, '').split(',').map((x) => (x.trim().match(/^[\w$.]+/) || [])[0]).filter(Boolean)
+        : [];
       const bodyClose = close(open);
       classes.push({
         name, exported: mods.has('export'), default: mods.has('default'), abstract: mods.has('abstract'),
-        extends: ext ? ext[1] : null, decorators: decos,
-        start: lineAt(start), end: lineAt(bodyClose), open, close: bodyClose,
+        extends: ext ? ext[1] : null, implements: implementsList, decorators: decos,
+        start: lineAt(start), end: lineAt(bodyClose), startIdx: start, open, close: bodyClose,
         members: classBody(open, bodyClose),
       });
       i = bodyClose + 1; reset(); continue;

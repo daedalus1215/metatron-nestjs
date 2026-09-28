@@ -19,8 +19,8 @@ const brick = (id) => model.bricks.find((b) => b.id === id);
 
 test('one brick per class, two classes in one file share an address', () => {
   assert.deepStrictEqual(model.bricks.filter((b) => b.file === SVC).map((b) => [b.id, b.lines]), [
-    [SVC + '#ThingAuditor', [44, 55]],
-    [SVC + '#ThingService', [9, 42]],
+    [SVC + '#ThingAuditor', [46, 58]],
+    [SVC + '#ThingService', [9, 44]],
   ]);
   assert.deepStrictEqual(brick(SVC + '#ThingService').decorators, ['Injectable']);
 });
@@ -97,7 +97,7 @@ const studs = (id) => brick(id).studs.map((s) => s.name);
 
 test('studs are public methods; private ones are internals; accessors are neither', () => {
   const b = brick(SVC + '#ThingService');
-  assert.deepStrictEqual(studs(b.id), ['create', 'find', 'onlyFromInside']);
+  assert.deepStrictEqual(studs(b.id), ['create', 'find', 'onlyFromInside', 'onModuleInit']);
   assert.deepStrictEqual(b.internals.map((s) => [s.name, s.access]), [['helper', 'private']]);
   assert.ok(!b.studs.concat(b.internals).some((s) => s.name === 'size' || s.name === 'constructor'));
 });
@@ -119,7 +119,7 @@ test('a route handler is a stud carrying its endpoint', () => {
 
 test('function bricks: exported functions are studs, the rest internals', () => {
   const b = brick('things/domain/utils/date.utils.ts');
-  assert.deepStrictEqual(studs(b.id), ['formatDate', 'parseDate', 'isoWeek']);
+  assert.deepStrictEqual(studs(b.id), ['formatDate', 'parseDate', 'isoWeek', 'Audited']);
   assert.deepStrictEqual(b.internals.map((s) => s.name), ['pad']);
   assert.ok(b.studs.every((s) => s.kind === 'function'));
 });
@@ -153,6 +153,7 @@ test('calls into a function brick name the calling method; self-calls are not re
 
 test('a static call is recorded with no wire behind it', () => {
   assert.deepStrictEqual(callsFrom(SVC + '#ThingAuditor'), [
+    ['audit', UTILS, 'Audited', false],
     ['audit', SVC + '#ThingService', 'create', true],
     ['audit', REPO, 'count', false],
   ]);
@@ -186,5 +187,22 @@ test('grip: a public method called only from inside its class is unseen', () => 
 });
 
 test('wiringMeta counts studs by grip', () => {
-  assert.deepStrictEqual(model.wiringMeta.studs, { total: 13, brick: 7, route: 1, unseen: 5 });
+  assert.deepStrictEqual(model.wiringMeta.studs, { total: 15, brick: 8, route: 1, framework: 1, unseen: 5 });
+});
+
+test('grip: a method Nest calls is gripped by the framework, and says why', () => {
+  const s = brick(SVC + '#ThingService').studs.find((x) => x.name === 'onModuleInit');
+  assert.deepStrictEqual([s.grip, s.framework], ['framework', 'lifecycle']);
+});
+
+test('a decorator\'s arguments are a call from the member it decorates', () => {
+  assert.strictEqual(grip(UTILS, 'Audited'), 'brick');
+  const c = model.calls.find((x) => x.toMethod === 'Audited');
+  assert.deepStrictEqual([c.from, c.fromMethod], [SVC + '#ThingAuditor', 'audit']);
+});
+
+test('a script (main.ts) is a brick with no studs, so its calls are recorded', () => {
+  const b = brick('main.ts');
+  assert.deepStrictEqual([b.shape, b.studs.length, b.internals.map((s) => s.name)], ['script', 0, ['bootstrap']]);
+  assert.deepStrictEqual(callsFrom('main.ts'), [['bootstrap', UTILS, 'formatDate', false]]);
 });

@@ -78,6 +78,7 @@ what the file contains:
 | several classes | one per class | `path/to/file.ts#ClassName` each |
 | no class, exported functions | the file | `path/to/file.ts` |
 | a port (`pattern: 'port'`) with no class | the file: a hollow brick | `path/to/file.ts` |
+| no class, only non-exported functions (`main.ts`) | the file: a `script` brick, no studs | `path/to/file.ts` |
 | types, interfaces, consts, enums only | not a brick | — |
 
 Two cases the table leaves open:
@@ -241,6 +242,7 @@ Once `calls` exist, every stud gets a `grip`:
 |---|---|
 | `brick` | at least one other brick calls it |
 | `route` | no brick calls it, but it is a route handler |
+| `framework` | no brick calls it, but Nest does, and `framework` says why: an event or schedule decorator (`@OnEvent`, `@Cron`, …), a lifecycle hook (`onModuleInit`, …), or the method a Nest contract names on a class that keeps it (`validate` on a `PassportStrategy`, `handleConnection` on a gateway, `up`/`down` on a migration) |
 | `unseen` | no call metatron can read reaches it |
 
 It is `unseen`, not `none`. The call shapes listed under Out of scope
@@ -329,10 +331,10 @@ existing view. Only 10 reads these keys.
 
 | | chronus | omega |
 |---|---|---|
-| bricks | 270 | 135 |
+| bricks | 271 | 136 |
 | sockets resolved | 271 / 271 (12 port, 30 framework) | 156 / 156 (23 framework) |
-| studs | 356: 248 brick, 63 route, 45 unseen | 188: 128 brick, 28 route, 32 unseen |
-| calls | 322 | 201 |
+| studs | 356: 255 brick, 63 route, 10 framework, 28 unseen | 188: 129 brick, 28 route, 5 framework, 26 unseen |
+| calls | 387 | 225 |
 | trace hops also in `calls` | 306 / 306 | 146 / 146 |
 | endpoints landing on a stud | 63 / 63 | 28 / 28 |
 
@@ -346,26 +348,27 @@ pays for it: every lens has an adapter that picks its own keys, and none
 reads these. If 10 needs a smaller payload, the fix is an index of brick
 ids, not dropping fields.
 
-**What `unseen` turned up.** On chronus, most of the 45 unseen studs are
-methods the *framework* calls:
+**What `unseen` turned up, and the follow-up.** The first cut left 45
+unseen studs on chronus, and most were methods the *framework* calls:
+lifecycle hooks, `@OnEvent` handlers, `JwtStrategy.validate`, and migration
+`up`/`down`. Three more gaps showed up alongside them:
 
-- lifecycle hooks: `onModuleInit`, `handleConnection`, `handleDisconnect`
-- `@OnEvent` listener handlers
-- `JwtStrategy.validate`
-- migration `up` / `down`
-- `configure*` functions called from `main.ts`
+- **Framework grip.** The `framework` grip (above) takes those methods out
+  of `unseen`. Studs now carry their `decorators`, and classes their
+  `implements`.
+- **Scripts.** A file with top-level functions and no exports or classes
+  (`main.ts`) is a `script` brick. It offers no studs, but its calls are
+  recorded, so the `configure*` functions it calls are gripped.
+- **Decorator arguments.** A call written in a decorator's arguments
+  (`@ProtectedAction(…)`) is recorded as a call from the member it
+  decorates, or from the class when the decorator is on the class.
 
-The last group is a second gap. `main.ts` declares no exported function,
-so it is not a brick, and calls from a file with no brick are not
-recorded. Neither gap makes the data wrong, since `unseen` never claimed
-dead. But both make the list noisier than it should be. A follow-up could
-add a `framework` grip, driven by stud decorators and Nest's lifecycle
-method names, and give brickless entry files like `main.ts` a brick. That
-work is not done here.
-
-**Also not recorded:** a function called from a class decorator's
-arguments, such as `@ProtectedAction(…)`. It sits outside every member
-body, and a class file has no file-level brick to attribute it to.
+After these, chronus has 28 unseen studs and omega 26. Spot-checked on
+chronus, `CheckItemsRepository.getMaxOrderByNoteId`,
+`NoteAggregator.isArchived`, `TimeTrackRepository.getDailyTotal` and
+`AudioService.downloadAudio` have no caller anywhere outside tests.
+`AuthService.validateUser` is called only from inside its own class. The
+list now reads as leads.
 
 ## Out of scope
 
