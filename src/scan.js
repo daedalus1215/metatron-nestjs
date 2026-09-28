@@ -11,6 +11,8 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { violationsOf } = require('./violations');
+const declarations = require('./classes');
+const { bricksOf } = require('./wiring');
 
 // ------------------------------------------------------------------ helpers
 
@@ -574,6 +576,11 @@ module.exports = function scan(cfg, opts = {}) {
   }));
   const seenLink = new Set();
   const fileLinks = [];
+  // ---- wiring (spec 09): every declaration, read inside its own body
+  const decl = {};
+  for (const f of files) decl[f] = declarations.parse(text[f]);
+  const bricks = bricksOf({ files, info, decl, tiers: TIERS });
+
   for (const e of fileEdges) {
     const a = info[e.from], b = info[e.to];
     if (!a || !b) continue;
@@ -1307,6 +1314,7 @@ module.exports = function scan(cfg, opts = {}) {
     platformModules: modules.map((m) => m.id).filter((m) => INFRA.has(m) || m === '(root)'),
     allModuleEdges, domainEdges, cycles, crossDomain, ports, endpoints, shape, findings,
     fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, coupling, diagnostics, bindings, tests,
+    bricks,
   };
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);
