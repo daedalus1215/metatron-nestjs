@@ -1,10 +1,11 @@
 ---
 title: Violation Baseline and `metatron check`
-status: draft
+status: implemented
 project: metatron-nestjs
 location: specs/02-violation-baseline-and-check.md
 created: 2026-08-24
 tags: [fitness-functions, ci, baseline, gating]
+implemented: 2026-08-24
 ---
 
 # Violation Baseline and `metatron check`
@@ -161,3 +162,42 @@ mis-binds handlers, which would produce fabricated "new violations" in traces.
 - Fixing a baselined violation is reported as fixed and does **not** mutate
   `arch.baseline.json` until `--update`.
 - Hand-written `note` fields survive `--update`.
+
+---
+
+## Implementation notes (2026-08-24)
+
+`src/violations.js` (fingerprinting and extraction), `src/baseline.js`
+(read/write/compare), plus `baseline` and `check` in the CLI. `model.violations`
+is derived at the end of `scan()`, so it travels with a cached model.
+
+**Findings had to change shape.** The spec assumed a violation could be read off
+`findings[].items[]`, but those are heterogeneous display strings — `no-upward`
+formats as `why: from -> to`, `circular` as `a <-> b <-> c`, `orphans` as a bare
+path. Parsing them back would have been fragile. Each warn finding now carries
+`instances: [{from, to}]` alongside its `items`, and fingerprints are built from
+structure rather than text.
+
+**Two findings are explicitly ungateable.** `dag` reports SCC totals at four
+carve-out levels and `app-apps` reports a spelling split across the tree; both
+are observations about the whole codebase, not per-instance debt. They carry
+`gate: false` and `metatron baseline` prints which rules are excluded, so a rule
+cannot sit outside the gate unnoticed.
+
+**`instances` is stripped from lens payloads** in `src/build.js`. It is
+build-time data no template reads, and leaving it in cost ~2% on every lens.
+
+**A bug found during the demo:** `--update` reported "1 note preserved" while
+preserving none. The note belonged to a violation that no longer existed, so
+dropping it was right — the count was not. `write()` now counts notes actually
+carried over and reports dropped ones separately, since someone wrote that
+sentence for a reason.
+
+Verified on Chronus: 43 violations across 7 rules, `app-apps` correctly
+excluded. Deleting one baseline entry makes `check` exit 1 and name the exact
+file pair; `--rule` moves the others to a reported-but-not-gated section;
+`--allow-new 1` passes. The demo baseline was removed afterwards — adopting the
+ratchet in Chronus is a separate decision.
+
+13 tests in `test/baseline.test.js`, 21 in the suite overall.
+
