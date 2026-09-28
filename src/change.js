@@ -203,7 +203,9 @@ function resolveChange(cfg, spec = {}, opts = {}) {
     const t = line.indexOf('\t');
     frames.push({ sha: line.slice(0, t), subject: line.slice(t + 1) });
   }
-  if (!head && git(['status', '--porcelain', '--', relRoot]).trim()) frames.push({ sha: null, subject: '(uncommitted)' });
+  // Pathspecs are relative to the repository root, so these run there, not
+  // in the config's directory (a `backend/` beside a `frontend/`).
+  if (!head && D.git(gitRoot, ['status', '--porcelain', '--', relRoot]).trim()) frames.push({ sha: null, subject: '(uncommitted)' });
   return { label, base, head, frames, gitRoot, relRoot };
 }
 
@@ -220,11 +222,11 @@ function ghPr(dir, n) {
 }
 
 /** Renames between the base and a frame (null sha: the working tree). */
-function renamesBetween(r, dir, sha) {
+function renamesBetween(r, sha) {
   const args = ['diff', '-M', '--name-status', r.base].concat(sha ? [sha] : []).concat(['--', r.relRoot]);
   const prefix = r.relRoot === '.' ? '' : r.relRoot + '/';
   const out = [];
-  for (const line of D.git(dir, args).split('\n')) {
+  for (const line of D.git(r.gitRoot, args).split('\n')) {
     const p = line.split('\t');
     if (p[0] && p[0][0] === 'R' && p[1].startsWith(prefix) && p[2].startsWith(prefix)) {
       out.push([p[1].slice(prefix.length), p[2].slice(prefix.length)]);
@@ -259,7 +261,7 @@ function changeAt(cfg, spec, opts = {}) {
   const at = r.frames[frame];
   const baseModel = cache.get(cfg, r, r.base);
   const headModel = at.sha ? cache.get(cfg, r, at.sha) : (opts.current || scan(cfg));
-  const cmp = compare(baseModel, headModel, renamesBetween(r, cfg.__dir, at.sha));
+  const cmp = compare(baseModel, headModel, renamesBetween(r, at.sha));
   return {
     model: headModel,
     change: Object.assign({
