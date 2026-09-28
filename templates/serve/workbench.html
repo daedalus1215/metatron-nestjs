@@ -1,0 +1,867 @@
+<!doctype html>
+<!-- metatron workbench (spec 10). Served by `metatron serve`; not a built lens. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>metatron workbench</title>
+<style>
+:root {
+  --paper:#F1F4F8; --surface:#FFFFFF; --surface2:#E7ECF3; --sunk:#DFE5EE;
+  --ink:#151E29; --ink2:#485A6F; --ink3:#7A8B9F;
+  --rule:#D2DAE4; --rule2:#B9C4D2;
+  --blue:#2B5CA8; --amber:#A85B06; --rose:#A31C39; --green:#1B6448; --violet:#54479A; --teal:#136A80;
+  --l0:#2B5CA8; --l1:#7A8B9F; --l2:#54479A; --l3:#A85B06; --l4:#1B6448;
+  --l5:#7E6E4E; --l6:#136A80; --l7:#84406F; --l8:#8B98A8; --l9:#8B98A8; --l10:#8B98A8;
+  --hot:#D9480F; --code:#F5F7FA; --hl:#FFF3C4;
+  --shadow:0 1px 2px rgba(21,30,41,.06), 0 8px 24px rgba(21,30,41,.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:#0E141B; --surface:#151D26; --surface2:#1C2631; --sunk:#111922;
+    --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
+    --rule:#28343F; --rule2:#36454F;
+    --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6; --teal:#4FB6CE;
+    --l0:#79A4E6; --l1:#8496A9; --l2:#A093E6; --l3:#E0A04A; --l4:#4FC195;
+    --l5:#C0AC7F; --l6:#4FB6CE; --l7:#D28BBC; --l8:#7D8C9C; --l9:#7D8C9C; --l10:#7D8C9C;
+    --hot:#FF8A4C; --code:#101821; --hl:#3A3212;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:#0E141B; --surface:#151D26; --surface2:#1C2631; --sunk:#111922;
+  --ink:#E3EAF2; --ink2:#9EAFC1; --ink3:#6B7C91;
+  --rule:#28343F; --rule2:#36454F;
+  --blue:#79A4E6; --amber:#E0A04A; --rose:#EE7189; --green:#4FC195; --violet:#A093E6; --teal:#4FB6CE;
+  --l0:#79A4E6; --l1:#8496A9; --l2:#A093E6; --l3:#E0A04A; --l4:#4FC195;
+  --l5:#C0AC7F; --l6:#4FB6CE; --l7:#D28BBC; --l8:#7D8C9C; --l9:#7D8C9C; --l10:#7D8C9C;
+  --hot:#FF8A4C; --code:#101821; --hl:#3A3212;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  color-scheme: dark;
+}
+* { box-sizing:border-box; }
+html, body { height:100%; }
+body { margin:0; background:var(--paper); color:var(--ink);
+  font:14px/1.45 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  display:flex; flex-direction:column; overflow:hidden; }
+.mono, code, pre { font-family:'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+button { font:inherit; color:inherit; }
+
+/* status bar */
+.bar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:8px 16px;
+  padding-top:calc(8px + env(safe-area-inset-top, 0px));
+  border-bottom:1px solid var(--rule); background:var(--surface); }
+.bar h1 { font-size:15px; margin:0; font-weight:700; letter-spacing:-.01em; }
+.bar .meta { color:var(--ink3); font-size:12px; }
+.bar .err { color:var(--rose); font-size:12px; }
+.bar .spacer { flex:1; }
+.seg { display:inline-flex; border:1px solid var(--rule2); border-radius:6px; overflow:hidden; }
+.seg button { border:0; background:transparent; padding:3px 9px; font-size:12px; cursor:pointer; }
+.seg button[aria-pressed="true"] { background:var(--ink); color:var(--paper); }
+.dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--ink3); margin-right:5px; vertical-align:1px; }
+.dot.live { background:var(--green); }
+
+/* three columns */
+main { flex:1; display:grid; grid-template-columns:260px minmax(0,1fr) 420px; min-height:0; }
+aside, section { min-height:0; }
+.col { border-right:1px solid var(--rule); display:flex; flex-direction:column; min-height:0; }
+
+/* bricks list */
+.find { padding:10px; border-bottom:1px solid var(--rule); display:grid; gap:8px; }
+.find input, .find select { width:100%; padding:6px 8px; border:1px solid var(--rule2); border-radius:6px;
+  background:var(--surface); color:var(--ink); font:inherit; font-size:13px; }
+.pats { display:flex; flex-wrap:wrap; gap:4px 10px; font-size:11.5px; color:var(--ink2); }
+.pats label { display:inline-flex; gap:4px; align-items:center; cursor:pointer; white-space:nowrap; }
+.list { overflow:auto; flex:1; padding:4px 0 24px; }
+.list h4 { margin:10px 12px 2px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); font-weight:600; }
+.list button { display:flex; justify-content:space-between; gap:8px; width:100%; text-align:left; border:0; background:none;
+  padding:3px 12px 3px 16px; cursor:pointer; font-size:13px; }
+.list button:hover { background:var(--surface2); }
+.list button[aria-current="true"] { background:var(--ink); color:var(--paper); }
+.list button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.list button small { color:var(--ink3); font-size:11px; white-space:nowrap; flex:none; }
+.list button[aria-current="true"] small { color:inherit; opacity:.7; }
+
+/* bench */
+.bench { position:relative; overflow:auto; background:
+  radial-gradient(circle, var(--rule) 1px, transparent 1.2px) 0 0/18px 18px, var(--paper); }
+.bench svg { display:block; margin:0 auto; }
+.bench .empty { padding:40px; color:var(--ink3); }
+.legend { position:sticky; left:0; bottom:0; display:flex; gap:14px; flex-wrap:wrap; padding:6px 12px;
+  font-size:11.5px; color:var(--ink2); background:color-mix(in srgb, var(--paper) 88%, transparent); border-top:1px solid var(--rule); }
+.legend svg { vertical-align:-2px; margin:0 3px 0 0; display:inline; }
+.note { position:sticky; left:0; top:0; padding:6px 12px; font-size:12px; color:var(--amber); }
+
+svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
+.brick rect.body { fill:var(--surface); stroke-width:1.5; }
+.brick.port rect.body { fill:var(--paper); stroke-dasharray:5 3; }
+.brick.focus rect.body { stroke-width:3; filter:drop-shadow(0 4px 10px rgba(0,0,0,.15)); }
+.brick { cursor:pointer; }
+.brick.dim { opacity:.28; }
+.brick .name { font-size:12.5px; font-weight:600; fill:var(--ink); }
+.brick .sub { font-size:10px; fill:var(--ink3); }
+.stud { cursor:help; }
+.stud.lit, .sock.lit { stroke:var(--hot) !important; stroke-width:2.5 !important; }
+.edge { fill:none; stroke:var(--ink3); stroke-width:1.3; opacity:.65; }
+.edge.call { stroke-dasharray:4 4; opacity:.5; }
+.edge.bound { stroke-dasharray:1.5 3; }
+.edge.lit { stroke:var(--hot); opacity:1; stroke-width:2.2; }
+.edge.dim { opacity:.12; }
+.rowlabel { font-size:10px; letter-spacing:.14em; text-transform:uppercase; fill:var(--ink3); }
+.rowline { stroke:var(--rule); stroke-dasharray:2 4; }
+
+.tip { position:fixed; pointer-events:none; z-index:10; max-width:420px; padding:7px 9px; border-radius:6px;
+  background:var(--ink); color:var(--paper); font-size:12px; box-shadow:var(--shadow); }
+.tip code { font-size:11.5px; }
+.tip .k { opacity:.65; }
+
+/* inspector */
+.insp { display:flex; flex-direction:column; min-height:0; border-left:1px solid var(--rule); border-right:0; }
+.head { padding:12px 14px 8px; border-bottom:1px solid var(--rule); background:var(--surface); }
+.head h2 { margin:0; font-size:17px; letter-spacing:-.01em; word-break:break-word; }
+.head .path { font-size:11.5px; color:var(--ink3); overflow-wrap:anywhere; }
+.chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.chip { font-size:11px; padding:1px 7px; border-radius:10px; background:var(--surface2); color:var(--ink2); }
+.parts { overflow:auto; max-height:42%; border-bottom:1px solid var(--rule); padding:4px 0 8px; }
+.parts h3 { margin:10px 14px 4px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); }
+.row { display:block; width:100%; text-align:left; border:0; background:none; padding:3px 14px; cursor:pointer; font-size:12.5px; }
+.row:hover { background:var(--surface2); }
+.row code { font-size:12px; }
+.row .by { display:block; font-size:11.5px; color:var(--ink3); padding-left:12px; }
+.row .by a { color:var(--blue); cursor:pointer; text-decoration:none; }
+.row .by a:hover { text-decoration:underline; }
+.badge { display:inline-block; font-size:10px; padding:0 6px; border-radius:8px; margin-left:6px; vertical-align:1px;
+  border:1px solid var(--rule2); color:var(--ink2); }
+.badge.unresolved, .badge.unseen { border-color:var(--rose); color:var(--rose); }
+.badge.route { border-color:var(--blue); color:var(--blue); }
+.badge.framework { border-color:var(--violet); color:var(--violet); }
+.badge.port { border-color:var(--teal); color:var(--teal); }
+.none { padding:2px 14px; color:var(--ink3); font-size:12px; }
+.src { flex:1; overflow:auto; background:var(--code); font-size:12px; line-height:1.55; }
+.src table { border-collapse:collapse; min-width:100%; }
+.src td { padding:0 10px 0 0; white-space:pre; vertical-align:top; }
+.src td.n { color:var(--ink3); text-align:right; padding:0 10px; user-select:none; border-right:1px solid var(--rule); }
+.src tr.flash td { background:var(--hl); }
+.src .kw { color:var(--violet); } .src .str { color:var(--green); } .src .com { color:var(--ink3); font-style:italic; }
+.src .dec { color:var(--amber); } .src .num { color:var(--teal); } .src .ty { color:var(--blue); }
+.src .go { margin-left:10px; font-size:11px; border:1px solid var(--rule2); border-radius:8px; padding:0 6px;
+  background:var(--surface); cursor:pointer; color:var(--blue); font-family:inherit; }
+.src .go:hover { border-color:var(--blue); }
+
+/* change mode (spec 11) */
+.chg { display:inline-flex; gap:6px; align-items:center; }
+.chg input { width:min(260px, 40vw); padding:4px 8px; border:1px solid var(--rule2); border-radius:6px;
+  background:var(--surface); color:var(--ink); font:inherit; font-size:12.5px; }
+.chg button, .scrub button { border:1px solid var(--rule2); border-radius:6px; background:var(--surface); padding:3px 9px; font-size:12px; cursor:pointer; }
+.chg button:hover, .scrub button:hover { border-color:var(--ink2); }
+.scrub button[aria-pressed="true"] { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.scrub { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:6px 16px; border-bottom:1px solid var(--rule);
+  background:var(--surface2); font-size:12.5px; }
+.scrub input[type=range] { flex:0 1 320px; min-width:120px; }
+.scrub .lbl { color:var(--ink2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60ch; }
+.scrub strong { font-weight:600; }
+.brick.added rect.body { fill:color-mix(in srgb, var(--green) 15%, var(--surface)); stroke:var(--green); }
+.brick.edited rect.body { fill:color-mix(in srgb, var(--amber) 15%, var(--surface)); stroke:var(--amber); }
+.brick.ctx { opacity:.7; }
+.edge.c-attachment { stroke:var(--green); opacity:1; stroke-width:2.6; }
+.edge.c-graft { stroke:var(--amber); opacity:1; stroke-width:2.6; }
+.edge.c-rewire { stroke:var(--violet); opacity:1; stroke-width:2.6; }
+.edge.c-territory { stroke:var(--green); opacity:.75; stroke-width:1.4; }
+.edge.c-kept { stroke:var(--blue); opacity:.9; stroke-width:1.8; }
+.ring { fill:none; stroke-width:2; pointer-events:none; }
+.ring.added { stroke:var(--green); } .ring.edited { stroke:var(--amber); }
+.cp { border-bottom:1px solid var(--rule); padding:8px 0 10px; max-height:55%; overflow:auto; font-size:12.5px; }
+.cp .lead { padding:0 12px 6px; }
+.cp .lead b { font-size:13px; }
+.cp h4 { margin:10px 12px 2px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); font-weight:600; }
+.cp .it { padding:2px 12px 2px 16px; }
+.cp a { color:var(--blue); cursor:pointer; }
+.cp a:hover { text-decoration:underline; }
+.sw { display:inline-block; width:10px; height:3px; vertical-align:3px; margin-right:6px; border-radius:2px; }
+.cp .muted { color:var(--ink3); }
+.chip.added { background:color-mix(in srgb, var(--green) 22%, var(--surface)); color:var(--green); }
+.chip.edited { background:color-mix(in srgb, var(--amber) 22%, var(--surface)); color:var(--amber); }
+.badge.added { border-color:var(--green); color:var(--green); }
+.badge.edited { border-color:var(--amber); color:var(--amber); }
+
+@media (max-width: 1100px) {
+  main { grid-template-columns:220px minmax(0,1fr); grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
+  .insp { grid-column:1 / -1; border-left:0; border-top:1px solid var(--rule); }
+}
+@media (max-width: 700px) {
+  body { overflow:auto; }
+  main { display:flex; flex-direction:column; }
+  .col { max-height:40vh; border-right:0; border-bottom:1px solid var(--rule); }
+  .bench { min-height:60vh; }
+  .insp { min-height:80vh; }
+}
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1 id="title">metatron workbench</h1>
+  <span class="meta" id="live"><span class="dot"></span>connecting</span>
+  <span class="meta mono" id="wiring"></span>
+  <span class="err" id="err" hidden></span>
+  <span class="spacer"></span>
+  <form class="chg" id="chgform" aria-label="Show a change">
+    <input id="chg" placeholder="main...feat/x · #12 · empty: work in progress" aria-label="Range, PR, or empty for work in progress">
+    <button type="submit">show change</button>
+    <button type="button" id="chgclear" hidden>clear</button>
+  </form>
+  <span class="meta">depth</span>
+  <span class="seg" id="depth" role="group" aria-label="Depth below the focused brick">
+    <button data-d="1">1</button><button data-d="2" aria-pressed="true">2</button><button data-d="3">3</button>
+  </span>
+</div>
+<div class="scrub" id="scrub" hidden>
+  <button type="button" id="mapbtn">change map</button>
+  <span id="frames" hidden><input type="range" id="frame" min="0" step="1" aria-label="Frame"> <span class="lbl" id="framelabel"></span></span>
+</div>
+<main>
+  <aside class="col">
+    <div class="find">
+      <input id="q" type="search" placeholder="Find a brick…" autocomplete="off" aria-label="Find a brick">
+      <select id="mod" aria-label="Module"><option value="">all modules</option></select>
+      <div class="pats" id="pats"></div>
+    </div>
+    <div class="cp" id="cp" hidden></div>
+    <div class="list" id="list"></div>
+  </aside>
+  <section class="bench" id="bench"><div class="empty">Loading the model…</div></section>
+  <aside class="col insp">
+    <div class="head" id="head"></div>
+    <div class="parts" id="parts"></div>
+    <div class="src mono" id="src"></div>
+  </aside>
+</main>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+'use strict';
+// ------------------------------------------------------------------ state
+const HIDE_BY_DEFAULT = new Set(['dto', 'entity', 'module', 'migration', 'schema', 'config', 'swagger']);
+const S = {
+  m: null, byId: new Map(), focus: null, depth: 2, hidden: new Set(HIDE_BY_DEFAULT),
+  q: '', mod: '', src: new Map(), version: 0,
+  out: new Map(), inc: new Map(),       // brick -> Set of neighbours (down / up)
+  callsTo: new Map(), callsFrom: new Map(), routes: new Map(),
+  change: null, spec: null, map: false, pairCls: new Map(),   // spec 11
+};
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const short = (id) => { const b = S.byId.get(id); return b ? b.name : String(id).split('/').pop(); };
+const tierVar = (t) => `var(--l${Math.min(10, Math.max(0, t | 0))})`;
+const add = (map, k, v) => { if (!map.has(k)) map.set(k, new Set()); map.get(k).add(v); };
+const push = (map, k, v) => { if (!map.has(k)) map.set(k, []); map.get(k).push(v); };
+
+function index(m) {
+  S.m = m;
+  S.byId = new Map(m.bricks.map((b) => [b.id, b]));
+  S.out = new Map(); S.inc = new Map(); S.callsTo = new Map(); S.callsFrom = new Map();
+  S.routes = new Map(m.endpoints.map((e) => [e.id, e]));
+  const link = (a, b) => { if (!a || !b || a === b || !S.byId.has(a) || !S.byId.has(b)) return; add(S.out, a, b); add(S.inc, b, a); };
+  for (const w of m.wires) { link(w.from, w.to); if (w.boundTo) link(w.to, w.boundTo); }
+  for (const c of m.calls) {
+    link(c.from, c.to);
+    if (c.boundTo) link(c.to, c.boundTo);
+    push(S.callsTo, c.to + '\u0000' + c.toMethod, c);
+    if (c.boundTo) push(S.callsTo, c.boundTo + '\u0000' + c.toMethod, c);
+    push(S.callsFrom, c.from, c);
+  }
+}
+
+// ------------------------------------------------------------------ list
+function renderPats() {
+  const pats = [...new Set(S.m.bricks.map((b) => b.pattern))].sort();
+  $('pats').innerHTML = pats.map((p) => `<label><input type="checkbox" data-p="${esc(p)}" ${S.hidden.has(p) ? '' : 'checked'}>${esc(p)}</label>`).join('');
+  const mods = [...new Set(S.m.bricks.map((b) => b.module))].sort();
+  $('mod').innerHTML = '<option value="">all modules</option>' + mods.map((m) => `<option ${m === S.mod ? 'selected' : ''}>${esc(m)}</option>`).join('');
+}
+function renderList() {
+  const q = S.q.toLowerCase();
+  const shown = S.m.bricks.filter((b) => !S.hidden.has(b.pattern) && (!S.mod || b.module === S.mod)
+    && (!q || b.name.toLowerCase().includes(q) || b.file.toLowerCase().includes(q)));
+  const byMod = new Map();
+  for (const b of shown) push(byMod, b.module, b);
+  let h = '';
+  for (const [mod, list] of [...byMod].sort((a, b) => a[0].localeCompare(b[0]))) {
+    h += `<h4>${esc(mod)}</h4>`;
+    for (const b of list.sort((x, y) => x.tier - y.tier || x.name.localeCompare(y.name))) {
+      h += `<button data-id="${esc(b.id)}" aria-current="${b.id === S.focus}"><span>${esc(b.name)}</span><small>${esc(b.pattern)}</small></button>`;
+    }
+  }
+  $('list').innerHTML = h || '<div class="none">No bricks match.</div>';
+}
+
+// ------------------------------------------------------------------ neighbourhood + layout
+const MAX_NODES = 70;
+function neighbourhood() {
+  const keep = (id) => id === S.focus || !S.hidden.has(S.byId.get(id).pattern);
+  const nodes = new Map([[S.focus, 0]]);     // id -> signed hop (down +, up -)
+  let frontier = [S.focus], cut = 0;
+  for (let d = 1; d <= S.depth; d++) {
+    const next = [];
+    for (const id of frontier) for (const n of S.out.get(id) || []) {
+      if (nodes.has(n) || !keep(n)) continue;
+      if (nodes.size >= MAX_NODES) { cut++; continue; }
+      nodes.set(n, d); next.push(n);
+    }
+    frontier = next;
+  }
+  for (const n of S.inc.get(S.focus) || []) {
+    if (nodes.has(n) || !keep(n)) continue;
+    if (nodes.size >= MAX_NODES) { cut++; continue; }
+    nodes.set(n, -1);
+  }
+  return { nodes, cut };
+}
+
+// The change map: every added or edited brick, and both ends of every new
+// or changed connection. Unchanged bricks come in only as context.
+function changeNodes() {
+  const C = S.change, nodes = new Map();
+  const put = (id) => {
+    const b = S.byId.get(id);
+    if (b && !nodes.has(id) && !S.hidden.has(b.pattern) && nodes.size < 120) nodes.set(id, 0);
+  };
+  for (const [id, st] of Object.entries(C.bricks)) if (st === 'added' || st === 'edited') put(id);
+  for (const p of C.pairs) if (p.class !== 'detached') { put(p.from); put(p.to); }
+  return { nodes, cut: 0 };
+}
+
+const BH = 50, GAP = 26, ROWGAP = 96, PAD = 40, LABEL = 110, PIP = 13;
+function brickWidth(b) {
+  const text = Math.max(b.name.length * 7.4, b.pattern.length * 5.6) + 28;
+  return Math.max(96, text, Math.min(b.studs.length, 18) * PIP + 22, Math.min(b.sockets.length, 18) * PIP + 22);
+}
+
+function layout(nodes) {
+  const ids = [...nodes.keys()];
+  const tiers = [...new Set(ids.map((id) => S.byId.get(id).tier))].sort((a, b) => a - b);
+  const rows = tiers.map((t) => ids.filter((id) => S.byId.get(id).tier === t)
+    .sort((a, b) => (nodes.get(a) - nodes.get(b)) || S.byId.get(a).module.localeCompare(S.byId.get(b).module) || a.localeCompare(b)));
+  const pos = new Map();
+  const place = () => {
+    for (const row of rows) {
+      let x = 0;
+      for (const id of row) { const w = brickWidth(S.byId.get(id)); pos.set(id, { x, w }); x += w + GAP; }
+    }
+  };
+  place();
+  // Barycentric sweeps: order each row by the mean centre of its neighbours.
+  const nb = (id) => [...(S.out.get(id) || []), ...(S.inc.get(id) || [])].filter((n) => pos.has(n));
+  for (let pass = 0; pass < 4; pass++) {
+    const order = pass % 2 ? [...rows].reverse() : rows;
+    for (const row of order) {
+      const bc = new Map(row.map((id, i) => {
+        const ns = nb(id).filter((n) => !row.includes(n));
+        const c = ns.length ? ns.reduce((a, n) => a + pos.get(n).x + pos.get(n).w / 2, 0) / ns.length : pos.get(id).x;
+        return [id, c + i * 0.001];
+      }));
+      row.sort((a, b) => bc.get(a) - bc.get(b));
+    }
+    place();
+  }
+  const widest = Math.max(...rows.map((r) => r.reduce((a, id) => a + pos.get(id).w + GAP, -GAP)));
+  rows.forEach((row, ri) => {
+    const rw = row.reduce((a, id) => a + pos.get(id).w + GAP, -GAP);
+    let x = LABEL + PAD + (widest - rw) / 2;
+    for (const id of row) { const p = pos.get(id); p.x = x; p.y = PAD + ri * (BH + ROWGAP); x += p.w + GAP; }
+  });
+  return { pos, rows, tiers, width: LABEL + PAD * 2 + widest, height: PAD * 2 + rows.length * (BH + ROWGAP) - ROWGAP };
+}
+
+// Positions of pips along an edge, capped so a wide brick stays readable.
+const pipX = (p, n, i) => { const k = Math.min(n, 18); return p.x + (p.w - (k - 1) * PIP) / 2 + Math.min(i, k - 1) * PIP; };
+
+// ------------------------------------------------------------------ bench
+function renderBench() {
+  const bench = $('bench');
+  const mapMode = S.change && S.map;
+  if (!mapMode && (!S.focus || !S.byId.has(S.focus))) { bench.innerHTML = '<div class="empty">Pick a brick on the left.</div>'; return; }
+  const { nodes, cut } = mapMode ? changeNodes() : neighbourhood();
+  if (!nodes.size) { bench.innerHTML = '<div class="empty">This change moves no bricks and no wiring. Pick a frame, or a brick on the left.</div>'; return; }
+  const L = layout(nodes);
+  const P = L.pos;
+  let edges = '', bricks = '', rowsSvg = '';
+
+  L.tiers.forEach((t, i) => {
+    const y = PAD + i * (BH + ROWGAP) + BH / 2;
+    const tier = S.m.tiers[t];
+    rowsSvg += `<line class="rowline" x1="${PAD}" x2="${L.width - PAD}" y1="${y}" y2="${y}"/>`
+      + `<text class="rowlabel" x="${PAD}" y="${y - 6}">${esc(tier ? tier.name : t)}</text>`;
+  });
+
+  const pc = (a, b) => { const c = S.change && S.pairCls.get(a + '>' + b); return c ? ' c-' + c : ''; };
+  const curve = (x1, y1, x2, y2) => {
+    const dy = Math.max(30, Math.abs(y2 - y1) / 2);
+    return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
+  };
+  // Wires leave from the socket notch that makes them.
+  const wired = new Set();
+  for (const id of nodes.keys()) {
+    const b = S.byId.get(id), p = P.get(id);
+    b.sockets.forEach((s, i) => {
+      const tgt = s.to && P.has(s.to) ? s.to : (s.boundTo && P.has(s.boundTo) ? s.boundTo : null);
+      if (!tgt) return;
+      const q = P.get(tgt);
+      wired.add(id + '>' + tgt);
+      edges += `<path class="edge wire${pc(id, tgt)}" data-from="${esc(id)}" data-to="${esc(tgt)}" data-sock="${i}" d="${curve(pipX(p, b.sockets.length, i), p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+      if (s.status === 'port' && s.to && s.boundTo && P.has(s.to) && P.has(s.boundTo)) {
+        const r = P.get(s.boundTo), pp = P.get(s.to);
+        if (!wired.has(s.to + '>' + s.boundTo)) {
+          wired.add(s.to + '>' + s.boundTo);
+          edges += `<path class="edge bound${pc(s.to, s.boundTo)}" data-from="${esc(s.to)}" data-to="${esc(s.boundTo)}" d="${curve(pp.x + pp.w / 2, pp.y + BH, r.x + r.w / 2, r.y)}"/>`;
+        }
+      }
+    });
+  }
+  // A call with no wire behind it: a function brick, a static call, main.ts.
+  for (const id of nodes.keys()) {
+    const seen = new Set();
+    for (const c of S.callsFrom.get(id) || []) {
+      if (!P.has(c.to) || wired.has(id + '>' + c.to) || seen.has(c.to)) continue;
+      seen.add(c.to);
+      const p = P.get(id), q = P.get(c.to);
+      edges += `<path class="edge call${pc(id, c.to)}" data-from="${esc(id)}" data-to="${esc(c.to)}" d="${curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+    }
+  }
+
+  for (const [id] of nodes) {
+    const b = S.byId.get(id), p = P.get(id), col = tierVar(b.tier);
+    const cst = S.change ? S.change.bricks[id] : null;
+    const paint = cst === 'added' || cst === 'edited' ? cst : (S.change && mapMode ? 'ctx' : '');
+    let g = `<g class="brick ${b.shape === 'port' ? 'port' : ''} ${id === S.focus && !mapMode ? 'focus' : ''} ${paint}" data-id="${esc(id)}">`
+      + `<rect class="body" x="${p.x}" y="${p.y}" width="${p.w}" height="${BH}" rx="5" stroke="${col}"/>`
+      + `<rect x="${p.x}" y="${p.y}" width="5" height="${BH}" rx="2" fill="${col}"/>`
+      + `<text class="name" x="${p.x + p.w / 2}" y="${p.y + 23}" text-anchor="middle">${esc(b.name)}</text>`
+      + `<text class="sub" x="${p.x + p.w / 2}" y="${p.y + 37}" text-anchor="middle">${esc(b.pattern)} · ${esc(b.module)}</text>`;
+    b.studs.slice(0, 18).forEach((s, i) => {
+      const x = pipX(p, b.studs.length, i), y = p.y;
+      const common = `class="stud" data-id="${esc(id)}" data-stud="${i}"`;
+      if (s.grip === 'framework') g += `<rect ${common} x="${x - 4}" y="${y - 4}" width="8" height="8" fill="var(--violet)" stroke="var(--surface)"/>`;
+      else if (s.grip === 'route') g += `<circle ${common} cx="${x}" cy="${y}" r="4.5" fill="var(--surface)" stroke="var(--blue)" stroke-width="2.2"/>`;
+      else if (s.grip === 'unseen') g += `<circle ${common} cx="${x}" cy="${y}" r="4.5" fill="var(--paper)" stroke="var(--rose)" stroke-width="1.4" stroke-dasharray="2 1.6"/>`;
+      else g += `<circle ${common} cx="${x}" cy="${y}" r="4.5" fill="${col}" stroke="var(--surface)" stroke-width="1"/>`;
+      const sst = cst === 'edited' && S.change.studs[id] ? S.change.studs[id][s.name] : null;
+      if (sst === 'added' || sst === 'edited') g += `<circle class="ring ${sst}" cx="${x}" cy="${y}" r="7.5"/>`;
+    });
+    b.sockets.slice(0, 18).forEach((s, i) => {
+      const x = pipX(p, b.sockets.length, i);
+      const fill = s.status === 'unresolved' ? 'var(--rose)' : s.status === 'framework' ? 'var(--ink3)' : s.status === 'port' ? 'var(--teal)' : 'var(--ink)';
+      g += `<rect class="sock" data-id="${esc(id)}" data-sock="${i}" x="${x - 4.5}" y="${p.y + BH - 5}" width="9" height="7" rx="1.5" fill="${fill}" stroke="var(--surface)"/>`;
+    });
+    bricks += g + '</g>';
+  }
+
+  bench.innerHTML = (cut ? `<div class="note">${cut} more neighbours not drawn — lower the depth or hide patterns.</div>` : '')
+    + `<svg id="svg" width="${L.width}" height="${L.height}" viewBox="0 0 ${L.width} ${L.height}" role="img" aria-label="Bricks around ${esc(short(S.focus))}">`
+    + rowsSvg + `<g id="edges">${edges}</g>` + bricks + '</svg>'
+    + legend();
+  const f = P.get(mapMode ? [...nodes.keys()].find((k) => S.change.bricks[k] === 'added') || [...nodes.keys()][0] : S.focus);
+  bench.scrollLeft = Math.max(0, f.x + f.w / 2 - bench.clientWidth / 2);
+  bench.scrollTop = mapMode ? 0 : Math.max(0, f.y - bench.clientHeight / 3);
+}
+function legend() {
+  const pip = (inner) => `<svg width="12" height="12" viewBox="-6 -6 12 12">${inner}</svg>`;
+  return `<div class="legend">
+    <span>${pip('<circle r="4.5" fill="var(--l4)"/>')}stud a brick grips</span>
+    <span>${pip('<circle r="4" fill="var(--surface)" stroke="var(--blue)" stroke-width="2"/>')}route</span>
+    <span>${pip('<rect x="-4" y="-4" width="8" height="8" fill="var(--violet)"/>')}framework</span>
+    <span>${pip('<circle r="4" fill="none" stroke="var(--rose)" stroke-dasharray="2 1.6"/>')}unseen</span>
+    <span>${pip('<rect x="-4.5" y="-3" width="9" height="6" fill="var(--ink)"/>')}socket</span>
+    <span>solid: wire · dashed: call with no wire · dotted: port → bound class</span>
+    ${S.change ? `<span><i class="sw" style="background:var(--green)"></i>attachment: new → existing</span>
+    <span><i class="sw" style="background:var(--amber)"></i>graft: existing → new</span>
+    <span><i class="sw" style="background:var(--violet)"></i>rewire: existing → existing</span>
+    <span><i class="sw" style="background:var(--blue)"></i>new calls on a kept wire</span>` : ''}</div>`;
+}
+
+// ------------------------------------------------------------------ hover
+const tip = $('tip');
+function showTip(e, html) { tip.innerHTML = html; tip.hidden = false; moveTip(e); }
+function moveTip(e) {
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - r.width - 8) + 'px';
+  tip.style.top = Math.min(e.clientY + 14, innerHeight - r.height - 8) + 'px';
+}
+function clearLit() {
+  document.querySelectorAll('#bench .lit').forEach((n) => n.classList.remove('lit'));
+  document.querySelectorAll('#bench .dim').forEach((n) => n.classList.remove('dim'));
+}
+function hoverStud(el, e) {
+  const b = S.byId.get(el.dataset.id), s = b.studs[+el.dataset.stud];
+  const calls = S.callsTo.get(b.id + '\u0000' + s.name) || [];
+  el.classList.add('lit');
+  const callers = new Set(calls.map((c) => c.from));
+  document.querySelectorAll('#edges .edge').forEach((p) => {
+    if (p.dataset.to === b.id && callers.has(p.dataset.from)) p.classList.add('lit'); else p.classList.add('dim');
+  });
+  const route = s.route && S.routes.get(s.route);
+  const by = calls.length ? calls.map((c) => `${esc(short(c.from))}.${esc(c.fromMethod || '(module)')}`).slice(0, 8).join(', ')
+    + (calls.length > 8 ? ` +${calls.length - 8}` : '') : '';
+  showTip(e, `<code>${esc(s.sig)}</code><br><span class="k">grip</span> ${esc(s.grip)}`
+    + (route ? ` · <code>${esc(route.verb)} ${esc(route.route)}</code>` : '')
+    + (s.framework ? ` · ${esc(s.framework)}` : '')
+    + (by ? `<br><span class="k">gripped by</span> ${by}` : ''));
+}
+function hoverSock(el, e) {
+  const b = S.byId.get(el.dataset.id), s = b.sockets[+el.dataset.sock];
+  el.classList.add('lit');
+  const tgt = s.to || s.boundTo;
+  const used = new Set((S.callsFrom.get(b.id) || []).filter((c) => c.to === s.to || c.to === s.boundTo).map((c) => c.toMethod));
+  document.querySelectorAll('#edges .edge').forEach((p) => {
+    if (p.dataset.from === b.id && p.dataset.sock === el.dataset.sock) p.classList.add('lit'); else p.classList.add('dim');
+  });
+  for (const id of [s.to, s.boundTo].filter(Boolean)) {
+    const t = S.byId.get(id);
+    if (!t) continue;
+    t.studs.forEach((st, i) => {
+      if (!used.has(st.name)) return;
+      const n = document.querySelector(`#bench .stud[data-id="${CSS.escape(id)}"][data-stud="${i}"]`);
+      if (n) n.classList.add('lit');
+    });
+  }
+  showTip(e, `<code>${esc(s.prop)}: ${esc(s.external || s.type || '?')}</code><br><span class="k">${esc(s.status)}</span>`
+    + (tgt ? ` → ${esc(short(tgt))}` : '') + (s.boundTo && s.to ? ` <span class="k">bound to</span> ${esc(short(s.boundTo))}` : '')
+    + (used.size ? `<br><span class="k">grips</span> ${[...used].map(esc).join(', ')}` : ''));
+}
+
+// ------------------------------------------------------------------ inspector
+function callersOf(b, s) {
+  const calls = S.callsTo.get(b.id + '\u0000' + s.name) || [];
+  const uniq = new Map();
+  for (const c of calls) uniq.set(c.from + '#' + c.fromMethod, c);
+  return [...uniq.values()];
+}
+function renderInspector() {
+  const b = S.byId.get(S.focus);
+  if (!b) { $('head').innerHTML = ''; $('parts').innerHTML = ''; $('src').innerHTML = ''; return; }
+  const tier = S.m.tiers[b.tier];
+  $('head').innerHTML = `<h2>${esc(b.name)}</h2><div class="path mono">${esc(b.file)}:${b.lines[0]}–${b.lines[1]}</div>
+    <div class="chips"><span class="chip">${esc(b.pattern)}</span><span class="chip">${esc(b.module)}</span>
+    <span class="chip">${esc(tier ? tier.name : b.tier)}</span><span class="chip">${esc(b.shape)}</span>
+    ${S.change && S.change.bricks[b.id] && S.change.bricks[b.id] !== 'unchanged' ? `<span class="chip ${esc(S.change.bricks[b.id])}">${esc(S.change.bricks[b.id])} in this change</span>` : ''}
+    ${b.extends ? `<span class="chip">extends ${esc(b.extends)}</span>` : ''}</div>`;
+  let h = '';
+  const row = (lines, inner, extra = '') => `<button class="row" data-lines="${lines[0]}-${lines[1]}">${inner}${extra}</button>`;
+  if (b.shape === 'class') {
+    h += '<h3>sockets</h3>' + (b.sockets.length ? b.sockets.map((s) => {
+      const tgt = s.to || s.boundTo;
+      return `<button class="row" data-lines="${s.line}-${s.line}"><code>${esc(s.prop)}: ${esc(s.external || s.type || '?')}</code>`
+        + `<span class="badge ${esc(s.status)}">${esc(s.status)}</span>`
+        + (tgt ? `<span class="by">→ <a data-go="${esc(tgt)}">${esc(short(tgt))}</a>${s.boundTo && s.to ? ` · bound to <a data-go="${esc(s.boundTo)}">${esc(short(s.boundTo))}</a>` : ''}</span>` : '')
+        + (s.entity ? `<span class="by">entity <a data-go="${esc(s.entity)}">${esc(short(s.entity))}</a></span>` : '')
+        + '</button>';
+    }).join('') : '<div class="none">none — nothing is injected</div>');
+  }
+  h += '<h3>studs</h3>' + (b.studs.length ? b.studs.map((s) => {
+    const callers = callersOf(b, s);
+    const route = s.route && S.routes.get(s.route);
+    const cs = S.change && S.change.studs[b.id] ? S.change.studs[b.id][s.name] : null;
+    return row(s.lines, `<code>${s.static ? 'static ' : ''}${esc(s.sig)}</code><span class="badge ${esc(s.grip)}">${esc(s.grip)}${s.framework ? ' · ' + esc(s.framework) : ''}</span>`
+      + (cs === 'added' || cs === 'edited' ? `<span class="badge ${cs}">${cs}</span>` : ''),
+      (route ? `<span class="by">${esc(route.verb)} ${esc(route.route)}</span>` : '')
+      + (callers.length ? `<span class="by">← ${callers.map((c) => `<a data-go="${esc(c.from)}">${esc(short(c.from))}.${esc(c.fromMethod || '(module)')}</a>`).join(', ')}</span>` : ''));
+  }).join('') : '<div class="none">none</div>');
+  if (b.internals.length) {
+    h += '<h3>internals</h3>' + b.internals.map((s) => row(s.lines, `<code>${esc(s.sig)}</code>${s.access ? `<span class="badge">${esc(s.access)}</span>` : ''}`)).join('');
+  }
+  $('parts').innerHTML = h;
+  renderSource(b);
+}
+
+// ------------------------------------------------------------------ source
+const KW = /\b(import|export|from|const|let|var|function|return|async|await|class|extends|implements|interface|type|new|this|if|else|for|while|of|in|throw|try|catch|finally|private|public|protected|readonly|static|constructor|get|set|null|undefined|true|false|void|as|typeof|instanceof|enum|abstract|default|switch|case|break|continue)\b/y;
+function highlight(lines) {
+  let inBlock = false;
+  return lines.map((line) => {
+    let out = '', i = 0;
+    const put = (cls, t) => { out += cls ? `<span class="${cls}">${esc(t)}</span>` : esc(t); };
+    while (i < line.length) {
+      if (inBlock) {
+        const e = line.indexOf('*/', i);
+        if (e < 0) { put('com', line.slice(i)); i = line.length; } else { put('com', line.slice(i, e + 2)); i = e + 2; inBlock = false; }
+        continue;
+      }
+      const c = line[i], rest = line.slice(i);
+      if (rest.startsWith('//')) { put('com', rest); break; }
+      if (rest.startsWith('/*')) { inBlock = true; continue; }
+      if (c === '"' || c === "'" || c === '`') {
+        let j = i + 1;
+        while (j < line.length && line[j] !== c) j += line[j] === '\\' ? 2 : 1;
+        put('str', line.slice(i, j + 1)); i = j + 1; continue;
+      }
+      if (c === '@' && /[A-Za-z]/.test(line[i + 1] || '')) { const m = rest.match(/^@[\w.]+/); put('dec', m[0]); i += m[0].length; continue; }
+      if (/[0-9]/.test(c) && !/[\w$]/.test(line[i - 1] || '')) { const m = rest.match(/^[0-9][0-9_.]*/); put('num', m[0]); i += m[0].length; continue; }
+      if (/[A-Za-z_$]/.test(c)) {
+        const m = rest.match(/^[\w$]+/)[0];
+        KW.lastIndex = 0;
+        const kw = KW.exec(m);
+        put(kw && kw[0] === m ? 'kw' : /^[A-Z]/.test(m) ? 'ty' : '', m); i += m.length; continue;
+      }
+      put('', c); i++;
+    }
+    return out;
+  });
+}
+async function renderSource(b) {
+  const rev = S.change ? S.change.rev : null;
+  const key = S.version + '|' + (rev || '') + '|' + b.file;
+  const box = $('src');
+  if (!S.src.has(key)) {
+    box.innerHTML = '<div class="none">loading source…</div>';
+    try {
+      const r = await fetch('api/source?file=' + encodeURIComponent(b.file) + (rev ? '&rev=' + rev : ''));
+      S.src.set(key, r.ok ? await r.text() : null);
+    } catch { S.src.set(key, null); }
+    if (S.focus !== b.id) return;
+  }
+  const text = S.src.get(key);
+  if (text == null) { box.innerHTML = '<div class="none">source unavailable</div>'; return; }
+  const all = text.split('\n');
+  const [from, to] = b.lines;
+  const html = highlight(all.slice(from - 1, to));
+  const markers = new Map();
+  for (const c of S.callsFrom.get(b.id) || []) push(markers, c.line, c);
+  let rows = '';
+  html.forEach((h, k) => {
+    const n = from + k;
+    const ms = (markers.get(n) || []).map((c) => `<button class="go" data-go="${esc(c.boundTo || c.to)}">→ ${esc(short(c.boundTo || c.to))}.${esc(c.toMethod)}</button>`).join('');
+    rows += `<tr data-n="${n}"><td class="n">${n}</td><td>${h}${ms}</td></tr>`;
+  });
+  box.innerHTML = `<table>${rows}</table>`;
+  box.scrollTop = 0;
+}
+function flashLines(a, z) {
+  const box = $('src');
+  box.querySelectorAll('tr.flash').forEach((r) => r.classList.remove('flash'));
+  let first = null;
+  for (let n = a; n <= z; n++) {
+    const r = box.querySelector(`tr[data-n="${n}"]`);
+    if (r) { r.classList.add('flash'); first = first || r; }
+  }
+  if (first) box.scrollTop = first.offsetTop - 24;
+}
+
+// ------------------------------------------------------------------ focus + wiring up
+// The hash carries the focus and, in change mode, the change:
+// #b=<brick>&change=<range | pr:N | wip>&f=<frame>&map=1
+function readHash() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  return { b: q.get('b'), change: q.get('change'), f: q.get('f'), map: q.get('map') === '1' };
+}
+function writeHash(push) {
+  const q = new URLSearchParams();
+  if (S.focus) q.set('b', S.focus);
+  if (S.spec !== null) {
+    q.set('change', S.spec);
+    if (S.change && S.change.frame !== S.change.frames.length - 1) q.set('f', S.change.frame);
+    if (S.map) q.set('map', '1');
+  }
+  const h = '#' + q.toString().replace(/%2F/g, '/').replace(/%23/g, '#');
+  if (h === location.hash) return;
+  if (push) history.pushState(null, '', h); else history.replaceState(null, '', h);
+}
+function fromHash() { return readHash().b; }
+function focus(id, quiet) {
+  if (!S.byId.has(id)) return;
+  S.focus = id;
+  S.map = false;
+  if (!quiet) writeHash(true);
+  renderList(); renderBench(); renderInspector(); renderScrub();
+}
+function defaultFocus() {
+  // The most connected service-ish brick: a good first stack to look at.
+  let best = null, score = -1;
+  for (const b of S.m.bricks) {
+    if (S.hidden.has(b.pattern)) continue;
+    const s = (S.out.get(b.id) || new Set()).size + (S.inc.get(b.id) || new Set()).size;
+    if (s > score) { best = b.id; score = s; }
+  }
+  return best;
+}
+function status() {
+  const W = S.m.wiringMeta;
+  $('title').textContent = S.m.project + ' · workbench';
+  document.title = S.m.project + ' · metatron workbench';
+  $('wiring').textContent = `${S.m.bricks.length} bricks · ${W.resolved}/${W.sockets} sockets · ${S.m.calls.length} calls · ${W.studs.unseen} unseen studs · v${S.m.version}`;
+  $('live').innerHTML = `<span class="dot ${S.m.watching ? 'live' : ''}"></span>${S.m.watching ? 'live' : 'static'}`;
+  $('err').hidden = !S.m.error;
+  $('err').textContent = S.m.error ? 'last re-scan failed: ' + S.m.error + ' — showing the previous model' : '';
+}
+async function load() {
+  const h = readHash();
+  if (h.change !== null) return loadChange(h.change, h.f, h.map || !h.b);
+  S.change = null; S.spec = null; S.pairCls = new Map();
+  const m = await (await fetch('api/model')).json();
+  S.version = m.version;
+  index(m);
+  renderPats(); status(); renderChangePanel();
+  const want = (S.focus && S.byId.has(S.focus)) ? S.focus : (h.b && S.byId.has(h.b) ? h.b : defaultFocus());
+  S.focus = null;
+  focus(want, true);
+  writeHash(false);
+}
+
+// ------------------------------------------------------------------ change mode (spec 11)
+function specQuery(spec) {
+  if (spec === 'wip' || spec === '') return '';
+  const pr = spec.match(/^(?:pr:|#)(\d+)$/);
+  return pr ? 'pr=' + pr[1] : 'range=' + encodeURIComponent(spec);
+}
+async function loadChange(spec, frame, map) {
+  spec = (spec.trim() || 'wip').replace(/^#(\d+)$/, 'pr:$1');
+  $('bench').innerHTML = '<div class="empty">Scanning the change…</div>';
+  const q = specQuery(spec);
+  const url = 'api/change?' + q + (frame !== null && frame !== undefined && frame !== '' ? (q ? '&' : '') + 'frame=' + frame : '');
+  const r = await fetch(url);
+  const d = await r.json();
+  if (!r.ok) {
+    $('err').hidden = false; $('err').textContent = d.error;
+    $('bench').innerHTML = `<div class="empty">Could not show that change:<br><pre class="mono">${esc(d.error)}</pre></div>`;
+    return;
+  }
+  S.version = d.version;
+  S.spec = spec;
+  S.change = d.change;
+  index(d);
+  S.pairCls = new Map(d.change.pairs.map((p) => [p.from + '>' + p.to, p.class]));
+  $('chg').value = spec === 'wip' ? '' : spec.replace(/^pr:/, '#');
+  $('chgclear').hidden = false;
+  renderPats(); status(); renderChangePanel();
+  const h = readHash();
+  S.focus = h.b && S.byId.has(h.b) ? h.b : S.focus && S.byId.has(S.focus) ? S.focus : null;
+  S.map = !!map || !S.focus;
+  renderList(); renderBench(); renderScrub();
+  if (S.focus) renderInspector();
+  else {
+    $('head').innerHTML = '<h2>The change</h2><div class="path">Click a brick on the map to inspect it and read its source at this frame.</div>';
+    $('parts').innerHTML = ''; $('src').innerHTML = '';
+  }
+  writeHash(false);
+}
+function renderScrub() {
+  const C = S.change;
+  $('scrub').hidden = !C;
+  if (!C) return;
+  $('mapbtn').setAttribute('aria-pressed', String(S.map));
+  $('mapbtn').textContent = S.map ? 'change map' : 'back to the change map';
+  const many = C.frames.length > 2;
+  $('frames').hidden = !many;
+  if (many) {
+    $('frame').max = C.frames.length - 1;
+    $('frame').value = C.frame;
+    const f = C.frames[C.frame];
+    $('framelabel').innerHTML = `<strong>${C.frame}/${C.frames.length - 1}</strong> ${f.sha ? esc(f.sha.slice(0, 7)) + ' ' : ''}${esc(f.subject)}`;
+  }
+}
+function renderChangePanel() {
+  const C = S.change, cp = $('cp');
+  cp.hidden = !C;
+  if (!C) return;
+  const s = C.summary;
+  const link = (id) => S.byId.has(id) ? `<a data-go="${esc(id)}">${esc(short(id))}</a>` : `<span class="muted">${esc(String(id).split('/').pop())}</span>`;
+  let h = `<div class="lead"><b>${esc(C.label)}</b><br>${s.added} added · ${s.edited} edited · ${s.removed} removed</div>`;
+  const group = (title, color, list, arrow) => list.length ? `<h4><i class="sw" style="background:${color}"></i>${title}</h4>`
+    + list.map((g) => `<div class="it">${link(g.brick)} <span class="muted">${arrow}</span> ${g.with.map(link).join(', ')}</div>`).join('') : '';
+  h += group(`attaches to ${s.attachments.length} existing`, 'var(--green)', s.attachments, '←');
+  h += group(`grafted into ${s.grafts.length} existing`, 'var(--amber)', s.grafts, '→');
+  if (s.rewires.length) h += `<h4><i class="sw" style="background:var(--violet)"></i>rewires ${s.rewires.length}</h4>`
+    + s.rewires.map((p) => `<div class="it">${link(p.from)} <span class="muted">→</span> ${link(p.to)}</div>`).join('');
+  const kept = C.pairs.filter((p) => p.class === 'kept' && p.newCalls.length);
+  if (kept.length) h += `<h4><i class="sw" style="background:var(--blue)"></i>new calls on kept wires</h4>`
+    + kept.map((p) => `<div class="it">${link(p.from)} <span class="muted">→</span> ${link(p.to)} <span class="muted">${esc(p.newCalls.join(', '))}</span></div>`).join('');
+  const added = Object.keys(C.bricks).filter((k) => C.bricks[k] === 'added');
+  const edited = Object.keys(C.bricks).filter((k) => C.bricks[k] === 'edited');
+  if (added.length) h += `<h4>added</h4>` + added.map((k) => `<div class="it">${link(k)}</div>`).join('');
+  if (edited.length) h += `<h4>edited</h4>` + edited.map((k) => {
+    const st = Object.entries(C.studs[k] || {}).filter(([, v]) => v !== 'unchanged');
+    return `<div class="it">${link(k)} <span class="muted">${st.length ? st.map(([n, v]) => esc(n) + (v === 'edited' ? '' : ' (' + v + ')')).join(', ') : 'constructor, fields or decorators'}</span></div>`;
+  }).join('');
+  if (C.removed.length) h += `<h4>removed</h4>` + C.removed.map((r) => `<div class="it muted">${esc(r.name)} · ${esc(r.file)}</div>`).join('');
+  if (s.detached) h += `<div class="it muted">${s.detached} connection${s.detached === 1 ? '' : 's'} detached</div>`;
+  cp.innerHTML = h;
+}
+$('chgform').addEventListener('submit', (e) => {
+  e.preventDefault();
+  S.focus = null;
+  loadChange($('chg').value, null, true).then(() => writeHash(true));
+});
+$('chgclear').addEventListener('click', () => {
+  S.change = null; S.spec = null; S.map = false;
+  $('chg').value = ''; $('chgclear').hidden = true; $('err').hidden = true;
+  writeHash(true);
+  load();
+});
+$('mapbtn').addEventListener('click', () => { S.map = true; writeHash(true); renderBench(); renderScrub(); });
+let scrubTimer = null;
+$('frame').addEventListener('input', (e) => {
+  clearTimeout(scrubTimer);
+  const f = e.target.value;
+  $('framelabel').textContent = f + '/' + (S.change.frames.length - 1) + ' ' + S.change.frames[f].subject;
+  scrubTimer = setTimeout(() => loadChange(S.spec, f, S.map).then(() => writeHash(false)), 150);
+});
+
+document.addEventListener('click', (e) => {
+  const go = e.target.closest('[data-go]');
+  if (go) { e.stopPropagation(); focus(go.dataset.go); return; }
+  const li = e.target.closest('#list button[data-id]');
+  if (li) { focus(li.dataset.id); return; }
+  const br = e.target.closest('#bench .brick');
+  if (br && !e.target.closest('.stud, .sock')) { focus(br.dataset.id); return; }
+  const st = e.target.closest('#bench .stud');
+  if (st && st.dataset.id === S.focus) { const s = S.byId.get(st.dataset.id).studs[+st.dataset.stud]; flashLines(s.lines[0], s.lines[1]); return; }
+  if (st) { focus(st.dataset.id); return; }
+  const row = e.target.closest('#parts .row');
+  if (row) { const [a, z] = row.dataset.lines.split('-').map(Number); flashLines(a, z); }
+});
+$('bench').addEventListener('mouseover', (e) => {
+  const st = e.target.closest('.stud'), so = e.target.closest('.sock');
+  if (st) hoverStud(st, e); else if (so) hoverSock(so, e);
+});
+$('bench').addEventListener('mousemove', (e) => { if (!tip.hidden) moveTip(e); });
+$('bench').addEventListener('mouseout', (e) => {
+  if (e.target.closest('.stud, .sock')) { clearLit(); tip.hidden = true; }
+});
+$('q').addEventListener('input', (e) => { S.q = e.target.value; renderList(); });
+$('mod').addEventListener('change', (e) => { S.mod = e.target.value; renderList(); });
+$('pats').addEventListener('change', (e) => {
+  const p = e.target.dataset.p;
+  if (e.target.checked) S.hidden.delete(p); else S.hidden.add(p);
+  renderList(); renderBench();
+});
+$('depth').addEventListener('click', (e) => {
+  const d = e.target.closest('button');
+  if (!d) return;
+  S.depth = +d.dataset.d;
+  $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === d)));
+  renderBench();
+});
+addEventListener('popstate', () => {
+  const h = readHash();
+  const frame = S.change ? String(S.change.frame) : null;
+  if ((h.change || null) !== S.spec || (S.change && (h.f || String(S.change.frames.length - 1)) !== frame)) { load(); return; }
+  if (S.change && h.map !== S.map) { S.map = h.map; renderBench(); renderScrub(); return; }
+  if (h.b && h.b !== S.focus) focus(h.b, true);
+});
+
+load().catch((e) => { $('bench').innerHTML = `<div class="empty">Could not load the model: ${esc(e.message)}</div>`; });
+
+// Live: the server re-scans on save and says so.
+try {
+  const ev = new EventSource('api/events');
+  ev.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    // In change mode only work in progress follows the working tree.
+    if (S.m && d.version > S.version && (!S.change || S.spec === 'wip')) load();
+    else if (S.m) { S.m.error = d.error || null; status(); }
+  };
+  ev.onerror = () => { $('live').innerHTML = '<span class="dot"></span>disconnected'; };
+} catch { /* no live updates */ }
+</script>
+</body>
+</html>

@@ -120,3 +120,19 @@ test('the ranked finding uses the hotspots score over real git history', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('a source claims its integration spec, and both specs when it has two', () => {
+  const src = 'export class Thing {}\n';
+  const m = scan(Object.assign({}, nestjs, { name: 'it', root: '.', __dir: FIXTURE }), { files: {
+    'things/domain/entities/thing.entity.ts': src,
+    'things/domain/entities/__specs__/thing.entity.integration.spec.ts': 'it("x", () => {});\n',
+    'things/infra/repositories/thing.repository.ts': src.replace('Thing', 'ThingRepository'),
+    'things/infra/repositories/__specs__/thing.repository.spec.ts': 'it("x", () => {});\n',
+    'things/infra/repositories/__specs__/thing.repository.integration.spec.ts': 'it("x", () => {});\n',
+  } });
+  assert.deepStrictEqual(m.tests.unmatchedSpecs, []);
+  assert.strictEqual(m.tests.bySource['things/domain/entities/thing.entity.ts'],
+    'things/domain/entities/__specs__/thing.entity.integration.spec.ts');
+  assert.strictEqual(m.tests.bySource['things/infra/repositories/thing.repository.ts'],
+    'things/infra/repositories/__specs__/thing.repository.spec.ts', 'the unit spec stays first');
+});

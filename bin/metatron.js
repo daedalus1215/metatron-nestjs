@@ -24,6 +24,8 @@ if (args[0] === '--help' || args[0] === '-h') {
   metatron diff main...HEAD     explicit range
   metatron diff                 the default branch's merge base ... HEAD
   metatron diff --staged        what is about to be committed
+  metatron serve [path]     the workbench: bricks, wiring and source, live
+  metatron serve --port 4477 --no-watch
   metatron skill            install the agent skill into ~/.agents/skills
   metatron skill --where    print where the skill would be installed
 
@@ -64,11 +66,11 @@ if (args[0] === 'skill') {
   process.exit(0);
 }
 
-const cmd = ['scan', 'views', 'baseline', 'check', 'diff', 'all'].includes(args[0]) ? args.shift() : 'all';
+const cmd = ['scan', 'views', 'baseline', 'check', 'diff', 'serve', 'all'].includes(args[0]) ? args.shift() : 'all';
 
 // A path argument lets you point metatron at a project instead of cd-ing into it.
 // Anything else is treated as a lens-name filter.
-const flags = { rule: [], allowNew: 0, fixed: true, json: false, update: false, staged: false, format: null };
+const flags = { rule: [], allowNew: 0, fixed: true, json: false, update: false, staged: false, format: null, port: 4477, watch: true };
 let where = process.cwd();
 const rest = [];
 for (let i = 0; i < args.length; i++) {
@@ -81,6 +83,9 @@ for (let i = 0; i < args.length; i++) {
   if (a === '--json') { flags.json = true; continue; }
   if (a === '--update') { flags.update = true; continue; }
   if (a === '--staged') { flags.staged = true; continue; }
+  if (a === '--port') { flags.port = Number(args[++i]); continue; }
+  if (a.startsWith('--port=')) { flags.port = Number(a.slice(7)); continue; }
+  if (a === '--no-watch') { flags.watch = false; continue; }
   if (a.startsWith('--format=')) { flags.format = a.slice(9); continue; }
   if (a === '--format') { flags.format = args[++i]; continue; }
   if (a.startsWith('-')) continue;
@@ -112,7 +117,34 @@ if (cmd === 'diff') {
   console.log(format === 'json' ? D.renderJson(report)
     : format === 'markdown' ? D.renderMarkdown(report)
     : D.renderTerminal(report));
-  process.exit(0);
+  if (format !== 'terminal' || flags.staged) process.exit(0);
+  // Spec 11: the same range on the workbench, as a picture. A link only when
+  // a workbench is actually listening; otherwise the command to start one.
+  const url = 'http://127.0.0.1:4477/#change=' + encodeURIComponent(report.range).replace(/%2F/g, '/').replace(/%5E/g, '^');
+  const probe = fetch('http://127.0.0.1:4477/api/model', { signal: AbortSignal.timeout(400) })
+    .then((r) => r.ok, () => false);
+  probe.then((up) => {
+    console.log(up ? 'workbench: ' + url : 'workbench: run `metatron serve`, then open ' + url);
+    process.exit(0);
+  });
+  return;
+}
+
+if (cmd === 'serve') {
+  const { createWorkbench } = require('../src/serve');
+  let wb;
+  try { wb = createWorkbench(cfg, { watch: flags.watch }); } catch (e) { console.error('scan failed: ' + e.message); process.exit(2); }
+  wb.listen(flags.port).then((url) => {
+    const W = wb.state.model.wiringMeta;
+    console.log(`metatron workbench · ${wb.state.model.project}`);
+    console.log(`  ${wb.state.model.bricks.length} bricks · ${W.sockets} sockets · ${wb.state.model.calls.length} calls`);
+    console.log(`  ${wb.state.watching ? 'watching for changes' : 'static (not watching)'}`);
+    console.log(`\n  ${url}\n`);
+  }, (e) => {
+    console.error(e.code === 'EADDRINUSE' ? `port ${flags.port} is in use — try --port <n>` : e.message);
+    process.exit(2);
+  });
+  return;
 }
 
 const outDir = path.resolve(cfg.__dir, cfg.outDir || '.metatron');
@@ -214,6 +246,24 @@ console.log(`  ${model.stats.files} files · ${model.stats.edges} imports · ${m
 console.log(`  ${model.stats.endpoints} endpoints · ${model.stats.hops} traced hops`);
 console.log(`  ${skips} layer-skipping links · ${model.findings.filter((f) => f.tone === 'warn').length} deviations · ${model.findings.filter((f) => f.tone === 'good').length} rules upheld`);
 console.log(`  coverage ${c.classified}/${c.files} (${(100 - c.unclassifiedPct).toFixed(1)}%)${c.unclassifiedPct > 25 ? '  !!' : c.unclassifiedPct > 10 ? '  !' : ''}`);
+// Spec 09: how much of the wiring was followed. No warning threshold yet —
+// one measurement is not enough to calibrate one.
+const W = model.wiringMeta;
+if (W) {
+  const pct = W.sockets ? ((W.resolved / W.sockets) * 100).toFixed(1) : '100.0';
+  console.log(`  wiring ${W.resolved}/${W.sockets} sockets resolved (${pct}%) · ${W.framework} framework · ${W.unresolved} unresolved`);
+  console.log(`  studs ${W.studs.total} · ${W.studs.brick} gripped by a brick · ${W.studs.route} by a route · ${W.studs.framework} by the framework · ${W.studs.unseen} unseen`);
+}
+
+// A trace stall has no line: it names the method the trace could not leave.
+const STALL_REASON = {
+  'depth-cap': 'deeper than five classes',
+  'body-not-found': 'method body not found',
+  'dep-not-injected': 'calls this.x on something the constructor does not inject',
+};
+const diagWhere = (d) => (d.line !== undefined ? `${d.file}:${d.line}` : `${d.file}#${d.method}`);
+const diagWhat = (d) => d.detail
+  || (d.kind === 'trace-stalled' ? `trace stops at depth ${d.depth}: ${STALL_REASON[d.reason] || d.reason}` : '');
 
 // A route we could not parse must be visible. Dropping it silently is how the
 // two-space-indentation bug survived four projects unnoticed.
@@ -224,7 +274,7 @@ if (D.length) {
   for (const d of D) (byKind[d.kind] = byKind[d.kind] || []).push(d);
   for (const [kind, list] of Object.entries(byKind).sort((a, b) => b[1].length - a[1].length)) {
     console.log(`    ${kind}  ${list.length}x`);
-    for (const d of list.slice(0, 3)) console.log(`      ${d.file}:${d.line}  ${d.detail}`);
+    for (const d of list.slice(0, 3)) console.log(`      ${diagWhere(d)}  ${diagWhat(d)}`);
     if (list.length > 3) console.log(`      ... ${list.length - 3} more`);
   }
 }

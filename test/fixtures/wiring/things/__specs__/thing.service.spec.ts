@@ -1,0 +1,3 @@
+class FakeRepository {
+  findById() {}
+}
