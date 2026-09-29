@@ -352,6 +352,8 @@ function changeNodes() {
   for (const [id, st] of Object.entries(C.bricks)) if (st === 'added' || st === 'edited') put(id);
   for (const p of C.pairs) { put(p.from); put(p.to); }
   for (const r of C.removed) put(r.id);
+  // spec 13: a brick making a broken call is part of the change
+  if (C.summary.stack) for (const b of C.summary.stack.broken) put(b.from);
   return { nodes, cut: 0 };
 }
 
@@ -805,7 +807,12 @@ async function loadChange(spec, frame, map) {
   index(d);
   // Removed bricks are not in the head model: add them as ghosts, as they
   // were at the base, linked by the pairs the change detached.
-  for (const r of d.change.removed) S.byId.set(r.id, Object.assign({}, r, { ghost: true }));
+  // A removed backend brick keeps its side's own tier: offset it below the
+  // frontend's, as the joined stack offsets every live backend brick.
+  const feTiers = d.sides ? d.tiers.filter((t) => t.side === 'fe').length : 0;
+  for (const r of d.change.removed) {
+    S.byId.set(r.id, Object.assign({}, r, { ghost: true, tier: r.tier + (r.side === 'be' ? feTiers : 0) }));
+  }
   for (const p of d.change.pairs) {
     if (p.class !== 'detached' || !(S.byId.get(p.from)?.ghost || S.byId.get(p.to)?.ghost)) continue;
     add(S.out, p.from, p.to); add(S.inc, p.to, p.from);
@@ -841,6 +848,38 @@ function renderScrub() {
       + (f.built ? ' <span class="muted">· built: the base plus the picked commits so far</span>' : '');
   }
 }
+/** Spec 13: what the change does across the stack — broken calls first. */
+function stackPanel(st, link) {
+  const endpointBrick = (id) => {
+    const e = S.m.endpoints.find((x) => x.id === id);
+    return e ? e.file + '#' + e.cls : null;
+  };
+  const ep = (id) => {
+    const b = endpointBrick(id);
+    const label = esc(id.split('#')[0]);
+    return b && S.byId.has(b) ? `<a data-go="${esc(b)}">${label}</a>` : `<code>${label}</code>`;
+  };
+  let h = '<h4><i class="sw" style="background:var(--teal)"></i>across the stack</h4>';
+  if (st.broken.length) {
+    h += `<div class="it"><b style="color:var(--rose)">${st.broken.length} broken call${st.broken.length === 1 ? '' : 's'}</b></div>`
+      + st.broken.map((b) => `<div class="it" style="color:var(--rose)">${esc(b.verb)} <code>${esc(b.path)}</code>`
+        + ` <span class="muted">from</span> ${link(b.from)} <span class="muted">· ${b.was ? 'reached ' + esc(b.was.split('#')[0]) + ' before' : 'new, reaches nothing'}</span></div>`).join('');
+  }
+  if (st.endpointsAdded.length) {
+    h += `<div class="it muted">endpoints added</div>` + st.endpointsAdded.map((e) => `<div class="it">+ ${ep(e.id)} `
+      + (e.calledBy.length ? `<span class="muted">←</span> ${e.calledBy.map(link).join(', ')}` : '<span class="muted">nothing calls it yet</span>') + '</div>').join('');
+  }
+  if (st.endpointsRemoved.length) {
+    h += `<div class="it muted">endpoints removed</div>` + st.endpointsRemoved.map((e) => `<div class="it">− <code>${esc(e.id.split('#')[0])}</code> `
+      + (e.calledBy.length ? `<span class="muted">was called by</span> ${e.calledBy.map(link).join(', ')}` : '') + '</div>').join('');
+  }
+  const n = st.http;
+  const parts = ['territory', 'attachment', 'graft', 'rewire', 'detached'].filter((k) => n[k]).map((k) => `${n[k]} ${k}`);
+  h += `<div class="it muted">HTTP: ${parts.length ? parts.join(' · ') : 'no connection between the sides moved'}</div>`;
+  if (st.unread.length) h += `<div class="it muted">${st.unread.length} call${st.unread.length === 1 ? '' : 's'} with a URL metatron cannot read</div>`;
+  return h;
+}
+
 function renderChangePanel() {
   const C = S.change, cp = $('cp');
   cp.hidden = !C;
@@ -848,6 +887,8 @@ function renderChangePanel() {
   const s = C.summary;
   const link = (id) => S.byId.has(id) ? `<a data-go="${esc(id)}">${esc(short(id))}</a>` : `<span class="muted">${esc(String(id).split('/').pop())}</span>`;
   let h = `<div class="lead"><b>${esc(C.label)}</b><br>${s.added} added · ${s.edited} edited · ${s.removed} removed</div>`;
+  if (C.backendAt === 'current') h += `<div class="it muted">The backend is in another repository: drawn as it is now.</div>`;
+  if (s.stack) h += stackPanel(s.stack, link);
   const group = (title, color, list, arrow) => list.length ? `<h4><i class="sw" style="background:${color}"></i>${title}</h4>`
     + list.map((g) => `<div class="it">${link(g.brick)} <span class="muted">${arrow}</span> ${g.with.map(link).join(', ')}</div>`).join('') : '';
   h += group(`attaches to ${s.attachments.length} existing`, 'var(--green)', s.attachments, '←');

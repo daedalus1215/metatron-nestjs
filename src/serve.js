@@ -118,7 +118,9 @@ function createWorkbench(cfg, opts = {}) {
       }
       while (revText.size > 8) revText.delete(revText.keys().next().value);
       return json(200, Object.assign(payload(out.model, state.version),
-        { error: state.error, watching: state.watching, change: out.model.__backend ? prefixChange(out.change) : out.change }));
+        { error: state.error, watching: state.watching,
+          // a stack change is keyed fe:/be: already; a frontend-only one is keyed here
+          change: out.model.__backend && !out.change.stack ? prefixChange(out.change) : out.change }));
     }
     if (url.pathname === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
