@@ -1,6 +1,6 @@
 ---
 name: metatron-nest
-description: Build or refresh visual architecture views of a NestJS/TypeScript backend, and check a codebase against its own stated architecture rules. Use when asked to map/visualise/diagram a backend's architecture, to bootstrap architecture views in a project that has none, to refresh them after changes, to add a new visual style, to find layering violations, cross-context leaks, dead code and naming drift, to explore how classes are wired together (the workbench), or to see how a PR, a branch or a set of commits touches existing code.
+description: Build or refresh visual architecture views of a NestJS/TypeScript backend or its React frontend, and check a codebase against its own stated architecture rules. Use when asked to map/visualise/diagram a backend's architecture, to bootstrap architecture views in a project that has none, to refresh them after changes, to add a new visual style, to find layering violations, cross-context leaks, dead code and naming drift, to explore how classes are wired together (the workbench), to see how a PR, a branch or a set of commits touches existing code, or to follow a frontend page through its hooks and HTTP calls to the backend endpoints and repositories behind it.
 tags: [nestjs, architecture, visualization, code-review]
 ---
 
@@ -157,6 +157,46 @@ touch existing code?".
 `grip: 'unseen'` means no call metatron can read reaches that method. Report
 it as "no caller found", never as "dead code": callers outside the tree, and
 call shapes the scan does not read, are invisible to it.
+
+## A React frontend
+
+The same model reads a React + TypeScript frontend. Set it up beside the
+frontend's `src/`. A Vite `package.json` is `"type": "module"`, so the file
+is `arch.config.cjs`:
+
+```js
+module.exports = { extends: 'react', root: 'src', aliases: { '@': 'src' },
+  backend: '../backend', apiPrefix: '/api' };
+```
+
+Read the aliases from `vite.config.ts` / `tsconfig.json` `paths`, and the
+prefix from the axios instance's interceptor or `baseURL`. Then
+`npx metatron-nest scan` prints:
+
+- `wiring`: the hooks and contexts used
+- `renders`: component renders and routes
+- `studs`
+- `http`: the frontend's calls matched to backend endpoints
+
+Every unmatched, ambiguous or unread call is named in the diagnostics, and so
+is every endpoint no frontend call reaches.
+
+In the model:
+
+- **bricks** are components, hooks, contexts and files of functions
+- **sockets** are the hooks and contexts used
+- **calls** carry a `kind`: `render`, `mount`, `hook`, `context`, `provide`,
+  `call` or `http`
+- each `http` call names the endpoint it `match`ed
+- `routes` is the `<Route>` tree, and `bridge` the summary
+
+`npx metatron-nest serve` in the frontend serves it joined with its backend
+as one stack (ids `fe:` / `be:`). To show how a page reaches the database,
+focus the page, tick **data path**, and set depth 6.
+
+Report an `unseen` component or an unreached endpoint as "no caller found",
+not "dead": a component passed as a value is counted, but one reached some
+other way (a dynamic import, a string lookup) is not.
 
 ## Tests
 

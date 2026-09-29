@@ -13,17 +13,37 @@ const { execFileSync } = require('child_process');
 const { violationsOf } = require('./violations');
 const declarations = require('./classes');
 const { wiringOf } = require('./wiring');
+const { reactWiringOf } = require('./react-wiring');
+const { bridgeOf } = require('./bridge');
+
+// A frontend's linked backend, scanned once and reused until one of its
+// files changes (serve re-scans the frontend on every save).
+const backendCache = new Map();
+function linkedBackend(cfg, scanFn) {
+  const { load } = require('./config');
+  const bcfg = load(path.resolve(cfg.__dir, cfg.backend));
+  const root = path.resolve(bcfg.__dir, bcfg.root);
+  const files = walk(root, bcfg.ignore || [], bcfg.extensions || ['.ts']);
+  let newest = 0;
+  for (const f of files) { try { newest = Math.max(newest, fs.statSync(f).mtimeMs); } catch { /* raced a delete */ } }
+  const sig = files.length + ':' + newest;
+  const hit = backendCache.get(bcfg.__dir);
+  if (hit && hit.sig === sig) return hit;
+  const entry = { sig, cfg: bcfg, model: scanFn(bcfg), label: path.relative(cfg.__dir, bcfg.__dir) || '.' };
+  backendCache.set(bcfg.__dir, entry);
+  return entry;
+}
 
 // ------------------------------------------------------------------ helpers
 
-function walk(dir, ignore, out = []) {
+function walk(dir, ignore, exts = ['.ts'], out = []) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
     const p = path.join(dir, e.name);
     if (ignore.some((re) => re.test(p))) continue;
-    if (e.isDirectory()) walk(p, ignore, out);
-    else if (e.name.endsWith('.ts')) out.push(p);
+    if (e.isDirectory()) walk(p, ignore, exts, out);
+    else if (exts.some((x) => e.name.endsWith(x))) out.push(p);
   }
   return out;
 }
@@ -182,7 +202,8 @@ const EXTERNAL_TYPES = new Set([
 
 // ------------------------------------------------------------------- scanner
 
-module.exports = function scan(cfg, opts = {}) {
+module.exports = scan;
+function scan(cfg, opts = {}) {
   const ROOT = path.resolve(cfg.__dir, cfg.root);
   if (!fs.existsSync(ROOT)) {
     throw new Error(`root not found: ${ROOT}\nSet \`root\` in arch.config.js (it is relative to the config file).`);
@@ -195,7 +216,7 @@ module.exports = function scan(cfg, opts = {}) {
     Object.assign(text, opts.files);
   } else {
     const ignore = cfg.ignore || [];
-    const absFiles = walk(ROOT, ignore);
+    const absFiles = walk(ROOT, ignore, cfg.extensions || ['.ts']);
     for (const abs of absFiles) text[path.relative(ROOT, abs).split(path.sep).join('/')] = fs.readFileSync(abs, 'utf8');
   }
   const files = Object.keys(text);
@@ -237,7 +258,7 @@ module.exports = function scan(cfg, opts = {}) {
   function folderOf(rel) {
     const parts = rel.split('/');
     if (parts.length <= 2) return parts[0] + '/(root)';
-    if (parts[2].endsWith('.ts')) return parts[0] + '/' + parts[1];
+    if (/\.tsx?$/.test(parts[2])) return parts[0] + '/' + parts[1];
     return parts[0] + '/' + parts[1] + '/' + parts[2];
   }
 
@@ -254,16 +275,29 @@ module.exports = function scan(cfg, opts = {}) {
   for (const f of files) coverage.byPattern[info[f].pattern] = (coverage.byPattern[info[f].pattern] || 0) + 1;
 
   // ---- imports
+  // `aliases` ({ '@': 'src' }, as in vite/tsconfig) map an import prefix to a
+  // directory relative to the config file; longest prefix first.
+  const importAliases = Object.entries(cfg.aliases || {})
+    .map(([k, v]) => [k.replace(/\/$/, ''), path.relative(ROOT, path.resolve(cfg.__dir, v)).split(path.sep).join('/')])
+    .sort((a, b) => b[0].length - a[0].length);
+  const exts = cfg.extensions || ['.ts'];
   function resolveSpec(spec, fromRel) {
     let base;
     const abs = (cfg.absoluteImportPrefix || 'src/');
-    if (spec.startsWith(abs)) base = spec.slice(abs.length);
+    const alias = importAliases.find(([k]) => spec === k || spec.startsWith(k + '/'));
+    if (alias) base = path.posix.normalize(path.posix.join(alias[1] || '.', spec.slice(alias[0].length)));
+    else if (spec.startsWith(abs)) base = spec.slice(abs.length);
     else if (spec.startsWith('./') || spec.startsWith('../')) {
       base = path.posix.normalize(path.posix.join(path.posix.dirname(fromRel), spec));
     } else return null;
-    for (const c of [base + '.ts', base + '/index.ts', base]) if (fileSet.has(c)) return c;
-    return null;
+    const stem = base.replace(/\.js$/, '');   // ESM-style `./foo.js` names foo.ts
+    for (const c of exts.map((x) => stem + x).concat(exts.map((x) => stem + '/index' + x), [base])) if (fileSet.has(c)) return c;
+    return undefined;                          // local, and names no scanned file
   }
+  // A local import that names no file is reported, not dropped. An import of
+  // a stylesheet, image or data file is not code, and is not a miss.
+  const unresolvedImports = [];
+  const ASSET = /\.(css|scss|sass|less|svg|png|jpe?g|gif|webp|ico|json|md|txt|html|woff2?)(\?.*)?$/i;
 
   const IMPORT_RE = /(?:^|\n)\s*(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;
   const SYMBOL_RE = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g;
@@ -277,7 +311,9 @@ module.exports = function scan(cfg, opts = {}) {
     while ((m = IMPORT_RE.exec(text[rel]))) {
       const t = resolveSpec(m[1], rel);
       if (t) fileEdges.push({ from: rel, to: t });
-      else if (!m[1].startsWith('.')) externals[m[1]] = (externals[m[1]] || 0) + 1;
+      else if (t === undefined) {
+        if (!ASSET.test(m[1])) unresolvedImports.push({ rel, spec: m[1], idx: m.index + m[0].length });
+      } else externals[m[1]] = (externals[m[1]] || 0) + 1;
     }
     const map = {};
     SYMBOL_RE.lastIndex = 0;
@@ -296,6 +332,10 @@ module.exports = function scan(cfg, opts = {}) {
   // route that vanished silently is how the indentation bug stayed hidden, and a
   // port we cannot follow must say so rather than end a trace unannounced.
   const diagnostics = [];
+  for (const u of unresolvedImports) {
+    diagnostics.push({ kind: 'import-unresolved', file: u.rel, line: lineOf(text[u.rel], u.idx),
+      detail: `'${u.spec}' names no file in the scanned tree` });
+  }
 
   // ---- provider bindings
   //
@@ -389,7 +429,7 @@ module.exports = function scan(cfg, opts = {}) {
   // is every class's own. A parameter the pattern cannot read is kept, with
   // no type, so it can be counted as a socket without entering a trace.
   const decl = {};
-  for (const f of files) decl[f] = declarations.parse(text[f]);
+  for (const f of files) decl[f] = declarations.parse(text[f], { jsx: f.endsWith('.tsx') });
   const injects = {};
   const injectsOf = {};
   const INJECT_RE = /@Inject\s*\(\s*([A-Za-z_$][\w$]*|'[^']*'|"[^"]*")\s*\)/;
@@ -834,9 +874,10 @@ module.exports = function scan(cfg, opts = {}) {
   endpoints.sort((a, b) => a.module.localeCompare(b.module) || a.route.localeCompare(b.route) || a.verb.localeCompare(b.verb));
 
   // ---- wiring (spec 09)
-  const { bricks, wires, calls, wiringMeta } = wiringOf({
-    files, text, info, decl, tiers: TIERS, injectsOf, symbolIndex, diagnostics, EXTERNAL_TYPES, endpoints,
-  });
+  // The profile picks the wiring model: Nest's DI, or React's components,
+  // hooks and contexts (spec 12).
+  const wiringCtx = { files, text, info, decl, tiers: TIERS, injectsOf, symbolIndex, diagnostics, EXTERNAL_TYPES, endpoints, resolveSpec };
+  const { bricks, wires, calls, wiringMeta, routes } = cfg.wiring === 'react' ? reactWiringOf(wiringCtx) : wiringOf(wiringCtx);
 
   // ---- churn, from git history
   //
@@ -1370,10 +1411,25 @@ module.exports = function scan(cfg, opts = {}) {
     fileNodes, fileLinks, dataModel, orphans, churn, churnMeta, coupling, diagnostics, bindings, tests,
     bricks, wires, calls, wiringMeta,
   };
+  if (routes) model.routes = routes;
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);
   // The scanned text, for the workbench's source panel (spec 10). Not
   // enumerable, so it never reaches model.json or a view.
   Object.defineProperty(model, '__text', { value: text });
+
+  // The bridge (spec 12): a frontend's HTTP calls against its backend's
+  // endpoints. A backend that cannot be loaded is reported, not fatal.
+  if (cfg.wiring === 'react' && cfg.backend) {
+    try {
+      const be = linkedBackend(cfg, scan);
+      model.bridge = bridgeOf(model, be.model, cfg, be.label);
+      Object.defineProperty(model, '__backend', { value: be });
+    } catch (e) {
+      model.bridge = { error: e.message.split('\n')[0] };
+      diagnostics.push({ kind: 'backend-unavailable', file: path.relative(cfg.__dir, cfg.__file || cfg.__dir) || 'arch.config.js',
+        line: 0, detail: `backend '${cfg.backend}': ${e.message.split('\n')[0]}` });
+    }
+  }
   return model;
 };

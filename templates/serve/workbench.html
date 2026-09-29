@@ -111,6 +111,9 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
 .edge.dim { opacity:.12; }
 .rowlabel { font-size:10px; letter-spacing:.14em; text-transform:uppercase; fill:var(--ink3); }
 .rowline { stroke:var(--rule); stroke-dasharray:2 4; }
+.sideline { stroke:var(--teal); stroke-width:1.5; stroke-dasharray:8 4; }
+.sidelabel { font-size:10px; letter-spacing:.12em; text-transform:uppercase; fill:var(--teal); }
+.edge.http { stroke:var(--teal); stroke-width:1.8; opacity:.85; stroke-dasharray:none; }
 
 .tip { position:fixed; pointer-events:none; z-index:10; max-width:420px; padding:7px 9px; border-radius:6px;
   background:var(--ink); color:var(--paper); font-size:12px; box-shadow:var(--shadow); }
@@ -216,9 +219,10 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
     <button type="submit">show change</button>
     <button type="button" id="chgclear" hidden>clear</button>
   </form>
+  <label class="meta" id="pathwrap" hidden title="Keep only frontend bricks that lead to a backend call"><input type="checkbox" id="datapath"> data path</label>
   <span class="meta">depth</span>
   <span class="seg" id="depth" role="group" aria-label="Depth below the focused brick">
-    <button data-d="1">1</button><button data-d="2" aria-pressed="true">2</button><button data-d="3">3</button>
+    <button data-d="1">1</button><button data-d="2" aria-pressed="true">2</button><button data-d="3">3</button><button data-d="4">4</button><button data-d="5">5</button><button data-d="6">6</button>
   </span>
 </div>
 <div class="scrub" id="scrub" hidden>
@@ -247,7 +251,7 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
 <script>
 'use strict';
 // ------------------------------------------------------------------ state
-const HIDE_BY_DEFAULT = new Set(['dto', 'entity', 'module', 'migration', 'schema', 'config', 'swagger']);
+const HIDE_BY_DEFAULT = new Set(['dto', 'entity', 'module', 'migration', 'schema', 'config', 'swagger', 'decorator']);
 const S = {
   m: null, byId: new Map(), focus: null, depth: 2, hidden: new Set(HIDE_BY_DEFAULT),
   q: '', mod: '', src: new Map(), version: 0,
@@ -276,6 +280,17 @@ function index(m) {
     if (c.boundTo) push(S.callsTo, c.boundTo + '\u0000' + c.toMethod, c);
     push(S.callsFrom, c.from, c);
   }
+  // Spec 12: in a joined stack, the frontend bricks that lead to the backend
+  // (the data path) — every backend brick, and anything with a way down to one.
+  S.reaches = new Set(m.bricks.filter((b) => b.side === 'be').map((b) => b.id));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const [a, outs] of S.out) {
+      if (S.reaches.has(a)) continue;
+      for (const b of outs) if (S.reaches.has(b)) { S.reaches.add(a); grew = true; break; }
+    }
+  }
+  $('pathwrap').hidden = !m.sides;
 }
 
 // ------------------------------------------------------------------ list
@@ -302,23 +317,25 @@ function renderList() {
 }
 
 // ------------------------------------------------------------------ neighbourhood + layout
-const MAX_NODES = 70;
+const MAX_NODES = 90;
+// A deep view (a page down to its repositories) needs room.
+const capFor = (depth) => (depth >= 4 ? 220 : MAX_NODES);
 function neighbourhood() {
-  const keep = (id) => id === S.focus || !S.hidden.has(S.byId.get(id).pattern);
+  const keep = (id) => id === S.focus || (!S.hidden.has(S.byId.get(id).pattern) && (!S.dataPath || S.reaches.has(id)));
   const nodes = new Map([[S.focus, 0]]);     // id -> signed hop (down +, up -)
   let frontier = [S.focus], cut = 0;
   for (let d = 1; d <= S.depth; d++) {
     const next = [];
     for (const id of frontier) for (const n of S.out.get(id) || []) {
       if (nodes.has(n) || !keep(n)) continue;
-      if (nodes.size >= MAX_NODES) { cut++; continue; }
+      if (nodes.size >= capFor(S.depth)) { cut++; continue; }
       nodes.set(n, d); next.push(n);
     }
     frontier = next;
   }
   for (const n of S.inc.get(S.focus) || []) {
     if (nodes.has(n) || !keep(n)) continue;
-    if (nodes.size >= MAX_NODES) { cut++; continue; }
+    if (nodes.size >= capFor(S.depth)) { cut++; continue; }
     nodes.set(n, -1);
   }
   return { nodes, cut };
@@ -397,8 +414,16 @@ function renderBench() {
   L.tiers.forEach((t, i) => {
     const y = PAD + i * (BH + ROWGAP) + BH / 2;
     const tier = S.m.tiers[t];
+    const side = tier && tier.side ? (tier.side === 'fe' ? 'frontend · ' : 'backend · ') : '';
+    const prev = i ? S.m.tiers[L.tiers[i - 1]] : null;
+    if (tier && prev && tier.side !== prev.side) {
+      // where a request leaves the browser
+      const yb = y - BH / 2 - ROWGAP / 2;
+      rowsSvg += `<line class="sideline" x1="${PAD}" x2="${L.width - PAD}" y1="${yb}" y2="${yb}"/>`
+        + `<text class="sidelabel" x="${L.width - PAD}" y="${yb - 6}" text-anchor="end">HTTP · frontend above, backend below</text>`;
+    }
     rowsSvg += `<line class="rowline" x1="${PAD}" x2="${L.width - PAD}" y1="${y}" y2="${y}"/>`
-      + `<text class="rowlabel" x="${PAD}" y="${y - 6}">${esc(tier ? tier.name : t)}</text>`;
+      + `<text class="rowlabel" x="${PAD}" y="${y - 6}">${esc(side + (tier ? tier.name : t))}</text>`;
   });
 
   const pc = (a, b) => { const c = S.change && S.pairCls.get(a + '>' + b); return c ? ' c-' + c : ''; };
@@ -441,7 +466,7 @@ function renderBench() {
       if (!P.has(c.to) || wired.has(id + '>' + c.to) || seen.has(c.to)) continue;
       seen.add(c.to);
       const p = P.get(id), q = P.get(c.to);
-      edges += `<path class="edge call${pc(id, c.to)}" data-from="${esc(id)}" data-to="${esc(c.to)}" d="${curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+      edges += `<path class="edge call${c.kind === 'http' ? ' http' : ''}${pc(id, c.to)}" data-from="${esc(id)}" data-to="${esc(c.to)}" d="${curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y)}"/>`;
     }
   }
 
@@ -488,7 +513,7 @@ function legend() {
     <span>${pip('<rect x="-4" y="-4" width="8" height="8" fill="var(--violet)"/>')}framework</span>
     <span>${pip('<circle r="4" fill="none" stroke="var(--rose)" stroke-dasharray="2 1.6"/>')}unseen</span>
     <span>${pip('<rect x="-4.5" y="-3" width="9" height="6" fill="var(--ink)"/>')}socket</span>
-    <span>solid: wire · dashed: call with no wire · dotted: port → bound class</span>
+    <span>solid: wire · dashed: call with no wire · dotted: port → bound class${S.m.bridge ? ' · teal: HTTP, frontend → backend' : ''}</span>
     ${S.change ? `<span><i class="sw" style="background:var(--green)"></i>attachment: new → existing</span>
     <span><i class="sw" style="background:var(--amber)"></i>graft: existing → new</span>
     <span><i class="sw" style="background:var(--violet)"></i>rewire: existing → existing</span>
@@ -516,11 +541,12 @@ function hoverStud(el, e) {
   document.querySelectorAll('#edges .edge').forEach((p) => {
     if (p.dataset.to === b.id && callers.has(p.dataset.from)) p.classList.add('lit'); else p.classList.add('dim');
   });
-  const route = s.route && S.routes.get(s.route);
+  const route = routeOf(s);
   const by = calls.length ? calls.map((c) => `${esc(short(c.from))}.${esc(c.fromMethod || '(module)')}`).slice(0, 8).join(', ')
     + (calls.length > 8 ? ` +${calls.length - 8}` : '') : '';
   showTip(e, `<code>${esc(s.sig)}</code><br><span class="k">grip</span> ${esc(s.grip)}`
-    + (route ? ` · <code>${esc(route.verb)} ${esc(route.route)}</code>` : '')
+    + (route ? ` · <code>${esc(route)}</code>` : '')
+    + httpLines(s, ' · ')
     + (s.framework ? ` · ${esc(s.framework)}` : '')
     + (by ? `<br><span class="k">gripped by</span> ${by}` : ''));
 }
@@ -553,6 +579,28 @@ function callersOf(b, s) {
   for (const c of calls) uniq.set(c.from + '#' + c.fromMethod, c);
   return [...uniq.values()];
 }
+/** A stud's route: a backend endpoint (by id), or a frontend path. */
+function routeOf(s) {
+  if (!s.route) return null;
+  const e = S.routes.get(s.route);
+  return e ? e.verb + ' ' + e.route : 'route ' + s.route;
+}
+/** A stud's HTTP calls and where each lands (spec 12). */
+function httpText(h) {
+  const where = h.match === 'matched' ? '→ ' + h.endpoint.split('#')[0]
+    : h.match ? h.match : '';
+  return `${h.verb} ${h.path === null ? '(unread URL)' : h.path} ${where}`.trim();
+}
+function httpLines(s, sep) { return (s.http || []).map((h) => sep + '<code>' + esc(httpText(h)) + '</code>').join(''); }
+function httpRows(s) {
+  return (s.http || []).map((h) => {
+    const call = S.m.calls.find((c) => c.kind === 'http' && c.line === h.line && c.verb === h.verb && c.to);
+    const bad = h.match && h.match !== 'matched';
+    return `<span class="by">${bad ? '<b style="color:var(--rose)">' : ''}${esc(httpText(h))}${bad ? '</b>' : ''}`
+      + (call ? ` · <a data-go="${esc(call.to)}">${esc(short(call.to))}.${esc(call.toMethod)}</a>` : '') + '</span>';
+  }).join('');
+}
+
 function renderInspector() {
   const b = S.byId.get(S.focus);
   if (!b) { $('head').innerHTML = ''; $('parts').innerHTML = ''; $('src').innerHTML = ''; return; }
@@ -577,11 +625,11 @@ function renderInspector() {
   }
   h += '<h3>studs</h3>' + (b.studs.length ? b.studs.map((s) => {
     const callers = callersOf(b, s);
-    const route = s.route && S.routes.get(s.route);
+    const route = routeOf(s);
     const cs = S.change && S.change.studs[b.id] ? S.change.studs[b.id][s.name] : null;
     return row(s.lines, `<code>${s.static ? 'static ' : ''}${esc(s.sig)}</code><span class="badge ${esc(s.grip)}">${esc(s.grip)}${s.framework ? ' · ' + esc(s.framework) : ''}</span>`
       + (cs === 'added' || cs === 'edited' ? `<span class="badge ${cs}">${cs}</span>` : ''),
-      (route ? `<span class="by">${esc(route.verb)} ${esc(route.route)}</span>` : '')
+      (route ? `<span class="by">${esc(route)}</span>` : '') + httpRows(s)
       + (callers.length ? `<span class="by">← ${callers.map((c) => `<a data-go="${esc(c.from)}">${esc(short(c.from))}.${esc(c.fromMethod || '(module)')}</a>`).join(', ')}</span>` : ''));
   }).join('') : '<div class="none">none</div>');
   if (b.internals.length) {
@@ -648,7 +696,10 @@ async function renderSource(b) {
   let rows = '';
   html.forEach((h, k) => {
     const n = from + k;
-    const ms = (markers.get(n) || []).map((c) => `<button class="go" data-go="${esc(c.boundTo || c.to)}">→ ${esc(short(c.boundTo || c.to))}.${esc(c.toMethod)}</button>`).join('');
+    const ms = (markers.get(n) || []).map((c) => c.kind === 'http'
+      ? (c.to ? `<button class="go" data-go="${esc(c.to)}">→ ${esc(c.verb)} ${esc(short(c.to))}.${esc(c.toMethod)}</button>`
+        : `<span class="go" style="cursor:default;color:var(--rose)">${esc(c.verb)} ${esc(c.match || 'unmatched')}</span>`)
+      : `<button class="go" data-go="${esc(c.boundTo || c.to)}">→ ${esc(short(c.boundTo || c.to))}.${esc(c.toMethod)}</button>`).join('');
     rows += `<tr data-n="${n}"><td class="n">${n}</td><td>${h}${ms}</td></tr>`;
   });
   box.innerHTML = `<table>${rows}</table>`;
@@ -706,7 +757,9 @@ function status() {
   const W = S.m.wiringMeta;
   $('title').textContent = S.m.project + ' · workbench';
   document.title = S.m.project + ' · metatron workbench';
-  $('wiring').textContent = `${S.m.bricks.length} bricks · ${W.resolved}/${W.sockets} sockets · ${S.m.calls.length} calls · ${W.studs.unseen} unseen studs · v${S.m.version}`;
+  const B = S.m.bridge;
+  $('wiring').textContent = `${S.m.bricks.length} bricks · ${W.resolved}/${W.sockets} sockets · ${S.m.calls.length} calls · ${W.studs.unseen} unseen studs`
+    + (B && !B.error ? ` · http ${B.matched}/${B.calls} matched` : '') + ` · v${S.m.version}`;
   $('live').innerHTML = `<span class="dot ${S.m.watching ? 'live' : ''}"></span>${S.m.watching ? 'live' : 'static'}`;
   $('err').hidden = !S.m.error;
   $('err').textContent = S.m.error ? 'last re-scan failed: ' + S.m.error + ' — showing the previous model' : '';
@@ -865,6 +918,7 @@ $('pats').addEventListener('change', (e) => {
   if (e.target.checked) S.hidden.delete(p); else S.hidden.add(p);
   renderList(); renderBench();
 });
+$('datapath').addEventListener('change', (e) => { S.dataPath = e.target.checked; renderBench(); });
 $('depth').addEventListener('click', (e) => {
   const d = e.target.closest('button');
   if (!d) return;

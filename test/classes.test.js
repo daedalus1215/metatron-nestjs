@@ -147,3 +147,63 @@ test('interfaces: method signatures and arrow-typed properties, not fields', () 
     ['count', 'count(): number'],
   ]);
 });
+
+// ---------------------------------------------------------------- JSX (spec 12)
+const TRICKY = [
+  "import React, { memo, forwardRef } from 'react';",
+  '',
+  'export const Apostrophe = () => {',
+  '  return (',
+  "    <p className=\"x\" title='y'>Don't break {'here'} at http://example.com</p>",
+  '  );',
+  '};',
+  '',
+  'export const Unbalanced = () => <span>a { \'}\' } b</span>;',
+  '',
+  'export function Nested({ items }: { items: string[] }) {',
+  '  const [open, setOpen] = React.useState<boolean>(false);',
+  '  const pick = <T,>(x: T) => x;',
+  '  return (',
+  '    <>',
+  '      {items.map((it) => <Row key={it} label={it} onClick={() => setOpen(!open)} />)}',
+  "      {open && <div>isn't {pick(1) < 2 ? 'less' : 'more'}</div>}",
+  '    </>',
+  '  );',
+  '}',
+  '',
+  'export const Memoised = memo(({ id }: { id: number }) => <b>{id}</b>);',
+  '',
+  'export const Ref = React.forwardRef<HTMLDivElement, { a: string }>((props, ref) => (',
+  '  <div ref={ref}>{props.a}</div>',
+  '));',
+  '',
+  'export const After = () => null;',
+].join('\n');
+
+test('JSX: text is text, attributes and {code} are read, generics are not elements', () => {
+  const r = parse(TRICKY, { jsx: true });
+  assert.strictEqual(r.unbalanced, false);
+  assert.deepStrictEqual(r.functions.map((f) => [f.name, f.start, f.end]), [
+    ['Apostrophe', 3, 7],
+    ['Unbalanced', 9, 9],
+    ['Nested', 11, 20],
+    ['Memoised', 22, 22],
+    ['Ref', 24, 26],
+    ['After', 28, 28],
+  ]);
+});
+
+test('JSX: without JSX mode the same file is misread, and says so', () => {
+  // The apostrophe in `isn't` opens a string: Nested swallows the rest of the
+  // file and the three components after it are lost.
+  const r = parse(TRICKY);
+  assert.deepStrictEqual(r.functions.map((f) => f.name), ['Apostrophe', 'Unbalanced', 'Nested']);
+  assert.strictEqual(r.unbalanced, true);
+});
+
+test('memo and forwardRef: the component is its argument, and says how it was wrapped', () => {
+  const r = parse(TRICKY, { jsx: true });
+  const w = Object.fromEntries(r.functions.map((f) => [f.name, f.wrapped || null]));
+  assert.deepStrictEqual([w.Memoised, w.Ref, w.Nested], ['memo', 'forwardRef', null]);
+  assert.strictEqual(r.functions.find((f) => f.name === 'Memoised').sig, 'Memoised({ id }: { id: number })');
+});

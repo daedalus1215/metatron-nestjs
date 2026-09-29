@@ -2,14 +2,20 @@
 const fs = require('fs');
 const path = require('path');
 
-const PROFILES = { nestjs: require('./defaults/nestjs') };
+const PROFILES = { nestjs: require('./defaults/nestjs'), react: require('./defaults/react') };
 
 /** Finds arch.config.js by walking up from `from`. */
+// A Vite frontend's package.json says "type": "module", where a CommonJS
+// arch.config.js is a syntax error: .cjs (or an ESM default export) serves there.
+const NAMES = ['arch.config.js', 'arch.config.cjs', 'arch.config.mjs'];
+
 function find(from) {
   let dir = path.resolve(from);
   for (;;) {
-    const p = path.join(dir, 'arch.config.js');
-    if (fs.existsSync(p)) return p;
+    for (const name of NAMES) {
+      const p = path.join(dir, name);
+      if (fs.existsSync(p)) return p;
+    }
     const up = path.dirname(dir);
     if (up === dir) return null;
     dir = up;
@@ -20,7 +26,7 @@ function find(from) {
  * A sensible project name from the config's location. `backend/` and friends are
  * containers, not project names, so we climb past them.
  */
-const GENERIC = new Set(['backend', 'src', 'api', 'server', 'app', 'apps', 'packages', 'services']);
+const GENERIC = new Set(['backend', 'frontend', 'client', 'web', 'src', 'api', 'server', 'app', 'apps', 'packages', 'services']);
 function inferName(dir) {
   let d = path.resolve(dir);
   for (let i = 0; i < 3; i++) {
@@ -44,10 +50,15 @@ function load(from = process.cwd()) {
     throw new Error(
       'No arch.config.js found (searched upward from ' + path.resolve(from) + ').\n' +
       'Create one:\n\n' +
-      "  module.exports = { extends: 'nestjs', name: 'my-api', root: 'src' };\n"
+      "  module.exports = { extends: 'nestjs', name: 'my-api', root: 'src' };\n\n" +
+      'In a package with "type": "module" (a Vite frontend), name it arch.config.cjs.\n'
     );
   }
-  const user = require(file);
+  // require() reads an ES module too (Node 22+), as its namespace: take the default.
+  const mod = require(file);
+  const esm = mod && typeof mod === 'object' && 'default' in mod
+    && Object.keys(mod).every((k) => k === 'default' || k === '__esModule');
+  const user = esm ? mod.default : mod;
   const base = PROFILES[user.extends || 'nestjs'];
   if (!base) throw new Error(`unknown profile "${user.extends}" — available: ${Object.keys(PROFILES).join(', ')}`);
 

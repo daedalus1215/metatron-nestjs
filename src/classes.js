@@ -18,8 +18,20 @@ const MODIFIERS = new Set(['public', 'private', 'protected', 'static', 'readonly
   'async', 'override', 'abstract', 'declare', 'accessor']);
 const ID = /[A-Za-z_$#][\w$]*/y;
 
-function parse(src) {
+/**
+ * @param opts.jsx  read JSX (a `.tsx` file): an element in expression
+ *                  position is stepped over whole, its text as text, so an
+ *                  apostrophe or `//` in it is not a string or a comment.
+ */
+function parse(src, opts = {}) {
   const n = src.length;
+  const jsx = !!opts.jsx;
+  let unbalanced = false;
+  // What is not code: comments, string and template text, regex literals,
+  // JSX text. Recorded as [from, to) by start, since a region can be stepped
+  // over more than once.
+  const text = new Map();
+  const mark = (a, b) => { if (b > a && (text.get(a) || 0) < b) text.set(a, b); };
 
   // 1-based line of an offset, by binary search over line starts.
   const starts = [0];
@@ -33,22 +45,29 @@ function parse(src) {
   /** Past a comment, string, template or regex literal starting at i, or i if none. */
   function skipLiteral(i) {
     const c = src[i], d = src[i + 1];
-    if (c === '/' && d === '/') { const e = src.indexOf('\n', i); return e < 0 ? n : e; }
-    if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); return e < 0 ? n : e + 2; }
+    if (c === '/' && d === '/') { const e = src.indexOf('\n', i); mark(i, e < 0 ? n : e); return e < 0 ? n : e; }
+    if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); mark(i, e < 0 ? n : e + 2); return e < 0 ? n : e + 2; }
     if (c === '\'' || c === '"') {
       for (let j = i + 1; j < n; j++) {
         if (src[j] === '\\') j++;
-        else if (src[j] === c || src[j] === '\n') return j + 1;
+        else if (src[j] === c || src[j] === '\n') { mark(i, j + 1); return j + 1; }
       }
+      mark(i, n);
       return n;
     }
     if (c === '`') {
+      let from = i;
       for (let j = i + 1; j < n; j++) {
         if (src[j] === '\\') j++;
-        else if (src[j] === '`') return j + 1;
-        else if (src[j] === '$' && src[j + 1] === '{') j = close(j + 1);
+        else if (src[j] === '`') { mark(from, j + 1); return j + 1; }
+        else if (src[j] === '$' && src[j + 1] === '{') { mark(from, j); j = close(j + 1); from = j + 1; }
       }
+      mark(from, n);
       return n;
+    }
+    if (jsx && c === '<' && jsxCanStart(i)) {
+      const e = skipJsx(i);
+      if (e > i) return e;                        // an element that never closes is read as code
     }
     if (c === '/' && regexCanStart(i)) {
       let inClass = false;
@@ -60,11 +79,66 @@ function parse(src) {
         else if (src[j] === '/' && !inClass) {
           let k = j + 1;
           while (k < n && /[a-z]/.test(src[k])) k++;
+          mark(i, k);
           return k;
         }
       }
     }
     return i;
+  }
+  /**
+   * `<` opens JSX in expression position: after `(`, `=`, `=>`, `?`, `:`,
+   * `,`, `&&`, `||`, `!`, `{`, `[`, or `return`. After an identifier it is a
+   * type argument (`useState<T>(`), and `<T,>` / `<T extends …>` is a
+   * generic arrow.
+   */
+  function jsxCanStart(i) {
+    const nx = src[i + 1] || '';
+    if (nx !== '>' && !/[A-Za-z_$]/.test(nx)) return false;
+    let j = i - 1;
+    while (j >= 0 && /\s/.test(src[j])) j--;
+    const p = j < 0 ? '' : src[j];
+    const expr = j < 0 || '(=?:,&|!{['.includes(p) || (p === '>' && src[j - 1] === '=')
+      || /(?:^|[^\w$])(?:return|yield|default|case)$/.test(src.slice(Math.max(0, j - 7), j + 1));
+    if (!expr) return false;
+    if (nx === '>') return true;                  // a fragment
+    const m = src.slice(i + 1, i + 80).match(/^[A-Za-z_$][\w$.:-]*\s*(,|extends\b)?/);
+    return !(m && m[1]);
+  }
+  /** Past a JSX element or fragment at `i`, or -1 if it never closes. */
+  function skipJsx(i) {
+    let j = i + 1;
+    if (src[j] !== '>') {
+      const nm = src.slice(j).match(/^[A-Za-z_$][\w$.:-]*/);
+      if (!nm) return -1;
+      j += nm[0].length;
+      for (;;) {                                  // attributes
+        j = ws(j);
+        if (j >= n) return -1;
+        const c = src[j];
+        if (c === '/' && src[j + 1] === '>') return j + 2;
+        if (c === '>') break;
+        if (c === '{') { j = close(j); if (j >= n) return -1; j++; continue; }
+        if (c === '"' || c === '\'') { j = skipLiteral(j); continue; }
+        j++;
+      }
+    }
+    j++;
+    let run = j;
+    while (j < n) {                               // children: text, {code}, elements
+      const c = src[j];
+      if (c === '<') {
+        mark(run, j);
+        if (src[j + 1] === '/') { const e = src.indexOf('>', j); return e < 0 ? -1 : e + 1; }
+        const e = skipJsx(j);
+        if (e < 0) return -1;
+        j = run = e;
+        continue;
+      }
+      if (c === '{') { mark(run, j); j = close(j); if (j >= n) return -1; j++; run = j; continue; }
+      j++;
+    }
+    return -1;
   }
   function regexCanStart(i) {
     let j = i - 1;
@@ -84,6 +158,7 @@ function parse(src) {
       if (c === '(' || c === '[' || c === '{') d++;
       else if (c === ')' || c === ']' || c === '}') { d--; if (d === 0) return i; }
     }
+    unbalanced = true;
     return n;
   }
   /** Past whitespace and comments. */
@@ -146,6 +221,14 @@ function parse(src) {
     return -1;
   }
   const flat = (a, b) => src.slice(a, b).replace(/\s+/g, ' ').trim();
+
+  /** `function (…) {…}` / `async function name(…) {…}` as an expression at `k`. */
+  function fnExprAt(k) {
+    const fm = src.slice(k, k + 30).match(/^(async\s+)?function\b\s*\*?\s*[\w$]*\s*/);
+    if (!fm || src[k + fm[0].length] !== '(') return null;
+    const pOpen = k + fm[0].length, pClose = close(pOpen), b = bodyAfter(pClose + 1);
+    return b < 0 ? null : { async: !!fm[1], pOpen, pClose, bodyOpen: b, bodyClose: close(b), end: close(b) + 1 };
+  }
 
   /** An arrow function starting at `i` (after `=`): `(…) =>` or `x =>`, optional async. */
   function arrowAt(i) {
@@ -347,22 +430,27 @@ function parse(src) {
         j = ws(j + name.length);
         if (src[j] === ':') j = until(j + 1, '=;\n');
         if (src[j] === '=') {
-          const a = arrowAt(j + 1);
-          let fn = a;
-          if (!a) {
-            // `const f = function (…) {…}` / `async function`
+          let fn = arrowAt(j + 1) || fnExprAt(ws(j + 1));
+          if (!fn) {
+            // `memo(…)` / `React.forwardRef<…>(…)`: the component is its argument
             const k = ws(j + 1);
-            const fm = src.slice(k, k + 30).match(/^(async\s+)?function\b\s*\*?\s*[\w$]*\s*/);
-            if (fm && src[k + fm[0].length] === '(') {
-              const pOpen = k + fm[0].length, pClose = close(pOpen), b = bodyAfter(pClose + 1);
-              if (b >= 0) fn = { async: !!fm[1], pOpen, pClose, bodyOpen: b, bodyClose: close(b), end: close(b) + 1 };
+            const wm = src.slice(k, k + 40).match(/^(?:React\s*\.\s*)?(memo|forwardRef)\s*/);
+            if (wm) {
+              let p = k + wm[0].length;
+              if (src[p] === '<') p = ws(until(p + 1, '>') + 1);
+              if (src[p] === '(') {
+                const inner = arrowAt(p + 1) || fnExprAt(ws(p + 1));
+                if (inner) fn = Object.assign(inner, { wrapped: wm[1], end: close(p) + 1 });
+              }
             }
           }
           if (fn) {
-            functions.push({ name, exported: mods.has('export'), async: fn.async,
+            const f = { name, exported: mods.has('export'), async: fn.async,
               sig: name + flat(fn.pOpen, fn.bodyOpen).replace(/\s*=>\s*$/, ''),
               pOpen: fn.pOpen, pClose: fn.pClose, bodyOpen: fn.bodyOpen, bodyClose: fn.bodyClose,
-              start: lineAt(start), end: lineAt(Math.max(start, fn.end - 1)) });
+              start: lineAt(start), end: lineAt(Math.max(start, fn.end - 1)) };
+            if (fn.wrapped) f.wrapped = fn.wrapped;
+            functions.push(f);
             i = fn.end; reset(); continue;
           }
         }
@@ -373,7 +461,13 @@ function parse(src) {
     i = until(i + w.length, ';\n') + 1;
     reset();
   }
-  return { classes, functions, interfaces };
+  // Sorted, merged ranges of what is not code.
+  const nonCode = [];
+  for (const [a, b] of [...text.entries()].sort((x, y) => x[0] - y[0])) {
+    const last = nonCode[nonCode.length - 1];
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b); else nonCode.push([a, b]);
+  }
+  return { classes, functions, interfaces, unbalanced, nonCode };
 }
 
 module.exports = { parse };

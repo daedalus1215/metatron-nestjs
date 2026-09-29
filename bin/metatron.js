@@ -148,6 +148,9 @@ if (cmd === 'serve') {
     const W = wb.state.model.wiringMeta;
     console.log(`metatron workbench · ${wb.state.model.project}`);
     console.log(`  ${wb.state.model.bricks.length} bricks · ${W.sockets} sockets · ${wb.state.model.calls.length} calls`);
+    const be = wb.state.model.__backend, B = wb.state.model.bridge;
+    if (be) console.log(`  joined with the backend in ${be.label}: ${be.model.bricks.length} bricks · http ${B.matched}/${B.calls} matched`);
+    else if (B && B.error) console.log(`  backend unavailable: ${B.error}`);
     console.log(`  ${wb.state.watching ? 'watching for changes' : 'static (not watching)'}`);
     console.log(`\n  ${url}\n`);
   }, (e) => {
@@ -253,13 +256,29 @@ const c = model.coverage;
 const skips = model.fileLinks.filter((l) => model.skipRules.some((r) => r.id === l[3])).length;
 console.log(`metatron · ${model.project}`);
 console.log(`  ${model.stats.files} files · ${model.stats.edges} imports · ${model.stats.nodes} directories · ${model.modules.length} modules`);
-console.log(`  ${model.stats.endpoints} endpoints · ${model.stats.hops} traced hops`);
+if (!(model.wiringMeta && model.wiringMeta.http)) console.log(`  ${model.stats.endpoints} endpoints · ${model.stats.hops} traced hops`);
 console.log(`  ${skips} layer-skipping links · ${model.findings.filter((f) => f.tone === 'warn').length} deviations · ${model.findings.filter((f) => f.tone === 'good').length} rules upheld`);
 console.log(`  coverage ${c.classified}/${c.files} (${(100 - c.unclassifiedPct).toFixed(1)}%)${c.unclassifiedPct > 25 ? '  !!' : c.unclassifiedPct > 10 ? '  !' : ''}`);
 // Spec 09: how much of the wiring was followed. No warning threshold yet —
 // one measurement is not enough to calibrate one.
 const W = model.wiringMeta;
-if (W) {
+if (W && W.http) {
+  // A React frontend (spec 12): sockets are the hooks and contexts used.
+  const inTree = W.resolved - W.framework;
+  console.log(`  wiring ${W.sockets} hooks & contexts used · ${inTree} in the tree · ${W.framework} framework · ${W.unresolved} unresolved`);
+  console.log(`  renders ${W.renders} of components in the tree · ${W.frameworkRenders} of package components · ${(model.routes || []).length} routes`);
+  console.log(`  studs ${W.studs.total} · ${W.studs.brick} used by a brick · ${W.studs.route} mounted by a route · ${W.studs.unseen} unseen`);
+  const B = model.bridge;
+  if (B && B.error) console.log(`  http ${W.http.calls} calls · backend unavailable: ${B.error}  !`);
+  else if (B) {
+    const bad = B.ambiguous + B.unmatched + B.unread;
+    console.log(`  http ${B.matched}/${B.calls} calls matched a backend endpoint (${B.backend}) · ${B.ambiguous} ambiguous · ${B.unmatched} unmatched · ${B.unread} unread${bad ? '  !' : ''}`);
+    if (B.unreached.length) {
+      const show = B.unreached.slice(0, 4).map((id) => id.split('#')[0]).join(', ');
+      console.log(`       ${B.unreached.length} of ${B.endpoints} endpoints reached by no frontend call: ${show}${B.unreached.length > 4 ? ', …' : ''}`);
+    }
+  } else console.log(`  http ${W.http.calls} calls through the API client · ${W.http.unread} with a URL metatron cannot read · no backend linked`);
+} else if (W) {
   const pct = W.sockets ? ((W.resolved / W.sockets) * 100).toFixed(1) : '100.0';
   console.log(`  wiring ${W.resolved}/${W.sockets} sockets resolved (${pct}%) · ${W.framework} framework · ${W.unresolved} unresolved`);
   console.log(`  studs ${W.studs.total} · ${W.studs.brick} gripped by a brick · ${W.studs.route} by a route · ${W.studs.framework} by the framework · ${W.studs.unseen} unseen`);
