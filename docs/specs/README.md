@@ -9,7 +9,7 @@ tags: [index, roadmap]
 
 # Specs
 
-Twelve changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
+Thirteen changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
 were written 2026-09-17 against `d11ba66`; 09–11 were written 2026-09-26
 (09 against `ca8be31`, 10 against `b319797`, 11 against `5b4f3da`). Numbered by dependency, not by
 importance.
@@ -35,6 +35,7 @@ work lands. One spec per unit of work.
 | 10 | [Workbench (`metatron serve`)](10-workbench.md) | lens, server | 09 |
 | 11 | [Change overlay](11-change-overlay.md) | lens, analysis | 04, 09, 10 |
 | 12 | [Frontend scanner](12-frontend-scanner.md) | scanner, lens | 09, 10 |
+| 13 | [Stack change](13-stack-change.md) | lens, analysis | 11, 12 |
 
 ## Suggested order
 
