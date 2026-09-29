@@ -1426,6 +1426,22 @@ function scan(cfg, opts = {}) {
     try {
       const be = opts.backend || linkedBackend(cfg, scan);
       model.bridge = bridgeOf(model, be.model, cfg, be.label);
+      // Spec 14: a call that reaches no endpoint is a violation, so `check`
+      // gates it and `baseline` can accept it. Keyed by file and VERB url, so
+      // it keeps its identity when it moves down its file. An unread URL is
+      // not broken as far as anyone can tell, and is not gated.
+      const broken = model.calls.filter((c) => c.kind === 'http' && (c.match === 'unmatched' || c.match === 'ambiguous'));
+      if (broken.length) {
+        const file = (c) => c.from.split('#')[0];
+        model.findings.push({
+          id: 'http-broken', tone: 'warn',
+          title: `${broken.length} frontend call${broken.length === 1 ? '' : 's'} reach no endpoint in ${be.label}`,
+          detail: 'The URL matches no endpoint of its verb in the linked backend, or matches several equally.',
+          items: broken.map((c) => `${file(c)}:${c.line} ${c.verb} ${c.path}${c.match === 'ambiguous' ? ' (ambiguous)' : ''}`),
+          instances: broken.map((c) => ({ from: file(c), to: `${c.verb} ${c.path}` })),
+        });
+        model.violations = violationsOf(model);
+      }
       Object.defineProperty(model, '__backend', { value: be });
     } catch (e) {
       model.bridge = { error: e.message.split('\n')[0] };
