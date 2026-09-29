@@ -1,10 +1,11 @@
 ---
 title: The stack in diff, and broken calls in check
-status: draft
+status: implemented
 project: metatron-nestjs
 location: docs/specs/14-stack-in-diff-and-check.md
 created: 2026-09-29
 tags: [diff, check, gate, bridge, full-stack]
+implemented: 2026-09-29
 ---
 
 # The stack in `diff`, and broken calls in `check`
@@ -97,6 +98,34 @@ compared, rather than a comparison against the wrong backend.
 3. The backend models of chronus and omega are unchanged. `http-broken`
    exists only when a bridge runs.
 4. `diff` on a backend, and on a frontend with no backend, is unchanged.
+
+## Results (2026-09-29)
+
+- **chronus #155:** `diff` opens with the 3 broken calls
+  (`useCheckItemsForMerge.ts:16`, `useNoteTagsForMerge.ts:13`,
+  `useTimeTracksForMerge.ts:14`) and `POST /notes/merge ←
+  notes.requests.ts`. The same three are listed under architecture as
+  `http-broken` violations in the diff.
+- **chronus #156:** no broken calls, and 3 rewires.
+- **Fixture frontend:** `baseline` accepts its two broken calls (the
+  unmatched one and the ambiguous one), and `check` passes. A new call to
+  `/ghosts` fails `check` by name. `baseline --update` accepts it again.
+- **A backend-only change seen from the frontend:** "no files changed in the
+  scanned root", then the broken call it caused, with the endpoint it used to
+  reach.
+- **The backend models** of chronus and omega are identical before and
+  after, checked against a worktree of `main`.
+
+**Found on the way:**
+
+- `stackOf` was never exported from `change.js`, so `diff` failed on the
+  first real run.
+- The markdown folded a paragraph into the preceding list item. Each group
+  is its own paragraph now.
+
+The chronus run used the settings of chronus's committed
+`frontend/arch.config.cjs`. That file is on the `action-ts-law-of-demeter`
+branch, not yet on its `main`.
 
 ## Out of scope
 
