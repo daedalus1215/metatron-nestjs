@@ -1,10 +1,11 @@
 ---
 title: Stack Change — a PR across the frontend and the backend
-status: draft
+status: implemented
 project: metatron-nestjs
 location: docs/specs/13-stack-change.md
 created: 2026-09-29
 tags: [lens, workbench, change, full-stack, bridge]
+implemented: 2026-09-29
 ---
 
 # Stack Change — a PR across the frontend and the backend
@@ -149,6 +150,35 @@ cannot say it broke.
 4. The page draws #155's change map with both sides and no console errors.
 5. Change mode on a backend alone, or on a frontend with no backend, is
    unchanged.
+
+## Results (2026-09-29)
+
+On chronus's own merges, with the frontend config's `backend: '../backend'`
+in the same repository:
+
+| PR | stack summary | time |
+|---|---|---|
+| #155 merge-notes (8 commits) | `POST /notes/merge` added, called by `notes.requests` (a **graft**: an old request module reaching a new endpoint); **3 broken calls**, all new: `GET /check-items` from `useCheckItemsForMerge`, `GET /note-tags` from `useNoteTagsForMerge`, `GET /time-tracks` from `useTimeTracksForMerge` | 1.0 s |
+| #156 merge-notes (1 commit) | the same three are **rewires** onto `GetCheckItemsByNoteAction`, `GetTagsByNoteIdAction` and `GetTimeTracksByNoteIdAction`; nothing broken | 0.5 s |
+| #143 audio-delete | `PATCH /notes/:id/convert-to-memo` added, one graft | 0.7 s |
+| #166 memo-move-folder | no stack change: code edited on both sides, no connection moved | 0.9 s |
+
+In the browser, #155's change map spans both sides (42 bricks, 31 of them
+backend). The panel leads with the three broken calls in red. There are no
+console errors.
+
+**What the tests hold** (`test/stack-change.test.js`):
+
+- every class of HTTP pair
+- a removed endpoint still called, and a new call into nothing
+- calls broken at both ends not counted against the change
+- a temporary monorepo where the backend is read from each frame's commit
+  while `main` is checked out. Frame 1, the backend commit alone, shows the
+  new endpoint with nothing calling it yet.
+
+**Found while wiring the page:** a removed backend brick keeps its side's own
+tier number, so its ghost was drawn among the frontend rows. The page now
+offsets it, as the joined stack offsets every live backend brick.
 
 ## Out of scope
 

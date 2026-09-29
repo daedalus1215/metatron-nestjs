@@ -423,6 +423,25 @@ both as one workbench:
 
 Brick ids are namespaced `fe:` and `be:`, and saves on either side re-scan.
 
+**A change across the stack.** When the frontend and its backend share a
+repository, change mode reads both from each commit, and bridges the
+frontend to the backend of that same commit. The change panel leads with
+what crossed the line:
+
+- **broken calls first:** a frontend call the change added that reaches no
+  endpoint, or one whose endpoint the change removed
+- **endpoints added,** with the calls that reach them, or "nothing calls it
+  yet"
+- **endpoints removed,** with the calls that used to reach them
+
+Each HTTP connection is classed like any other: a new hook calling a new
+endpoint is *territory*, a new vein through the stack; a new page using the
+existing API is an *attachment*.
+
+On chronus, PR #155 added `POST /notes/merge` with its caller, and three
+frontend calls to endpoints that did not exist. The next PR fixed them.
+Replaying #155 names all three.
+
 ## On a new machine
 
 ```bash

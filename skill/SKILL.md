@@ -194,6 +194,17 @@ In the model:
 as one stack (ids `fe:` / `be:`). To show how a page reaches the database,
 focus the page, tick **data path**, and set depth 6.
 
+For a PR that touches both sides, change mode on the joined workbench (or
+`changeAt(frontendCfg, { range })` in `src/change.js`) compares both sides
+at each commit. `change.summary.stack` has:
+
+- `endpointsAdded` and `endpointsRemoved`, each with the calls that reach it
+- `broken`: frontend calls that reach no endpoint after the change, with
+  what each reached before (`was`)
+- `http`: the cross-stack pairs by class
+
+Lead with `broken` when reviewing a PR.
+
 Report an `unseen` component or an unreached endpoint as "no caller found",
 not "dead": a component passed as a value is counted, but one reached some
 other way (a dynamic import, a string lookup) is not.
