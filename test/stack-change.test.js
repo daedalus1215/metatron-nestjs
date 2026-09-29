@@ -136,3 +136,42 @@ test('an unchanged stack changes nothing', () => {
   assert.deepStrictEqual(same.pairs, []);
   assert.deepStrictEqual([same.summary.stack.broken, same.summary.stack.endpointsAdded], [[], []]);
 });
+
+// ---------------------------------------------------------------- git
+test('in one repository, each frame reads both sides from its own commit', () => {
+  const os = require('os');
+  const { execFileSync } = require('child_process');
+  const { load } = require('../src/config');
+  const { changeAt } = require('../src/change');
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'metatron-stack-git-'));
+  try {
+    fs.cpSync(path.join(FIX, 'react'), path.join(repo, 'react'), { recursive: true });
+    fs.cpSync(path.join(FIX, 'react-backend'), path.join(repo, 'react-backend'), { recursive: true });
+    const g = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: repo, stdio: 'ignore' });
+    g('init', '-q', '-b', 'main'); g('add', '.'); g('commit', '-q', '-m', 'base');
+    g('checkout', '-q', '-b', 'feat');
+    fs.writeFileSync(path.join(repo, 'react-backend', 'src', 'things', 'apps', 'actions', 'thing-tags.action.ts'), BE1['things/apps/actions/thing-tags.action.ts']);
+    g('add', '.'); g('commit', '-q', '-m', 'backend: tags endpoint');
+    fs.writeFileSync(path.join(repo, 'react', 'src', 'pages', 'ThingPage', 'hooks', 'useThingTags.ts'), FE1['pages/ThingPage/hooks/useThingTags.ts']);
+    fs.rmSync(path.join(repo, 'react-backend', 'src', 'things', 'apps', 'actions', 'delete-thing.action.ts'));
+    g('add', '-A'); g('commit', '-q', '-m', 'frontend: use the tags; backend: drop delete');
+    g('checkout', '-q', 'main');          // the working tree has neither change
+
+    const cfg = load(path.join(repo, 'react'));
+    const { change, model } = changeAt(cfg, { range: 'main...feat' });
+    assert.strictEqual(change.stack, true);
+    assert.ok(model.__backend.model.bricks.some((b) => b.id === TAGS), 'the backend was read from the commit');
+    const st = change.summary.stack;
+    assert.deepStrictEqual(st.endpointsAdded.map((e) => [e.id, e.calledBy]),
+      [['GET /things/:id/tags#execute', ['fe:pages/ThingPage/hooks/useThingTags.ts#useThingTags']]]);
+    assert.deepStrictEqual(st.endpointsRemoved.map((e) => e.id), ['DELETE /things/:id#execute']);
+    assert.deepStrictEqual(st.broken.map((b) => [b.fromMethod, b.was]), [['deleteThing', 'DELETE /things/:id#execute']]);
+
+    // frame 1: the backend commit alone — the endpoint exists, nothing calls it yet
+    const f1 = changeAt(cfg, { range: 'main...feat' }, { frame: 1 }).change.summary.stack;
+    assert.deepStrictEqual(f1.endpointsAdded, [{ id: 'GET /things/:id/tags#execute', calledBy: [] }]);
+    assert.deepStrictEqual(f1.broken, []);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});

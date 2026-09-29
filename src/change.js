@@ -333,7 +333,7 @@ function resolveChange(cfg, spec = {}, opts = {}) {
   }
   // Pathspecs are relative to the repository root, so these run there, not
   // in the config's directory (a `backend/` beside a `frontend/`).
-  if (!head && D.git(gitRoot, ['status', '--porcelain', '--', relRoot]).trim()) frames.push({ sha: null, subject: '(uncommitted)' });
+  if (!head && D.git(gitRoot, ['status', '--porcelain', '--', relRoot].concat(opts.alsoRoots || [])).trim()) frames.push({ sha: null, subject: '(uncommitted)' });
   return { label, base, head, frames, gitRoot, relRoot };
 }
 
@@ -396,7 +396,7 @@ function resolveSet(list, ctx) {
  * directory is removed after. A commit that does not apply without one left
  * out of the set is refused, by name.
  */
-function applyFrame(r, frame, cfg) {
+function applyFrame(r, frame, cfg, relRoot = r.relRoot) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'metatron-set-'));
   try {
     const objects = path.join(tmp, 'objects');
@@ -411,7 +411,7 @@ function applyFrame(r, frame, cfg) {
     });
     g(['read-tree', r.base]);
     for (const c of frame.apply) {
-      const patch = g(['diff', '--binary', '--full-index', c.parent, c.sha, '--', r.relRoot]);
+      const patch = g(['diff', '--binary', '--full-index', c.parent, c.sha, '--', relRoot]);
       if (!patch.trim()) continue;
       try { g(['apply', '--cached', '--whitespace=nowarn'], patch); }
       catch (e) {
@@ -419,10 +419,10 @@ function applyFrame(r, frame, cfg) {
         throw new Error(`${c.sha.slice(0, 7)} "${c.subject}" does not apply without commits left out of the set.\n  ${why}`);
       }
     }
-    const files = D.indexFileMap(r.gitRoot, r.relRoot, cfg, env);
-    const prefix = r.relRoot === '.' ? '' : r.relRoot + '/';
+    const files = D.indexFileMap(r.gitRoot, relRoot, cfg, env);
+    const prefix = relRoot === '.' ? '' : relRoot + '/';
     const renames = [];
-    for (const line of g(['diff-index', '-M', '--cached', '--name-status', r.base, '--', r.relRoot]).split('\n')) {
+    for (const line of g(['diff-index', '-M', '--cached', '--name-status', r.base, '--', relRoot]).split('\n')) {
       const p = line.split('\t');
       if (p[0] && p[0][0] === 'R' && p[1].startsWith(prefix) && p[2].startsWith(prefix)) {
         renames.push([p[1].slice(prefix.length), p[2].slice(prefix.length)]);
@@ -447,9 +447,9 @@ function ghPr(dir, n) {
 }
 
 /** Renames between the base and a frame (null sha: the working tree). */
-function renamesBetween(r, sha) {
-  const args = ['diff', '-M', '--name-status', r.base].concat(sha ? [sha] : []).concat(['--', r.relRoot]);
-  const prefix = r.relRoot === '.' ? '' : r.relRoot + '/';
+function renamesBetween(r, sha, relRoot = r.relRoot) {
+  const args = ['diff', '-M', '--name-status', r.base].concat(sha ? [sha] : []).concat(['--', relRoot]);
+  const prefix = relRoot === '.' ? '' : relRoot + '/';
   const out = [];
   for (const line of D.git(r.gitRoot, args).split('\n')) {
     const p = line.split('\t');
@@ -478,12 +478,34 @@ function modelCache(size = 8) {
  * The change at one frame: the head model, and the overlay against the base.
  * `current` is the working-tree model, used for the uncommitted frame.
  */
+/**
+ * A frontend's linked backend, when it shares the frontend's repository: the
+ * one case where both sides have the same history (spec 13). Otherwise
+ * null, with `other` set when a backend is linked but lives elsewhere.
+ */
+function stackOf(cfg) {
+  if (cfg.wiring !== 'react' || !cfg.backend) return null;
+  const { load } = require('./config');
+  let bcfg;
+  try { bcfg = load(path.resolve(cfg.__dir, cfg.backend)); } catch { return null; }
+  const top = (dir) => { try { return D.git(dir, ['rev-parse', '--show-toplevel']).trim(); } catch { return null; } };
+  const gitRoot = top(cfg.__dir);
+  if (!gitRoot || top(bcfg.__dir) !== gitRoot) return { other: true };
+  return {
+    cfg: bcfg,
+    relRoot: path.relative(gitRoot, path.resolve(bcfg.__dir, bcfg.root)).split(path.sep).join('/') || '.',
+    label: path.relative(cfg.__dir, bcfg.__dir) || '.',
+  };
+}
+
 function changeAt(cfg, spec, opts = {}) {
-  const r = resolveChange(cfg, spec, opts);
+  const stack = stackOf(cfg);
+  const r = resolveChange(cfg, spec, Object.assign({}, opts, stack && stack.relRoot ? { alsoRoots: [stack.relRoot] } : {}));
   const cache = opts.cache || modelCache();
   const last = r.frames.length - 1;
   const frame = opts.frame === undefined || opts.frame === null ? last : Math.max(0, Math.min(last, Number(opts.frame)));
   const at = r.frames[frame];
+  if (stack && stack.relRoot) return stackChangeAt(cfg, r, stack, frame, at, cache, opts);
   const atCommit = (sha) => cache.get(sha, () => ({
     model: scan(cfg, { files: D.baseFileMap(r.gitRoot, r.relRoot, sha, cfg), churnAt: sha }),
   }));
@@ -507,6 +529,48 @@ function changeAt(cfg, spec, opts = {}) {
     change: Object.assign({
       label: r.label, base: r.base, head: r.head, set: r.set || null, frame, rev: at.rev || at.sha,
       frames: r.frames.map((f) => ({ sha: f.sha, subject: f.subject, built: !!f.apply })),
+    }, cmp, stack && stack.other ? { backendAt: 'current' } : {}),
+  };
+}
+
+/**
+ * Both sides of a stack at each end of the change: the backend read from the
+ * same commit as the frontend, and the frontend bridged to it (spec 13).
+ */
+function stackChangeAt(cfg, r, stack, frame, at, cache, opts) {
+  const bridgeTo = (be) => ({ model: be, label: stack.label, cfg: stack.cfg });
+  const atCommit = (sha) => cache.get('stack:' + sha, () => {
+    const be = scan(stack.cfg, { files: D.baseFileMap(r.gitRoot, stack.relRoot, sha, stack.cfg), churnAt: sha });
+    const fe = scan(cfg, { files: D.baseFileMap(r.gitRoot, r.relRoot, sha, cfg), churnAt: sha, backend: bridgeTo(be) });
+    return { fe, be };
+  });
+  const base = atCommit(r.base);
+  let head, renames;
+  if (at.apply) {
+    head = cache.get('stack:' + at.rev, () => {
+      const tb = applyFrame(r, at, stack.cfg, stack.relRoot);
+      const tf = applyFrame(r, at, cfg);
+      const be = scan(stack.cfg, { files: tb.files, churnAt: at.sha });
+      const fe = scan(cfg, { files: tf.files, churnAt: at.sha, backend: bridgeTo(be) });
+      return { fe, be, renames: { fe: tf.renames, be: tb.renames } };
+    });
+    renames = head.renames;
+  } else {
+    if (at.sha) head = atCommit(at.sha);
+    else {
+      const fe = opts.current && opts.current.__backend ? opts.current : scan(cfg);
+      head = { fe, be: fe.__backend.model };
+    }
+    renames = { fe: renamesBetween(r, at.sha), be: renamesBetween(r, at.sha, stack.relRoot) };
+  }
+  const cmp = stackCompare(base.fe, head.fe, base.be, head.be, renames);
+  return {
+    model: head.fe,
+    base: base.fe,
+    change: Object.assign({
+      label: r.label, base: r.base, head: r.head, set: r.set || null, frame, rev: at.rev || at.sha,
+      frames: r.frames.map((f) => ({ sha: f.sha, subject: f.subject, built: !!f.apply })),
+      stack: true,
     }, cmp),
   };
 }
