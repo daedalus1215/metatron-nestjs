@@ -98,7 +98,7 @@ function compare(base, head, renames = []) {
   }
   pairs.sort((a, b) => (a.from + a.to < b.from + b.to ? -1 : 1));
 
-  return { bricks, studs, removed, pairs, summary: summarise(count, pairs) };
+  return { bricks, studs, removed, pairs, summary: summarise(count, pairs), count };
 }
 
 /** Studs and internals of an edited brick, by name. */
@@ -135,6 +135,124 @@ function summarise(count, pairs) {
     detached: pairs.filter((p) => p.class === 'detached').length,
     newCallsOnKept: pairs.filter((p) => p.class === 'kept').reduce((a, p) => a + p.newCalls.length, 0),
   });
+}
+
+// ------------------------------------------------------------ the stack
+
+const side = (tag) => (id) => (id === null || id === undefined ? id : tag + ':' + id);
+
+/** A side's compare, keyed as the joined workbench keys it. */
+function prefixed(c, tag) {
+  const p = side(tag);
+  const byKey = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [p(k), v]));
+  return {
+    bricks: byKey(c.bricks), studs: byKey(c.studs),
+    removed: c.removed.map((r) => Object.assign({}, r, { id: p(r.id), file: p(r.file), module: p(r.module), side: tag })),
+    pairs: c.pairs.map((x) => Object.assign({}, x, { from: p(x.from), to: p(x.to) })),
+  };
+}
+
+/** Base ids moved by a rename, onto their head ids. */
+const renamer = (renames) => {
+  const moved = new Map(renames);
+  return (id) => {
+    if (!id) return id;
+    const i = id.indexOf('#');
+    const file = i < 0 ? id : id.slice(0, i);
+    return moved.has(file) ? moved.get(file) + (i < 0 ? '' : id.slice(i)) : id;
+  };
+};
+
+/**
+ * A change across a frontend and its backend (spec 13): each side compared
+ * as in spec 11, and the HTTP edges between them compared on their own.
+ *
+ * Each model's frontend must be bridged to the backend of the same commit.
+ * An HTTP pair is (frontend brick making the call, backend brick owning the
+ * endpoint), classed by which ends already existed, like any pair.
+ *
+ * @param renames  { fe: [[old, new]], be: [[old, new]] }
+ */
+function stackCompare(baseFe, headFe, baseBe, headBe, renames = {}) {
+  const fe = compare(baseFe, headFe, renames.fe || []);
+  const be = compare(baseBe, headBe, renames.be || []);
+  const F = prefixed(fe, 'fe'), B = prefixed(be, 'be');
+  const feMove = renamer(renames.fe || []), beMove = renamer(renames.be || []);
+
+  // ---- HTTP pairs
+  const httpPairs = (fm, fmove, bmove) => {
+    const out = new Map();
+    for (const c of fm.calls) {
+      if (c.kind !== 'http' || c.match !== 'matched') continue;
+      const from = 'fe:' + fmove(c.from), to = 'be:' + bmove(c.endpointBrick);
+      const k = from + '\u0000' + to;
+      if (!out.has(k)) out.set(k, { from, to, calls: new Set() });
+      out.get(k).calls.add((c.fromMethod || '(module)') + ' > ' + c.endpoint.split('#')[0]);
+    }
+    return out;
+  };
+  const hb = httpPairs(baseFe, feMove, beMove), hh = httpPairs(headFe, (x) => x, (x) => x);
+  const existed = (id) => {
+    const status = id.startsWith('fe:') ? F.bricks[id] : B.bricks[id];
+    return status !== undefined && status !== 'added';
+  };
+  const http = { attachment: 0, graft: 0, rewire: 0, territory: 0, detached: 0 };
+  const stackPairs = [];
+  for (const [k, p] of hh) {
+    const was = hb.get(k);
+    if (!was) {
+      const cls = existed(p.from) ? (existed(p.to) ? 'rewire' : 'graft') : (existed(p.to) ? 'attachment' : 'territory');
+      http[cls]++;
+      stackPairs.push({ from: p.from, to: p.to, class: cls, calls: [...p.calls].sort(), http: true });
+    } else {
+      const fresh = [...p.calls].filter((c) => !was.calls.has(c)).sort();
+      const gone = [...was.calls].filter((c) => !p.calls.has(c)).sort();
+      if (fresh.length || gone.length) stackPairs.push({ from: p.from, to: p.to, class: 'kept', newCalls: fresh, goneCalls: gone, http: true });
+    }
+  }
+  for (const [k, p] of hb) {
+    if (hh.has(k)) continue;
+    http.detached++;
+    stackPairs.push({ from: p.from, to: p.to, class: 'detached', calls: [...p.calls].sort(), http: true });
+  }
+
+  // ---- endpoints, and the calls that reach them
+  const callersOf = (fm, id, fmove) => [...new Set(fm.calls
+    .filter((c) => c.kind === 'http' && c.endpoint === id).map((c) => 'fe:' + fmove(c.from)))].sort();
+  const eb = new Set(baseBe.endpoints.map((e) => e.id)), eh = new Set(headBe.endpoints.map((e) => e.id));
+  const endpointsAdded = headBe.endpoints.filter((e) => !eb.has(e.id))
+    .map((e) => ({ id: e.id, calledBy: callersOf(headFe, e.id, (x) => x) }));
+  const endpointsRemoved = baseBe.endpoints.filter((e) => !eh.has(e.id))
+    .map((e) => ({ id: e.id, calledBy: callersOf(baseFe, e.id, feMove) }));
+
+  // ---- broken calls: new calls into nothing, and calls the change cut off.
+  // A call is known across the two ends by its brick, verb and URL.
+  const callKey = (from, c) => from + '\u0000' + c.verb + '\u0000' + c.path;
+  const before = new Map();
+  for (const c of baseFe.calls) if (c.kind === 'http') before.set(callKey(feMove(c.from), c), c);
+  const broken = [], unread = [];
+  for (const c of headFe.calls) {
+    if (c.kind !== 'http') continue;
+    if (c.match === 'unread') { unread.push({ from: 'fe:' + c.from, verb: c.verb, line: c.line }); continue; }
+    if (c.match === 'matched') continue;
+    const was = before.get(callKey(c.from, c));
+    if (was && was.match !== 'matched') continue;       // broken before the change too: not its doing
+    broken.push({ from: 'fe:' + c.from, fromMethod: c.fromMethod, verb: c.verb, path: c.path, line: c.line,
+      match: c.match, was: was ? was.endpoint : null });
+  }
+
+  // ---- merged
+  const pairs = F.pairs.concat(B.pairs, stackPairs)
+    .sort((a, b) => (a.from + a.to < b.from + b.to ? -1 : 1));
+  const count = {};
+  for (const k of ['added', 'removed', 'edited', 'unchanged']) count[k] = fe.count[k] + be.count[k];
+  const summary = summarise(count, pairs);
+  summary.stack = { endpointsAdded, endpointsRemoved, broken, unread, http,
+    sides: { fe: fe.summary, be: be.summary } };
+  return {
+    bricks: Object.assign({}, F.bricks, B.bricks), studs: Object.assign({}, F.studs, B.studs),
+    removed: F.removed.concat(B.removed), pairs, summary,
+  };
 }
 
 // ------------------------------------------------------------------ git
@@ -393,4 +511,4 @@ function changeAt(cfg, spec, opts = {}) {
   };
 }
 
-module.exports = { compare, resolveChange, changeAt, modelCache };
+module.exports = { compare, stackCompare, resolveChange, changeAt, modelCache };

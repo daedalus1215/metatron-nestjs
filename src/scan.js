@@ -1420,9 +1420,11 @@ function scan(cfg, opts = {}) {
 
   // The bridge (spec 12): a frontend's HTTP calls against its backend's
   // endpoints. A backend that cannot be loaded is reported, not fatal.
-  if (cfg.wiring === 'react' && cfg.backend) {
+  // `opts.backend` ({ model, label, cfg }) supplies the backend instead:
+  // change mode bridges a commit's frontend to the same commit's backend.
+  if (cfg.wiring === 'react' && (cfg.backend || opts.backend)) {
     try {
-      const be = linkedBackend(cfg, scan);
+      const be = opts.backend || linkedBackend(cfg, scan);
       model.bridge = bridgeOf(model, be.model, cfg, be.label);
       Object.defineProperty(model, '__backend', { value: be });
     } catch (e) {
