@@ -163,6 +163,33 @@ const renamer = (renames) => {
   };
 };
 
+// A call is known across a change's two ends by its brick, verb and URL.
+const callKey = (from, c) => from + '\u0000' + c.verb + '\u0000' + c.path;
+
+/**
+ * The contract drift a change introduced (spec 15): each matched call whose
+ * request or response differs at the head, where it did not differ in the
+ * same way at the base, or did not exist. Each side is null when it is not
+ * new drift; `was` is what the base said, if the call was there.
+ */
+function contractDriftOf(baseFe, headFe, feMove) {
+  const before = new Map();
+  for (const c of baseFe.calls) if (c.kind === 'http' && c.contract) before.set(callKey(feMove(c.from), c), c.contract);
+  const out = [];
+  for (const c of headFe.calls) {
+    if (c.kind !== 'http' || !c.contract) continue;
+    const was = before.get(callKey(c.from, c));
+    const fresh = (side) => c.contract[side].status === 'differ'
+      && !(was && JSON.stringify(was[side]) === JSON.stringify(c.contract[side]));
+    const request = fresh('request'), response = fresh('response');
+    if (!request && !response) continue;
+    out.push({ from: 'fe:' + c.from, fromMethod: c.fromMethod, verb: c.verb, path: c.path, line: c.line, endpoint: c.endpoint,
+      request: request ? c.contract.request : null, response: response ? c.contract.response : null,
+      was: was ? { request: was.request.status, response: was.response.status } : null });
+  }
+  return out;
+}
+
 /**
  * A change across a frontend and its backend (spec 13): each side compared
  * as in spec 11, and the HTTP edges between them compared on their own.
@@ -226,8 +253,6 @@ function stackCompare(baseFe, headFe, baseBe, headBe, renames = {}) {
     .map((e) => ({ id: e.id, calledBy: callersOf(baseFe, e.id, feMove) }));
 
   // ---- broken calls: new calls into nothing, and calls the change cut off.
-  // A call is known across the two ends by its brick, verb and URL.
-  const callKey = (from, c) => from + '\u0000' + c.verb + '\u0000' + c.path;
   const before = new Map();
   for (const c of baseFe.calls) if (c.kind === 'http') before.set(callKey(feMove(c.from), c), c);
   const broken = [], unread = [];
@@ -248,6 +273,7 @@ function stackCompare(baseFe, headFe, baseBe, headBe, renames = {}) {
   for (const k of ['added', 'removed', 'edited', 'unchanged']) count[k] = fe.count[k] + be.count[k];
   const summary = summarise(count, pairs);
   summary.stack = { endpointsAdded, endpointsRemoved, broken, unread, http,
+    contractDrift: contractDriftOf(baseFe, headFe, feMove),
     sides: { fe: fe.summary, be: be.summary } };
   return {
     bricks: Object.assign({}, F.bricks, B.bricks), studs: Object.assign({}, F.studs, B.studs),
