@@ -422,6 +422,20 @@ function reactWiringOf(ctx) {
     }
   }
 
+  // A call with no generic expects what its function declares it returns,
+  // when that function makes this one call and no other.
+  const perFn = new Map();
+  for (const c of calls) if (c.kind === 'http') { const k = c.from + '#' + c.fromMethod; perFn.set(k, (perFn.get(k) || 0) + 1); }
+  for (const c of calls) {
+    if (c.kind !== 'http') continue;
+    if (c.expects) { c.expectsFrom = 'generic'; continue; }
+    if (perFn.get(c.from + '#' + c.fromMethod) !== 1) continue;
+    const b = byId.get(c.from);
+    const stud = b && b.studs.concat(b.internals).find((x) => x.name === c.fromMethod);
+    const ret = stud && returnTypeOf(stud.sig);
+    if (ret) { c.expects = ret; c.expectsFrom = 'return'; }
+  }
+
   // ---- routes
   const routes = routesOf(ctx, { files, text, imports, refOf, lineAt, diagnostics, byId });
 
@@ -517,6 +531,20 @@ function sentOf(arg, seg, x) {
   const name = (a.match(/^([A-Za-z_$][\w$]*)$/) || [])[1];
   if (!name) return { kind: 'other', text: a.slice(0, 80) };
   return { kind: 'name', name, type: declaredType(name, seg, x) };
+}
+
+/** A function signature's declared return type: `name(…): T` gives T. */
+function returnTypeOf(sig) {
+  if (!sig || sig[0] === '<') return null;
+  const open = sig.indexOf('(');
+  if (open < 0) return null;
+  let d = 0, j = open;
+  for (; j < sig.length; j++) {
+    if (sig[j] === '(') d++;
+    else if (sig[j] === ')') { d--; if (d === 0) break; }
+  }
+  const rest = sig.slice(j + 1).match(/^\s*:\s*([\s\S]+)$/);
+  return rest ? rest[1].trim() : null;
 }
 
 /** The type a name is declared with: a local `const name: T`, or the enclosing function's parameter. */
