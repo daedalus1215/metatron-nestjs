@@ -15,6 +15,7 @@ const declarations = require('./classes');
 const { wiringOf } = require('./wiring');
 const { reactWiringOf } = require('./react-wiring');
 const { bridgeOf } = require('./bridge');
+const { contractsOf } = require('./contracts');
 
 // A frontend's linked backend, scanned once and reused until one of its
 // files changes (serve re-scans the frontend on every save).
@@ -1431,6 +1432,8 @@ function scan(cfg, opts = {}) {
     try {
       const be = opts.backend || linkedBackend(cfg, scan);
       model.bridge = bridgeOf(model, be.model, cfg, be.label);
+      // Spec 15: what travels along each matched call, compared.
+      model.contractMeta = contractsOf(model, be.model);
       // Spec 14: a call that reaches no endpoint is a violation, so `check`
       // gates it and `baseline` can accept it. Keyed by file and VERB url, so
       // it keeps its identity when it moves down its file. An unread URL is
