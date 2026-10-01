@@ -18,7 +18,9 @@
  * framework, counted but not edges.
  */
 
-const HTTP_VERBS = /\b([A-Za-z_$][\w$]*)\s*\.\s*(get|post|put|patch|delete)\s*(?:<[^>()]*>)?\s*\(/g;
+const { splitTop } = require('./shapes');
+
+const HTTP_VERBS = /\b([A-Za-z_$][\w$]*)\s*\.\s*(get|post|put|patch|delete)\s*(?:<([^>()]*(?:<[^>()]*>[^>()]*)*)>)?\s*\(/g;
 
 /** Every import in a file: local name -> { spec, name (as exported), type }. */
 function importsOf(src) {
@@ -366,7 +368,7 @@ function reactWiringOf(ctx) {
   const clientFiles = new Set(files.filter((f) => /\baxios\s*\.\s*create\s*\(/.test(text[f])));
   const http = { calls: 0, unread: 0 };
   /** One HTTP call: on the call list, on its stud, and a diagnostic if unread. */
-  const record = (x, rel, idx, verb, path, what) => {
+  const record = (x, rel, idx, verb, path, what, declared = {}) => {
     const line = lineAt[rel](idx);
     http.calls++;
     if (path === null || verb === null) {
@@ -374,7 +376,7 @@ function reactWiringOf(ctx) {
       diagnostics.push({ kind: 'http-unread', file: rel, line,
         detail: `${what} — the ${path === null ? 'URL' : 'method'} is not a literal or a template metatron reads` });
     }
-    calls.push({ from: x.b.id, fromMethod: x.method, to: null, toMethod: null, line, kind: 'http', verb, path });
+    calls.push(Object.assign({ from: x.b.id, fromMethod: x.method, to: null, toMethod: null, line, kind: 'http', verb, path }, declared));
     const stud = x.b.studs.find((s) => s.name === x.method) || x.b.internals.find((s) => s.name === x.method)
       || (x.b.shape === 'component' ? x.b.studs[0] : null);
     if (stud) (stud.http = stud.http || []).push({ verb, path, line });
@@ -395,7 +397,13 @@ function reactWiringOf(ctx) {
       const isClient = client === 'axios' ? !!(im && im.pkg === 'axios')
         : !!(im && im.file && clientFiles.has(im.file)) || (clientFiles.has(rel) && /\baxios\s*\.\s*create/.test(src));
       if (!isClient) continue;
-      record(x, rel, idx, m[2].toUpperCase(), urlOf(seg, m.index + m[0].length), `${client}.${m[2]}(…)`);
+      // Spec 15: what the call declares — the body it sends, the type it expects
+      const args = argsOf(seg, m.index + m[0].length);
+      const sends = /^(post|put|patch)$/.test(m[2]);
+      record(x, rel, idx, m[2].toUpperCase(), urlOf(seg, m.index + m[0].length), `${client}.${m[2]}(…)`, {
+        body: sends ? sentOf(args[1], seg, x) : { kind: 'none' },
+        expects: m[3] ? m[3].trim() : null,
+      });
     }
     // fetch(url, { method }) — the platform's own client. The method is read
     // from the options; none means GET, a variable means unread.
@@ -406,7 +414,11 @@ function reactWiringOf(ctx) {
       if (!isCode(rel, idx)) continue;
       if (ownerOf(rel, idx) !== x) continue;
       if (imports[rel].fetch) continue;                    // a fetch the file imports is not the platform's
-      record(x, rel, idx, fetchVerb(seg, open), urlOf(seg, open), 'fetch(…)');
+      const init = argsOf(seg, open)[1] || '';
+      const sent = init.match(/\bbody\s*:\s*JSON\s*\.\s*stringify\s*\(([\s\S]*)\)\s*,?\s*\}?\s*$/) || init.match(/\bbody\s*:\s*JSON\s*\.\s*stringify\s*\(([^()]*)\)/);
+      record(x, rel, idx, fetchVerb(seg, open), urlOf(seg, open), 'fetch(…)', {
+        body: sent ? sentOf(sent[1], seg, x) : { kind: 'none' }, expects: null,
+      });
     }
   }
 
@@ -465,6 +477,62 @@ function propsOf(src, f) {
     if (fc) type = fc[1].trim();
   }
   return { names, type: type ? type.replace(/\s+/g, ' ') : null };
+}
+
+/** A call's top-level arguments, from just past its `(`. */
+function argsOf(seg, i) {
+  const out = [];
+  let d = 0, cur = '', q = null;
+  for (let j = i; j < seg.length; j++) {
+    const ch = seg[j];
+    if (q) { cur += ch; if (ch === q && seg[j - 1] !== '\\') q = null; continue; }
+    if (ch === '\'' || ch === '"' || ch === '`') { q = ch; cur += ch; continue; }
+    if ('([{'.includes(ch)) d++;
+    else if (')]}'.includes(ch)) { if (d === 0) break; d--; }
+    if (ch === ',' && d === 0) { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/**
+ * What a request sends, as written: an object literal's keys (a spread makes
+ * it open), or a name with the type its declaration gives it (the enclosing
+ * function's parameter, or a local `const x: T`).
+ */
+function sentOf(arg, seg, x) {
+  if (!arg) return { kind: 'none' };
+  const a = arg.trim();
+  if (a.startsWith('{')) {
+    const keys = [];
+    let open = false;
+    for (const part of splitTop(a.slice(1, a.lastIndexOf('}')), ',\n')) {
+      if (part.startsWith('...')) { open = true; continue; }
+      const k = part.match(/^['"]?([A-Za-z_$][\w$]*)['"]?/);
+      if (k) keys.push(k[1]);
+    }
+    return { kind: 'literal', keys, open };
+  }
+  const name = (a.match(/^([A-Za-z_$][\w$]*)$/) || [])[1];
+  if (!name) return { kind: 'other', text: a.slice(0, 80) };
+  return { kind: 'name', name, type: declaredType(name, seg, x) };
+}
+
+/** The type a name is declared with: a local `const name: T`, or the enclosing function's parameter. */
+function declaredType(name, seg, x) {
+  const local = seg.match(new RegExp('\\b(?:const|let)\\s+' + name + '\\s*:\\s*([^=;]+?)\\s*='));
+  if (local) return local[1].trim();
+  const stud = x.b.studs.concat(x.b.internals).find((s) => s.name === x.method);
+  const sig = stud && stud.sig;
+  if (!sig || sig[0] === '<') return null;           // a component's stud is its render, not a signature
+  const open = sig.indexOf('(');
+  const params = argsOf(sig, open + 1);
+  for (const p of params) {
+    const m = p.match(new RegExp('^(?:\\.\\.\\.)?' + name + '\\??\\s*:\\s*([\\s\\S]+?)(\\s*=[\\s\\S]*)?$'));
+    if (m) return m[1].trim();
+  }
+  return null;
 }
 
 /**
@@ -560,4 +628,4 @@ function routesOf(ctx, { files, text, imports, refOf, lineAt, diagnostics }) {
   return routes;
 }
 
-module.exports = { reactWiringOf, importsOf, urlOf };
+module.exports = { reactWiringOf, importsOf, urlOf, argsOf, sentOf };
