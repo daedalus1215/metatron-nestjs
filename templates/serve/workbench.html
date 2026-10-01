@@ -599,8 +599,23 @@ function httpRows(s) {
     const call = S.m.calls.find((c) => c.kind === 'http' && c.line === h.line && c.verb === h.verb && c.to);
     const bad = h.match && h.match !== 'matched';
     return `<span class="by">${bad ? '<b style="color:var(--rose)">' : ''}${esc(httpText(h))}${bad ? '</b>' : ''}`
-      + (call ? ` · <a data-go="${esc(call.to)}">${esc(short(call.to))}.${esc(call.toMethod)}</a>` : '') + '</span>';
+      + (call ? ` · <a data-go="${esc(call.to)}">${esc(short(call.to))}.${esc(call.toMethod)}</a>` : '') + '</span>'
+      + contractRow(h.contract);
   }).join('');
+}
+/** Spec 15: one comparison's difference in words, as src/contracts.js describes it. */
+function describeDiff(r) {
+  return [r.why, r.extra && r.extra.length ? 'sends ' + r.extra.join(', ') + ' (undeclared)' : '',
+    r.missing && r.missing.length ? 'missing ' + r.missing.join(', ') : '',
+    r.optional && r.optional.length ? 'optional here, required there: ' + r.optional.join(', ') : ''].filter(Boolean).join('; ');
+}
+/** A matched call's contract: ✓, what differs, or unread (the reason on hover). */
+function contractRow(k) {
+  if (!k) return '';
+  const side = (name, r) => r.status === 'agree' ? `${name} <span style="color:var(--green)">✓</span>`
+    : r.status === 'differ' ? `<b style="color:var(--amber)">${name}: ${esc(describeDiff(r))}</b>`
+      : `<span title="${esc(r.why || '')}">${name} unread</span>`;
+  return `<span class="by contract">${side('request', k.request)} · ${side('response', k.response)}</span>`;
 }
 
 function renderInspector() {
