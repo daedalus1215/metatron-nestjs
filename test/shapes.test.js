@@ -41,3 +41,67 @@ test('names go through the lookup; what cannot be read is null', () => {
   assert.strictEqual(shapeOf('Record<string, Thing>', lookup), null, 'a generic of our own');
   assert.strictEqual(shapeOf('T extends U ? X : Y'), null);
 });
+
+// ---------------------------------------------------------------- named types
+const { typeIndex, lookupIn } = require('../src/shapes');
+
+const TEXT = {
+  'dtos/create-note.dto.ts': `import { IsOptional, IsString } from 'class-validator';
+export class CreateNoteDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  @IsOptional()
+  description: string;
+
+  @IsOptional() folderId?: number;
+
+  constructor(name: string) { this.name = name; }
+
+  describe(): string {
+    const note: string = this.name;
+    return note;
+  }
+}
+export class ImportNoteDto extends CreateNoteDto {
+  source: string;
+}`,
+  'api/types.ts': `export type Note = {
+  id: number;
+  name: string;
+  pinned?: boolean;
+};
+export interface Tagged extends Base {
+  tags: string[];
+}
+export interface Base { id: number }
+export type NoteList = Note[];
+export type Maybe = Note | null;
+export type Box<T> = { value: T };`,
+  'a/dup.ts': 'export type Dup = { a: string };',
+  'b/dup.ts': 'export type Dup = { b: string };',
+};
+const idx = typeIndex(TEXT);
+const look = lookupIn(idx);
+
+test('a class DTO: fields at the top level only; @IsOptional and ? make a field optional', () => {
+  assert.deepStrictEqual(keys(look('CreateNoteDto')), { name: false, description: true, folderId: true });
+});
+
+test('extends: a class inherits its base fields, an interface its bases', () => {
+  assert.deepStrictEqual(keys(look('ImportNoteDto')), { name: false, description: true, folderId: true, source: false });
+  assert.deepStrictEqual(keys(look('Tagged')), { id: false, tags: false });
+});
+
+test('type aliases: object, array, union with null', () => {
+  assert.deepStrictEqual(keys(look('Note')), { id: false, name: false, pinned: true });
+  assert.deepStrictEqual(keys(look('NoteList').array), { id: false, name: false, pinned: true });
+  assert.deepStrictEqual(keys(look('Maybe')), { id: false, name: false, pinned: true });
+  assert.strictEqual(look('Box'), null, 'a generic alias is not indexed');
+});
+
+test('a name defined twice is unread, unless the caller says which file it means', () => {
+  assert.strictEqual(look('Dup'), null);
+  assert.deepStrictEqual(keys(lookupIn(idx, (n) => (n === 'Dup' ? 'b/dup.ts' : null))('Dup')), { b: false });
+});

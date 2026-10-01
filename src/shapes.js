@@ -89,4 +89,113 @@ function shapeOf(expr, lookup = () => null, depth = 0) {
   return null;                                         // a generic of our own, a conditional, a package type
 }
 
-module.exports = { shapeOf, membersOf, splitTop };
+/** The index of `{` matching the `{` at `open`, or -1. */
+function closeBrace(src, open) {
+  let d = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') d++;
+    else if (src[i] === '}') { d--; if (d === 0) return i; }
+  }
+  return -1;
+}
+
+/**
+ * A class body's fields: top-level statements only (a method's body is not
+ * read). `@IsOptional()` or `@ValidateIf(…)` above a field makes it optional,
+ * as class-validator does.
+ */
+function classFields(body) {
+  const stmts = [];
+  let d = 0, cur = '';
+  for (const ch of body) {
+    if ('([{'.includes(ch)) d++;
+    else if (')]}'.includes(ch)) d--;
+    if (d === 0 && (ch === ';' || ch === '\n')) { if (cur.trim()) stmts.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  if (cur.trim()) stmts.push(cur.trim());
+  const fields = {};
+  let optional = false;
+  for (let st of stmts) {
+    while (st.startsWith('@')) {                          // decorators, possibly on the field's own line
+      const m = st.match(/^@([\w$.]+)\s*(\([^]*?\))?\s*/);
+      if (!m) break;
+      if (/^(IsOptional|ValidateIf)$/.test(m[1])) optional = true;
+      st = st.slice(m[0].length);
+    }
+    if (!st) continue;
+    const f = st.match(/^(?:(?:public|private|protected|readonly|declare|static)\s+)*([A-Za-z_$][\w$]*)(\?|!)?\s*:\s*([^=]+?)(\s*=[\s\S]*)?$/);
+    if (f && !/^static\s/.test(st)) fields[f[1]] = { optional: f[2] === '?' || optional, type: f[3].trim() };
+    optional = false;
+  }
+  return fields;
+}
+
+/**
+ * Every named type in a side's files: `type X = …`, `interface X {…}` and
+ * `class X {…}`. A generic declaration (`type X<T> = …`) is not indexed: its
+ * shape depends on an argument.
+ */
+function typeIndex(text) {
+  const index = new Map();
+  const add = (name, def) => (index.get(name) || index.set(name, []).get(name)).push(def);
+  for (const [file, src] of Object.entries(text)) {
+    let m;
+    const TYPE = /(?:^|\n)\s*(?:export\s+)?type\s+([A-Za-z_$][\w$]*)\s*(<)?[^=\n]*=\s*/g;
+    while ((m = TYPE.exec(src))) {
+      if (m[2]) continue;
+      const at = m.index + m[0].length;
+      if (src[at] === '{') { const c = closeBrace(src, at); if (c > 0) add(m[1], { file, kind: 'type', expr: src.slice(at, c + 1) }); continue; }
+      let d = 0, j = at;
+      for (; j < src.length; j++) {
+        const ch = src[j];
+        if ('([{<'.includes(ch)) d++;
+        else if (')]}>'.includes(ch)) d--;
+        else if (d === 0 && (ch === ';' || (ch === '\n' && !/[|&,]\s*$/.test(src.slice(at, j)) && !/^\s*[|&]/.test(src.slice(j + 1))))) break;
+      }
+      add(m[1], { file, kind: 'type', expr: src.slice(at, j) });
+    }
+    const IFACE = /(?:^|\n)\s*(?:export\s+)?interface\s+([A-Za-z_$][\w$]*)\s*(<)?([^{]*)\{/g;
+    while ((m = IFACE.exec(src))) {
+      if (m[2]) continue;
+      const open = m.index + m[0].length - 1, c = closeBrace(src, open);
+      const ext = (m[3].match(/extends\s+([\s\S]+)/) || [])[1];
+      if (c > 0) add(m[1], { file, kind: 'interface', body: src.slice(open + 1, c), extends: ext ? splitTop(ext, ',') : [] });
+    }
+    const CLASS = /(?:^|\n)\s*(?:export\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)\s*(<)?([^{]*)\{/g;
+    while ((m = CLASS.exec(src))) {
+      if (m[2]) continue;
+      const open = m.index + m[0].length - 1, c = closeBrace(src, open);
+      const ext = (m[3].match(/extends\s+([A-Za-z_$][\w$]*)/) || [])[1];
+      if (c > 0) add(m[1], { file, kind: 'class', body: src.slice(open + 1, c), extends: ext ? [ext] : [] });
+    }
+  }
+  return index;
+}
+
+/**
+ * A lookup over an index. `prefer(name)` names the file a caller means (the
+ * one it imports the name from); without it, a name defined once is read and
+ * a name defined twice is unread.
+ */
+function lookupIn(index, prefer = () => null) {
+  const lookup = (name, depth = 0) => {
+    const defs = index.get(name);
+    if (!defs || depth > 8) return null;
+    const want = prefer(name);
+    const def = (want && defs.find((d) => d.file === want)) || (defs.length === 1 ? defs[0] : null);
+    if (!def) return null;
+    if (def.kind === 'type') return shapeOf(def.expr, lookup, depth + 1);
+    const own = def.kind === 'class' ? { fields: classFields(def.body), open: false } : membersOf(def.body);
+    for (const base of def.extends) {
+      const b = shapeOf(base, lookup, depth + 1);
+      if (!b || !b.fields) return null;                    // a base we cannot read: the whole shape is unread
+      own.fields = Object.assign({}, b.fields, own.fields);
+      own.open = own.open || b.open;
+    }
+    return own;
+  };
+  return lookup;
+}
+
+module.exports = { shapeOf, membersOf, splitTop, classFields, typeIndex, lookupIn };
