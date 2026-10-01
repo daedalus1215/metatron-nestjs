@@ -39,6 +39,11 @@ export class ThingTagsAction {
     "\nexport const fetchTags = async (id: number) => { await api.get(`/things/${id}/tags`); };\n" +
     "export const fetchGhost = async () => { await api.get('/ghosts'); };\n");
   g('add', '-A'); g('commit', '-q', '-m', 'tags');
+  // a backend-only rename of the body's field: the frontend's call drifts
+  g('checkout', '-q', '-b', 'drift', 'main');
+  const rename = path.join(ACTIONS, 'rename-thing.action.ts');
+  fs.writeFileSync(rename, fs.readFileSync(rename, 'utf8').replace('body: { name: string }', 'body: { title: string }').replace('body.name', 'body.title'));
+  g('commit', '-qam', 'rename the field');
   g('checkout', '-q', 'main');
 });
 test.after(() => fs.rmSync(repo, { recursive: true, force: true }));
@@ -66,6 +71,17 @@ test('a full-stack feature: the endpoint with its caller, and the new call into 
   assert.match(md, /\*\*Across the stack\*\* \(\.\.\/react-backend\)/);
   assert.match(md, /\n\*\*1 broken call\*\*\n- `GET \/ghosts`/);
   assert.match(md, /\n\nendpoints added: 1\n- `GET \/things\/:id\/tags`/);
+});
+
+test('a backend-only rename of a DTO field: the contract drift it causes', () => {
+  const r = D.analyze(load(FE), { range: 'main...drift' });
+  assert.deepStrictEqual(r.stack.contractDrift.map((d) => [d.verb, d.path, d.file, d.endpoint, d.response]),
+    [['PATCH', '/things/${id}/name', 'api/requests/things.requests.ts', 'PATCH /things/:id/name', null]]);
+  const text = D.renderTerminal(r);
+  assert.match(text, /contract drift: 1 call whose declared shape no longer matches its endpoint's\n/);
+  assert.match(text, /PATCH \/things\/\$\{id\}\/name {3}api\/requests\/things\.requests\.ts:\d+ {3}request: sends name \(undeclared\); missing title/);
+  assert.match(D.renderMarkdown(r), /matches its endpoint's\n- `PATCH \/things\/\$\{id\}\/name` {3}api\/requests/);
+  assert.match(D.renderTerminal(D.analyze(load(FE), { range: 'main...cut' })), /contract drift: none/);
 });
 
 test('a frontend with no backend linked has no stack section', () => {
