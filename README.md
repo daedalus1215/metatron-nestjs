@@ -425,8 +425,9 @@ The same words as the backend, read off React:
 | call | `this.x.method(` | a render (`<Child/>`), a mount (`<Route element>`), a hook, a function called or passed, an HTTP call |
 
 **The bridge.** Every `api.get/post/put/patch/delete(…)` on an axios
-instance the tree creates is read for its URL, which can be a literal, a
-template, or a local `const` holding one. The prefix is stripped, the query
+instance the tree creates, and every `fetch(url, { method })`, is read for
+its URL, which can be a literal, a template, or a local `const` holding one.
+A `fetch` takes its method from its options, and GET when there is none. The prefix is stripped, the query
 ignored, and the URL matched against the backend's endpoints by verb and
 path. A `${…}` hole prefers a `:param`, and a literal prefers an equal
 literal. A tie is reported as ambiguous, never picked.
@@ -730,10 +731,12 @@ DevTools protocol instead (`--remote-debugging-port`): navigate, wait, then
   Only `endpoints[].flat` and the wiring model's `calls` follow real calls
   through method bodies: `this.x.method(` through an injected dependency, a
   function imported from a util file, and `Cls.method(` on a static.
-- **On a frontend, only an axios client is read.** An `api.get(…)` on an
-  instance the tree creates with `axios.create`, or on `axios` itself.
-  `fetch()` and other clients are not matched to endpoints, and neither is a
-  URL that is built rather than written (`http-unread`). A render records
+- **On a frontend, axios and `fetch` are read.** That covers an `api.get(…)`
+  on an instance the tree creates with `axios.create`, or on `axios` itself,
+  and `fetch(url, { method })`. Other clients (ky, ofetch) are not matched to
+  endpoints. Nor is a URL that is built rather than written, or a `fetch`
+  whose method is a variable: those are reported (`http-unread`) rather than
+  guessed. A render records
   that a parent renders a child, not the props it passes. State libraries
   beyond context (Redux, Zustand) are not read.
 - **Calls in other shapes are invisible.** A destructured dependency
