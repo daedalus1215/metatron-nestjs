@@ -1,10 +1,11 @@
 ---
 title: Contracts — request and response shapes across the stack
-status: draft
+status: implemented
 project: metatron-nestjs
 location: docs/specs/15-contracts.md
 created: 2026-09-30
 tags: [bridge, full-stack, types, dto, contract]
+implemented: 2026-09-30
 ---
 
 # Contracts — request and response shapes across the stack
@@ -38,9 +39,9 @@ All six chronus responses were checked by hand, and each is real
 disagreement between the two sides' declarations:
 
 - **`GET /notes/detail/:id` and `PATCH /notes/detail/:id`:** the frontend's
-  `Note` has `pinned`; `NoteResponseDto` does not declare it. The pin
-  feature added it to the entity and the frontend, not to the response DTO,
-  so it is also missing from the Swagger docs.
+  `Note` requires `userId`, `createdAt`, `updatedAt` and `tags`;
+  `NoteResponseDto` declares none of them. (The prototype reported `pinned`
+  here. It had read the wrong `Note`: see Results.)
 - **`GET /notes/explorer-names`:** the frontend expects `sortOrder`. The
   repository's SQL selects it, but the declared `NoteNameRow` type omits it.
 - **`GET /tags/:id` and `PATCH /tags/:id`:** the frontend's `Tag` claims
@@ -188,6 +189,56 @@ Small commits, roughly one per pair of functions:
    together reports none.
 4. **Existing behaviour:** the backend models of chronus and omega are
    unchanged, and `check` does not fail on `contract-drift`.
+
+## Results (2026-09-30)
+
+| | chronus | omega |
+|---|---|---|
+| matched calls | 69 | 27 |
+| requests that agree · differ · unread | 67 · 0 · 2 | 27 · 0 · 0 |
+| responses that agree · differ · unread | 39 · **6** · 24 | 21 · 0 · 6 |
+
+More is compared than in the prototype. A bodyless call to a bodyless
+endpoint is agreement now, and a function's return type stands in for a
+missing generic.
+
+- **chronus:** the six response differences, and no request differences:
+  - `PATCH /notes/:id/archive`: missing `checkItems`, `description`, `isMemo`
+  - `GET /notes/explorer-names`: missing `sortOrder`
+  - `GET /tags/:id` and `PATCH /tags/:id`: missing `noteCount`
+  - `GET /notes/detail/:id` and `PATCH /notes/detail/:id`: missing `userId`,
+    `createdAt`, `updatedAt`, `tags`
+- **omega:** none.
+- **In a change:** a PR renaming the fixture's `RenameThingAction` body
+  field on the backend alone reports `renameThing`'s request drift (`sends
+  name (undeclared); missing title`) in `stackCompare`, `diff` and the
+  workbench's change panel. The same rename on both sides reports nothing.
+  Drift already present at the base is not reported.
+- **`check`** passes with drift present, and `baseline` does not record it.
+- **The backend models** of chronus and omega are identical before and
+  after, checked against a worktree of `main`.
+
+**Found on the way:**
+
+- **The prototype read the wrong `Note`.** chronus defines `Note` in nine
+  files. The prototype took the first one it found, which has `pinned`.
+  The reader follows the calling file's import to
+  `pages/NotePage/api/responses.ts`. That `Note` has no `pinned`, and
+  requires four fields the DTO does not declare.
+- **A hook's return type is not a response.** `useTitle` makes one call, so
+  the return-type fallback took `{ title, setTitle, loading, error }` as
+  the response it expects. The fallback is now for plain functions and
+  methods only.
+- **An endpoint's `ret` reads `void` when nothing is declared.** Contracts
+  must tell the two apart: `void` is no body, and nothing declared is
+  unread. The endpoint carries `retDeclared`, which is not enumerable, so
+  the model's JSON is unchanged. The model also keeps its import resolver,
+  so a type is followed by the scanner's own alias rules.
+- **`scan` printed no findings,** so drift showed only in the views. `scan`
+  lists each drifting call under the contracts line now.
+
+The chronus runs used the settings of chronus's committed
+`frontend/arch.config.cjs`, from a config outside chronus's tree.
 
 ## Out of scope
 
