@@ -33,6 +33,12 @@ export const listTwice = async (): Promise<FolderDto[]> => {
 export const viaFetch = async (draft: NewFolder) => fetch('/api/folders', { method: 'POST', body: JSON.stringify(draft) });
 const extra = () => ({});
 `,
+  'hooks/useRename.ts': `import api from '../api/axios';
+export const useRename = (): { rename: (n: string) => Promise<void>; busy: boolean } => {
+  const rename = async (n: string) => { await api.patch('/folders/1', { name: n }); };
+  return { rename, busy: false };
+};
+`,
   'api/types.ts': 'export type FolderDto = { id: number; name: string };\nexport type NewFolder = { name: string };\n',
 };
 const m = scan(Object.assign({}, react, { name: 'fe', root: 'src', __dir: path.join(__dirname, 'fixtures', 'react') }), { files });
@@ -56,6 +62,7 @@ test("the expected response: the call's generic, else its one-call function's re
   assert.deepStrictEqual([by('renameFolder')[0].expects, by('renameFolder')[0].expectsFrom], ['FolderDto', 'generic']);
   assert.deepStrictEqual([by('createFolder')[0].expects, by('createFolder')[0].expectsFrom], ['Promise<FolderDto>', 'return']);
   assert.ok(by('listTwice').every((c) => c.expects === null), 'two calls: the return type belongs to neither');
+  assert.strictEqual(by('useRename')[0].expects, null, "a hook's return is not the response");
 });
 
 test('fetch sends what it stringifies', () => {

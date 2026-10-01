@@ -423,7 +423,8 @@ function reactWiringOf(ctx) {
   }
 
   // A call with no generic expects what its function declares it returns,
-  // when that function makes this one call and no other.
+  // when that function makes this one call and no other. A plain function
+  // or method only: a hook's or component's return is not the response.
   const perFn = new Map();
   for (const c of calls) if (c.kind === 'http') { const k = c.from + '#' + c.fromMethod; perFn.set(k, (perFn.get(k) || 0) + 1); }
   for (const c of calls) {
@@ -432,7 +433,7 @@ function reactWiringOf(ctx) {
     if (perFn.get(c.from + '#' + c.fromMethod) !== 1) continue;
     const b = byId.get(c.from);
     const stud = b && b.studs.concat(b.internals).find((x) => x.name === c.fromMethod);
-    const ret = stud && returnTypeOf(stud.sig);
+    const ret = stud && (stud.kind === 'function' || stud.kind === 'method') && returnTypeOf(stud.sig);
     if (ret) { c.expects = ret; c.expectsFrom = 'return'; }
   }
 
