@@ -26,6 +26,7 @@ function personalise(html, model, jsonId) {
   const N = narrate(model);
   const when = new Date(model.generatedAt).toISOString().slice(0, 10);
   const pretty = model.project.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const frontend = !!(model.wiringMeta && model.wiringMeta.http);
 
   html = html
     .replace(/\{\{project\}\}/g, pretty)
@@ -35,7 +36,11 @@ function personalise(html, model, jsonId) {
     .replace(/\{\{imports\}\}/g, String(model.stats.edges))
     .replace(/\{\{endpoints\}\}/g, String(model.stats.endpoints))
     .replace(/\{\{modules\}\}/g, String(model.modules.length))
-    .replace(/\{\{root\}\}/g, model.root || 'src');
+    .replace(/\{\{root\}\}/g, model.root || 'src')
+    // Spec 12: a frontend model (its wiring counts HTTP calls) reads as one.
+    .replace(/\{\{side\}\}/g, frontend ? 'frontend' : 'backend')
+    .replace(/\{\{stack\}\}/g, frontend ? 'React' : 'NestJS')
+    .replace(/\{\{exts\}\}/g, frontend ? '.ts and .tsx' : '.ts');
 
   // Every lens is a viewport-bound plate, and every one of them benefits from
   // filling the screen. Injected here rather than written into each template so

@@ -15,6 +15,7 @@ const declarations = require('./classes');
 const { wiringOf } = require('./wiring');
 const { reactWiringOf } = require('./react-wiring');
 const { bridgeOf } = require('./bridge');
+const { contractsOf } = require('./contracts');
 
 // A frontend's linked backend, scanned once and reused until one of its
 // files changes (serve re-scans the frontend on every save).
@@ -781,6 +782,9 @@ function scan(cfg, opts = {}) {
           src: info[retFile].pattern === 'entity' ? null : classBody(retFile).split('\n').slice(0, 40).join('\n'),
         } : { type: retType || 'void', file: null },
       });
+      // `ret` reads 'void' when nothing is declared. Contracts (spec 15) must
+      // tell the two apart; kept off the model's JSON so the model is unchanged.
+      Object.defineProperty(endpoints[endpoints.length - 1], 'retDeclared', { value: !!retM });
     }
   }
 
@@ -1417,6 +1421,8 @@ function scan(cfg, opts = {}) {
   // The scanned text, for the workbench's source panel (spec 10). Not
   // enumerable, so it never reaches model.json or a view.
   Object.defineProperty(model, '__text', { value: text });
+  // The import resolver, so contracts (spec 15) follow a type to its file.
+  Object.defineProperty(model, '__resolve', { value: resolveSpec });
 
   // The bridge (spec 12): a frontend's HTTP calls against its backend's
   // endpoints. A backend that cannot be loaded is reported, not fatal.
@@ -1426,6 +1432,8 @@ function scan(cfg, opts = {}) {
     try {
       const be = opts.backend || linkedBackend(cfg, scan);
       model.bridge = bridgeOf(model, be.model, cfg, be.label);
+      // Spec 15: what travels along each matched call, compared.
+      model.contractMeta = contractsOf(model, be.model);
       // Spec 14: a call that reaches no endpoint is a violation, so `check`
       // gates it and `baseline` can accept it. Keyed by file and VERB url, so
       // it keeps its identity when it moves down its file. An unread URL is

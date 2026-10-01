@@ -380,6 +380,8 @@ function analyze(cfg, opts = {}) {
       endpointsRemoved: st.endpointsRemoved.map((e) => ({ endpoint: e.id.split('#')[0], calledBy: [...new Set(e.calledBy.map(file))] })),
       http: st.http,
       unread: st.unread.length,
+      contractDrift: st.contractDrift.map((d) => ({ file: file(d.from), line: d.line, verb: d.verb, path: d.path,
+        endpoint: d.endpoint.split('#')[0], request: d.request, response: d.response })),
     };
   } else if (stack && stack.other) {
     stackReport = { backendAt: 'current', backend: cfg.backend };
@@ -461,6 +463,17 @@ function stackLines(st, md) {
         (b.was ? 'reached ' + b.was + ' before this change' : 'new, reaches no endpoint') + (b.match === 'ambiguous' ? ' (ambiguous)' : ''));
     }
   } else L.push((md ? '' : '  ') + 'broken calls: none');
+  // Spec 15: advisory, so no `!` — the runtime may still work.
+  const drift = st.contractDrift || [];
+  if (drift.length) {
+    const { describe } = require('./contracts');
+    L.push((md ? '' : '  ') + 'contract drift: ' + drift.length + ' call' + (drift.length === 1 ? '' : 's')
+      + ' whose declared shape no longer matches its endpoint\'s');
+    for (const d of drift) {
+      L.push(item + code(d.verb + ' ' + d.path) + '   ' + d.file + ':' + d.line + '   '
+        + [d.request ? 'request: ' + describe(d.request) : '', d.response ? 'response: ' + describe(d.response) : ''].filter(Boolean).join(' · '));
+    }
+  } else L.push((md ? '' : '  ') + 'contract drift: none');
   const eps = (title, list, verb) => {
     if (!list.length) { L.push((md ? '' : '  ') + title + ': none'); return; }
     L.push((md ? '' : '  ') + title + ': ' + list.length);

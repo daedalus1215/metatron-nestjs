@@ -407,12 +407,13 @@ module.exports = {
 `metatron-nest scan` in that directory prints:
 
 ```
-coverage 211/212 (99.5%)
-wiring 440 hooks & contexts used · 120 in the tree · 320 framework · 0 unresolved
-renders 177 of components in the tree · 1259 of package components · 25 routes
-studs 287 · 233 used by a brick · 14 mounted by a route · 40 unseen
-http 68/68 calls matched a backend endpoint (../backend) · 0 ambiguous · 0 unmatched · 0 unread
-     2 of 63 endpoints reached by no frontend call: GET /check-items/items/:id, GET /healthz
+coverage 216/218 (99.1%)
+wiring 463 hooks & contexts used · 127 in the tree · 336 framework · 0 unresolved
+renders 182 of components in the tree · 1257 of package components · 25 routes
+studs 297 · 244 used by a brick · 14 mounted by a route · 39 unseen
+http 69/70 calls matched a backend endpoint (../backend) · 0 ambiguous · 0 unmatched · 1 unread
+     2 of 64 endpoints reached by no frontend call: GET /check-items/items/:id, GET /healthz
+contracts requests 67 compared · 0 differ · 2 unread   responses 45 compared · 6 differ · 24 unread
 ```
 
 The same words as the backend, read off React:
@@ -425,11 +426,44 @@ The same words as the backend, read off React:
 | call | `this.x.method(` | a render (`<Child/>`), a mount (`<Route element>`), a hook, a function called or passed, an HTTP call |
 
 **The bridge.** Every `api.get/post/put/patch/delete(…)` on an axios
-instance the tree creates is read for its URL, which can be a literal, a
-template, or a local `const` holding one. The prefix is stripped, the query
+instance the tree creates, and every `fetch(url, { method })`, is read for
+its URL, which can be a literal, a template, or a local `const` holding one.
+A `fetch` takes its method from its options, and GET when there is none. The prefix is stripped, the query
 ignored, and the URL matched against the backend's endpoints by verb and
 path. A `${…}` hole prefers a `:param`, and a literal prefers an equal
 literal. A tie is reported as ambiguous, never picked.
+
+**Contracts.** Each matched call is also compared with its endpoint for
+what travels along it. The comparison reads the shape each side *declares*:
+
+- **the request:** the body the frontend sends (an object literal's keys, or
+  the type of the variable it sends) against the endpoint's `@Body()` type.
+  `@IsOptional()` makes a DTO field optional, as class-validator does.
+- **the response:** the type the frontend expects back (the call's generic,
+  `api.get<Note>(…)`, or else the return type of the function making the
+  call) against the handler's declared return type.
+
+Field names, optionality and arrays are compared; field types are not. A
+field the backend sends and the frontend ignores is fine. A field the
+frontend requires and the backend's type does not declare is reported. So
+is a key the frontend sends that the DTO does not declare. Anything that
+cannot be read on either side (a type from a package, a generic of your
+own, a handler with no return type or with `@Res()`) is counted as unread,
+never guessed.
+
+A difference is the `contract-drift` finding, and `scan` lists each one
+under its counts. It is advisory: the types disagree, but the runtime may
+still work, so it never fails `check`. On chronus all six are responses:
+
+```
+contracts requests 67 compared · 0 differ · 2 unread   responses 45 compared · 6 differ · 24 unread
+     api/requests/notes.requests.ts:26 PATCH /notes/${noteId}/archive · response: missing checkItems, description, isMemo
+     api/requests/notes.requests.ts:75 GET /notes/explorer-names · response: missing sortOrder
+     api/requests/tags.requests.ts:10 GET /tags/${tagId} · response: missing noteCount
+     api/requests/tags.requests.ts:18 PATCH /tags/${tagId} · response: missing noteCount
+     pages/NotePage/api/requests.ts:5 GET /notes/detail/${id} · response: missing userId, createdAt, updatedAt, tags
+     pages/NotePage/hooks/useNote/useNoteQueries.ts:50 PATCH /notes/detail/${noteId} · response: missing userId, createdAt, updatedAt, tags
+```
 
 **The profile's one rule** comes from how these frontends are meant to work:
 components reach the API through hooks. A component that imports the request
@@ -443,7 +477,8 @@ both as one workbench:
 - Each matched HTTP call is a teal edge from the request function to the
   backend action.
 - A request function lists every call it makes and the endpoint each lands
-  on. Click through to the action.
+  on, with its contract: ✓, or the fields that differ. Click through to the
+  action.
 - **data path** keeps only the frontend bricks that lead to the backend. At
   depth 6 a page is drawn down to its repositories.
 
@@ -459,6 +494,8 @@ what crossed the line:
 - **endpoints added,** with the calls that reach them, or "nothing calls it
   yet"
 - **endpoints removed,** with the calls that used to reach them
+- **contract drift:** a call whose request or response the change made
+  differ from its endpoint's. Drift that was there before is not listed.
 
 Each HTTP connection is classed like any other: a new hook calling a new
 endpoint is *territory*, a new vein through the stack; a new page using the
@@ -467,6 +504,16 @@ existing API is an *attachment*.
 On chronus, PR #155 added `POST /notes/merge` with its caller, and three
 frontend calls to endpoints that did not exist. The next PR fixed them.
 Replaying #155 names all three.
+
+`metatron-nest diff` prints the same section, so a PR that renames a DTO
+field on the backend alone shows the frontend call it leaves behind:
+
+```
+across the stack (../react-backend)
+  broken calls: none
+  contract drift: 1 call whose declared shape no longer matches its endpoint's
+    PATCH /things/${id}/name   api/requests/things.requests.ts:23   request: sends name (undeclared); missing title
+```
 
 ## On a new machine
 
@@ -730,12 +777,21 @@ DevTools protocol instead (`--remote-debugging-port`): navigate, wait, then
   Only `endpoints[].flat` and the wiring model's `calls` follow real calls
   through method bodies: `this.x.method(` through an injected dependency, a
   function imported from a util file, and `Cls.method(` on a static.
-- **On a frontend, only an axios client is read.** An `api.get(…)` on an
-  instance the tree creates with `axios.create`, or on `axios` itself.
-  `fetch()` and other clients are not matched to endpoints, and neither is a
-  URL that is built rather than written (`http-unread`). A render records
+- **On a frontend, axios and `fetch` are read.** That covers an `api.get(…)`
+  on an instance the tree creates with `axios.create`, or on `axios` itself,
+  and `fetch(url, { method })`. Other clients (ky, ofetch) are not matched to
+  endpoints. Nor is a URL that is built rather than written, or a `fetch`
+  whose method is a variable: those are reported (`http-unread`) rather than
+  guessed. A render records
   that a parent renders a child, not the props it passes. State libraries
   beyond context (Redux, Zustand) are not read.
+- **A contract is what the two sides declare, one level deep.** Field
+  names and optionality are compared, not field types, and a nested object
+  is a field, not a shape to descend into. Query and path parameters are not
+  compared. A shape is read from the types each side writes down, never
+  inferred from code: an untyped `res.data` or a handler with no return
+  type is unread. A type name defined in two files is read through the
+  calling file's import, and is unread when no import says which.
 - **Calls in other shapes are invisible.** A destructured dependency
   (`const { repo } = this`), a call through a local alias
   (`const r = this.repo`), a subclass calling what its parent injected, and
@@ -786,7 +842,10 @@ frontend each has a `kind`: `render`, `mount`, `hook`, `context`, `provide`,
 `call` or `http`) · `wiringMeta` (the `wiring` and `studs` coverage counts) ·
 `routes` (a frontend's `<Route>` tree: path, component, parent) · `bridge` (a
 frontend's HTTP calls against its backend: matched, ambiguous, unmatched,
-unread, and the endpoints no call reaches).
+unread, and the endpoints no call reaches) · `contractMeta` (requests and
+responses that agree, differ, or are unread; each matched HTTP call carries
+its `contract`, `{ request, response }`, each with a `status` and what
+differs).
 
 ## Prior art
 

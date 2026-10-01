@@ -202,7 +202,7 @@ footer .note { font-size:15px; }
 <div class="wrap">
 
 <header class="mast">
-  <p class="eyebrow">NestJS · derived from {{imports}} import statements</p>
+  <p class="eyebrow">{{stack}} · derived from {{imports}} import statements</p>
   <h1>{{project}} Atlas</h1>
   <p class="dek">Every box below is a directory that exists under <span class="mono">{{root}}</span>. Every line is an <span class="mono">import</span> that a file actually writes. Nothing here was drawn by hand — the whole map is parsed out of the source, so what you see is the shape of the code, not the shape of the intention.</p>
   <div class="statrow" id="statrow"></div>
@@ -258,7 +258,7 @@ footer .note { font-size:15px; }
 
 <section id="method">
   <div class="shead"><span class="num">05</span><h2>How this was built</h2><p>and what it cannot see</p></div>
-  <p class="note">A script walks every <span class="mono">.ts</span> file under <span class="mono">backend/src</span>, extracts each <span class="mono">import</span> and <span class="mono">export … from</span> specifier, resolves it against the real file tree (<span class="mono">src/</span>-absolute and relative both), and classifies each file by its filename convention. Folder nodes are aggregated from those files; a folder's column is its most common file kind. External packages are dropped, so <span class="mono">@nestjs/*</span> and TypeORM do not appear.</p>
+  <p class="note">A script walks every <span class="mono">{{exts}}</span> file under <span class="mono">{{root}}</span>, extracts each <span class="mono">import</span> and <span class="mono">export … from</span> specifier, resolves it against the real file tree (<span class="mono">src/</span>-absolute and relative both), and classifies each file by its filename convention. Folder nodes are aggregated from those files; a folder's column is its most common file kind. External packages are dropped, so <span class="mono">@nestjs/*</span> and TypeORM do not appear.</p>
   <p class="note" style="margin-top:14px">Two honest limits. <strong>An import is not the same as an injection</strong> — the flow findings in section 03 were each opened and confirmed to be real constructor parameters, but the map at large counts imports, including type-only ones. And <strong>runtime wiring is invisible here</strong>: anything resolved through a NestJS DI token string rather than an imported symbol leaves no import edge, so the map understates dynamic coupling.</p>
 </section>
 
@@ -354,7 +354,7 @@ function edgePath(a,b){
 function render(){
   layout = computeLayout();
   var L = layout, s = [];
-  s.push('<svg class="map" width="'+L.w+'" height="'+L.h+'" viewBox="0 0 '+L.w+' '+L.h+'" role="img" aria-label="Backend architecture map">');
+  s.push('<svg class="map" width="'+L.w+'" height="'+L.h+'" viewBox="0 0 '+L.w+' '+L.h+'" role="img" aria-label="{{project}} {{side}} architecture map">');
 
   // band backgrounds
   L.bands.forEach(function(b){

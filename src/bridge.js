@@ -72,7 +72,8 @@ function bridgeOf(model, backend, cfg, backendLabel) {
     if (c.kind !== 'http') continue;
     out.calls++;
     const file = c.from.split('#')[0];
-    if (c.path === null || c.path === undefined) { note(c, { match: 'unread' }); out.unread++; continue; }
+    // no URL, or no method (a fetch whose method is a variable): unread
+    if (c.path === null || c.path === undefined || !c.verb) { note(c, { match: 'unread' }); out.unread++; continue; }
     const segs = segmentsOf(c.path, cfg.apiPrefix || null);
     let best = -1, hits = [];
     for (const { e, segs: rs } of endpoints) {

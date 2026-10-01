@@ -39,6 +39,13 @@ test('a matched HTTP call is an edge into the backend action that owns the endpo
   assert.strictEqual(m.bridge.matched, 5);
 });
 
+test("a stud's HTTP rows carry each call's contract (spec 15)", () => {
+  const b = m.bricks.find((x) => x.id === 'fe:api/requests/things.requests.ts');
+  const h = b.studs.find((x) => x.name === 'renameThing').http[0];
+  assert.deepStrictEqual(h.contract.request, { status: 'agree' });
+  assert.strictEqual(h.contract.response.status, 'unread');
+});
+
 test('backend wiring is kept, namespaced: the action still sits on its service', () => {
   assert.ok(m.wires.some((w) => w.from === 'be:things/apps/actions/get-thing.action.ts#GetThingAction'
     && w.to === 'be:things/domain/services/thing.service.ts#ThingService'));
