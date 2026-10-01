@@ -365,6 +365,20 @@ function reactWiringOf(ctx) {
   // an axios instance the tree creates (or axios itself)
   const clientFiles = new Set(files.filter((f) => /\baxios\s*\.\s*create\s*\(/.test(text[f])));
   const http = { calls: 0, unread: 0 };
+  /** One HTTP call: on the call list, on its stud, and a diagnostic if unread. */
+  const record = (x, rel, idx, verb, path, what) => {
+    const line = lineAt[rel](idx);
+    http.calls++;
+    if (path === null || verb === null) {
+      http.unread++;
+      diagnostics.push({ kind: 'http-unread', file: rel, line,
+        detail: `${what} — the ${path === null ? 'URL' : 'method'} is not a literal or a template metatron reads` });
+    }
+    calls.push({ from: x.b.id, fromMethod: x.method, to: null, toMethod: null, line, kind: 'http', verb, path });
+    const stud = x.b.studs.find((s) => s.name === x.method) || x.b.internals.find((s) => s.name === x.method)
+      || (x.b.shape === 'component' ? x.b.studs[0] : null);
+    if (stud) (stud.http = stud.http || []).push({ verb, path, line });
+  };
   for (const x of bodies) {
     if (x.topLevel) continue;
     const rel = x.b.file;
@@ -381,18 +395,18 @@ function reactWiringOf(ctx) {
       const isClient = client === 'axios' ? !!(im && im.pkg === 'axios')
         : !!(im && im.file && clientFiles.has(im.file)) || (clientFiles.has(rel) && /\baxios\s*\.\s*create/.test(src));
       if (!isClient) continue;
-      const verb = m[2].toUpperCase();
-      const path = urlOf(seg, m.index + m[0].length);
-      const line = lineAt[rel](idx);
-      http.calls++;
-      if (path === null) {
-        http.unread++;
-        diagnostics.push({ kind: 'http-unread', file: rel, line, detail: `${client}.${m[2]}(…) — the URL is not a literal or a template metatron reads` });
-      }
-      calls.push({ from: x.b.id, fromMethod: x.method, to: null, toMethod: null, line, kind: 'http', verb, path });
-      const stud = x.b.studs.find((s) => s.name === x.method) || x.b.internals.find((s) => s.name === x.method)
-        || (x.b.shape === 'component' ? x.b.studs[0] : null);
-      if (stud) (stud.http = stud.http || []).push({ verb, path, line });
+      record(x, rel, idx, m[2].toUpperCase(), urlOf(seg, m.index + m[0].length), `${client}.${m[2]}(…)`);
+    }
+    // fetch(url, { method }) — the platform's own client. The method is read
+    // from the options; none means GET, a variable means unread.
+    const FETCH = /(?:^|[^\w$.]|\bwindow\s*\.\s*)fetch\s*\(/g;
+    while ((m = FETCH.exec(seg))) {
+      const open = m.index + m[0].length;
+      const idx = x.from + open - 1;
+      if (!isCode(rel, idx)) continue;
+      if (ownerOf(rel, idx) !== x) continue;
+      if (imports[rel].fetch) continue;                    // a fetch the file imports is not the platform's
+      record(x, rel, idx, fetchVerb(seg, open), urlOf(seg, open), 'fetch(…)');
     }
   }
 
@@ -451,6 +465,23 @@ function propsOf(src, f) {
     if (fc) type = fc[1].trim();
   }
   return { names, type: type ? type.replace(/\s+/g, ' ') : null };
+}
+
+/**
+ * The method of a `fetch(url, init)` call whose arguments start at `i`: the
+ * `method` of the init object when it is a string literal, GET when there is
+ * none, null when it is anything else (a variable).
+ */
+function fetchVerb(seg, i) {
+  let depth = 1, j = i;
+  for (; j < seg.length && depth; j++) {
+    if ('([{'.includes(seg[j])) depth++;
+    else if (')]}'.includes(seg[j])) depth--;
+  }
+  const args = seg.slice(i, j - 1);
+  const lit = args.match(/\bmethod\s*:\s*(['"`])([A-Za-z]+)\1/);
+  if (lit) return lit[2].toUpperCase();
+  return /\bmethod\b/.test(args) ? null : 'GET';
 }
 
 /**
