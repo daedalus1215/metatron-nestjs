@@ -352,8 +352,9 @@ function changeNodes() {
   for (const [id, st] of Object.entries(C.bricks)) if (st === 'added' || st === 'edited') put(id);
   for (const p of C.pairs) { put(p.from); put(p.to); }
   for (const r of C.removed) put(r.id);
-  // spec 13: a brick making a broken call is part of the change
-  if (C.summary.stack) for (const b of C.summary.stack.broken) put(b.from);
+  // spec 13: a brick making a broken call is part of the change; spec 15: so
+  // is one whose call the change made drift from its endpoint's shape
+  if (C.summary.stack) for (const b of C.summary.stack.broken.concat(C.summary.stack.contractDrift || [])) put(b.from);
   return { nodes, cut: 0 };
 }
 
@@ -879,6 +880,12 @@ function stackPanel(st, link) {
     h += `<div class="it"><b style="color:var(--rose)">${st.broken.length} broken call${st.broken.length === 1 ? '' : 's'}</b></div>`
       + st.broken.map((b) => `<div class="it" style="color:var(--rose)">${esc(b.verb)} <code>${esc(b.path)}</code>`
         + ` <span class="muted">from</span> ${link(b.from)} <span class="muted">· ${b.was ? 'reached ' + esc(b.was.split('#')[0]) + ' before' : 'new, reaches nothing'}</span></div>`).join('');
+  }
+  const drift = st.contractDrift || [];
+  if (drift.length) {
+    h += `<div class="it"><b style="color:var(--amber)">${drift.length} call${drift.length === 1 ? ' drifts' : 's drift'} from the endpoint's declared shape</b></div>`
+      + drift.map((d) => `<div class="it">${esc(d.verb)} <code>${esc(d.path)}</code> <span class="muted">from</span> ${link(d.from)}`
+        + ` <span class="muted">· ${esc([d.request ? 'request: ' + describeDiff(d.request) : '', d.response ? 'response: ' + describeDiff(d.response) : ''].filter(Boolean).join(' · '))}</span></div>`).join('');
   }
   if (st.endpointsAdded.length) {
     h += `<div class="it muted">endpoints added</div>` + st.endpointsAdded.map((e) => `<div class="it">+ ${ep(e.id)} `
