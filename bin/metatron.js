@@ -277,6 +277,13 @@ if (W && W.http) {
       const show = B.unreached.slice(0, 4).map((id) => id.split('#')[0]).join(', ');
       console.log(`       ${B.unreached.length} of ${B.endpoints} endpoints reached by no frontend call: ${show}${B.unreached.length > 4 ? ', …' : ''}`);
     }
+    // Spec 15: what the two sides declare travels along each matched call.
+    // Advisory: a difference is drift between types, not a broken call.
+    const K = model.contractMeta;
+    if (K) {
+      const tally = (x) => `${x.agree + x.differ} compared · ${x.differ} differ · ${x.unread} unread`;
+      console.log(`  contracts requests ${tally(K.requests)}   responses ${tally(K.responses)}`);
+    }
   } else console.log(`  http ${W.http.calls} calls through the API client · ${W.http.unread} with a URL metatron cannot read · no backend linked`);
 } else if (W) {
   const pct = W.sockets ? ((W.resolved / W.sockets) * 100).toFixed(1) : '100.0';
