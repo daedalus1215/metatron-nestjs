@@ -57,6 +57,15 @@ function compareResponse(expects, returns) {
   return missing.length ? { status: 'differ', missing } : { status: 'agree' };
 }
 
+/** One comparison's difference, in words: `sends x (undeclared); missing y`. */
+function describe(r) {
+  return [r.why,
+    r.extra && r.extra.length ? 'sends ' + r.extra.join(', ') + ' (undeclared)' : '',
+    r.missing && r.missing.length ? 'missing ' + r.missing.join(', ') : '',
+    r.optional && r.optional.length ? 'optional here, required there: ' + r.optional.join(', ') : '']
+    .filter(Boolean).join('; ');
+}
+
 // ------------------------------------------------------------ the models
 
 const { shapeOf, typeIndex, lookupIn } = require('./shapes');
@@ -125,21 +134,17 @@ function contractsOf(fe, be) {
   }
 
   if (drift.length) {
-    const say = (r) => [r.why, r.extra && r.extra.length ? 'sends ' + r.extra.join(', ') + ' (undeclared)' : '',
-      r.missing && r.missing.length ? 'missing ' + r.missing.join(', ') : '',
-      r.optional && r.optional.length ? 'optional here, required there: ' + r.optional.join(', ') : '']
-      .filter(Boolean).join('; ');
     fe.findings.push({
       id: 'contract-drift', tone: 'warn', gate: false,
       title: `${drift.length} call${drift.length === 1 ? '' : 's'} where the frontend and backend declare different shapes`,
       detail: 'Compared by field name and optionality. The runtime may still work; one side\'s type promises what the other\'s does not.',
       items: drift.map((c) => `${c.from.split('#')[0]}:${c.line} ${c.verb} ${c.path}`
-        + (c.contract.request.status === 'differ' ? ' · request: ' + say(c.contract.request) : '')
-        + (c.contract.response.status === 'differ' ? ' · response: ' + say(c.contract.response) : '')),
+        + (c.contract.request.status === 'differ' ? ' · request: ' + describe(c.contract.request) : '')
+        + (c.contract.response.status === 'differ' ? ' · response: ' + describe(c.contract.response) : '')),
       instances: drift.map((c) => ({ from: c.from.split('#')[0], to: `${c.verb} ${c.path}` })),
     });
   }
   return meta;
 }
 
-module.exports = { compareRequest, compareResponse, contractsOf, importedFrom };
+module.exports = { compareRequest, compareResponse, describe, contractsOf, importedFrom };
