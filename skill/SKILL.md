@@ -177,6 +177,8 @@ prefix from the axios instance's interceptor or `baseURL`. Then
 - `renders`: component renders and routes
 - `studs`
 - `http`: the frontend's calls matched to backend endpoints
+- `contracts`: requests and responses whose declared shapes agree, differ
+  or are unread, with each call that differs listed under it
 
 Every unmatched, ambiguous or unread call is named in the diagnostics, and so
 is every endpoint no frontend call reaches.
@@ -188,6 +190,9 @@ In the model:
 - **calls** carry a `kind`: `render`, `mount`, `hook`, `context`, `provide`,
   `call` or `http`
 - each `http` call names the endpoint it `match`ed
+- each matched `http` call carries a `contract`: `request` and `response`,
+  each `agree`, `differ` (with `extra`, `missing`, `optional`) or `unread`
+  (with `why`)
 - `routes` is the `<Route>` tree, and `bridge` the summary
 
 `npx metatron-nest serve` in the frontend serves it joined with its backend
@@ -202,12 +207,20 @@ at each commit. `change.summary.stack` has:
 - `broken`: frontend calls that reach no endpoint after the change, with
   what each reached before (`was`)
 - `http`: the cross-stack pairs by class
+- `contractDrift`: calls whose request or response the change made differ
+  from the endpoint's declared shape (drift already there is left out)
 
-Lead with `broken` when reviewing a PR. From the command line,
+Lead with `broken` when reviewing a PR, then `contractDrift`. From the command line,
 `npx metatron-nest diff <range>` run in the frontend prints the same stack
 section first, and `--format markdown` is ready for a PR description.
 `metatron-nest check` in the frontend fails on a new `http-broken` violation:
 a call that reaches no endpoint and is not in the baseline.
+
+A contract compares what the two sides *declare*: field names, optionality
+and arrays, one level deep, not field types. `contract-drift` is advisory
+and never fails `check`. Report it as "the types disagree", not as a broken
+call: the runtime may still work. An `unread` contract says nothing either
+way.
 
 Report an `unseen` component or an unreached endpoint as "no caller found",
 not "dead": a component passed as a value is counted, but one reached some
