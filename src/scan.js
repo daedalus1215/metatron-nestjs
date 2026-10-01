@@ -781,6 +781,9 @@ function scan(cfg, opts = {}) {
           src: info[retFile].pattern === 'entity' ? null : classBody(retFile).split('\n').slice(0, 40).join('\n'),
         } : { type: retType || 'void', file: null },
       });
+      // `ret` reads 'void' when nothing is declared. Contracts (spec 15) must
+      // tell the two apart; kept off the model's JSON so the model is unchanged.
+      Object.defineProperty(endpoints[endpoints.length - 1], 'retDeclared', { value: !!retM });
     }
   }
 
@@ -1417,6 +1420,8 @@ function scan(cfg, opts = {}) {
   // The scanned text, for the workbench's source panel (spec 10). Not
   // enumerable, so it never reaches model.json or a view.
   Object.defineProperty(model, '__text', { value: text });
+  // The import resolver, so contracts (spec 15) follow a type to its file.
+  Object.defineProperty(model, '__resolve', { value: resolveSpec });
 
   // The bridge (spec 12): a frontend's HTTP calls against its backend's
   // endpoints. A backend that cannot be loaded is reported, not fatal.
