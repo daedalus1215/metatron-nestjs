@@ -97,6 +97,7 @@ function contractsOf(fe, be) {
   const feLook = (rel) => lookupIn(feIndex, (n) => importedFrom(feText, rel, n, fe.__resolve || none));
   const beLook = (rel) => lookupIn(beIndex, (n) => importedFrom(beText, rel, n, be.__resolve || none));
   const endpoints = new Map(be.endpoints.map((e) => [e.id, e]));
+  const byId = new Map(fe.bricks.map((b) => [b.id, b]));
   const meta = { requests: { agree: 0, differ: 0, unread: 0 }, responses: { agree: 0, differ: 0, unread: 0 } };
   const drift = [];
 
@@ -128,6 +129,11 @@ function contractsOf(fe, be) {
         : compareResponse(expects, returns);
 
     c.contract = { request, response };
+    // and on its stud's http entry, as the bridge notes the match
+    const brick = byId.get(c.from);
+    if (brick) for (const st of brick.studs.concat(brick.internals)) {
+      for (const h of st.http || []) if (h.line === c.line && h.verb === c.verb) h.contract = c.contract;
+    }
     meta.requests[request.status]++;
     meta.responses[response.status]++;
     if (request.status === 'differ' || response.status === 'differ') drift.push(c);

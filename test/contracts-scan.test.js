@@ -80,6 +80,12 @@ test("a response: through the call's own import, arrays, @Res and an undeclared 
   assert.match(of('getFolder').response.why, /declares no return type/);
 });
 
+test("each call's stud carries the same contract on its http entry", () => {
+  const b = fe.bricks.find((x) => x.id === 'api/folders.ts');
+  const h = b.studs.find((x) => x.name === 'renameFolder').http[0];
+  assert.deepStrictEqual(h.contract, of('renameFolder'));
+});
+
 test('contractMeta counts both; contract-drift lists each call that differs, and is not gated', () => {
   assert.deepStrictEqual(fe.contractMeta, {
     requests: { agree: 5, differ: 1, unread: 0 },
