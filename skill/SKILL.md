@@ -203,7 +203,11 @@ at each commit. `change.summary.stack` has:
   what each reached before (`was`)
 - `http`: the cross-stack pairs by class
 
-Lead with `broken` when reviewing a PR.
+Lead with `broken` when reviewing a PR. From the command line,
+`npx metatron-nest diff <range>` run in the frontend prints the same stack
+section first, and `--format markdown` is ready for a PR description.
+`metatron-nest check` in the frontend fails on a new `http-broken` violation:
+a call that reaches no endpoint and is not in the baseline.
 
 Report an `unseen` component or an unreached endpoint as "no caller found",
 not "dead": a component passed as a value is counted, but one reached some

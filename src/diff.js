@@ -146,8 +146,8 @@ function catBatch(dir, shas, env) {
   return out;
 }
 
-function baseModel(cfg, base, gitRoot, relRoot) {
-  return scan(cfg, { files: baseFileMap(gitRoot, relRoot, base, cfg), churnAt: base });
+function baseModel(cfg, base, gitRoot, relRoot, extra = {}) {
+  return scan(cfg, Object.assign({ files: baseFileMap(gitRoot, relRoot, base, cfg), churnAt: base }, extra));
 }
 
 /**
@@ -181,9 +181,9 @@ function indexFileMap(gitRoot, relRoot, cfg, env) {
  * whose head is not checked out would otherwise be measured against
  * whatever is, and uncommitted edits would leak into a committed range.
  */
-function headModel(cfg, resolved, gitRoot, relRoot) {
-  if (resolved.kind === 'staged') return scan(cfg, { files: indexFileMap(gitRoot, relRoot, cfg), churnAt: 'HEAD' });
-  return scan(cfg, { files: baseFileMap(gitRoot, relRoot, resolved.head, cfg), churnAt: resolved.head });
+function headModel(cfg, resolved, gitRoot, relRoot, extra = {}) {
+  if (resolved.kind === 'staged') return scan(cfg, Object.assign({ files: indexFileMap(gitRoot, relRoot, cfg), churnAt: 'HEAD' }, extra));
+  return scan(cfg, Object.assign({ files: baseFileMap(gitRoot, relRoot, resolved.head, cfg), churnAt: resolved.head }, extra));
 }
 
 /**
@@ -311,8 +311,20 @@ function analyze(cfg, opts = {}) {
   const relRoot = path.relative(gitRoot, path.resolve(dir, cfg.root)) || '.';
   const changes = changeSet(gitRoot, relRoot, resolved);
 
-  const cur = headModel(cfg, resolved, gitRoot, relRoot);
-  const base = baseModel(cfg, resolved.base, gitRoot, relRoot);
+  // Spec 14: a frontend whose backend shares this repository is read on both
+  // sides, each end of the frontend bridged to the backend of that end.
+  // (change.js requires this module, so it is required here, not at the top.)
+  const stack = cfg.wiring === 'react' && cfg.backend ? require('./change').stackOf(cfg) : null;
+  let beBase = null, beHead = null;
+  if (stack && stack.relRoot) {
+    beBase = scan(stack.cfg, { files: baseFileMap(gitRoot, stack.relRoot, resolved.base, stack.cfg), churnAt: resolved.base });
+    beHead = resolved.kind === 'staged'
+      ? scan(stack.cfg, { files: indexFileMap(gitRoot, stack.relRoot, stack.cfg), churnAt: 'HEAD' })
+      : scan(stack.cfg, { files: baseFileMap(gitRoot, stack.relRoot, resolved.head, stack.cfg), churnAt: resolved.head });
+  }
+  const bridged = (be) => (be ? { backend: { model: be, label: stack.label, cfg: stack.cfg } } : {});
+  const cur = headModel(cfg, resolved, gitRoot, relRoot, bridged(beHead));
+  const base = baseModel(cfg, resolved.base, gitRoot, relRoot, bridged(beBase));
   const curFiles = new Set(cur.fileNodes.map((n) => n.f));
   const baseFiles = new Set(base.fileNodes.map((n) => n.f));
 
@@ -354,6 +366,25 @@ function analyze(cfg, opts = {}) {
     .filter((c) => c.status === 'renamed')
     .map((c) => [c.oldPath, c.path]);
 
+  let stackReport = null;
+  if (beBase) {
+    const beRenames = changeSet(gitRoot, stack.relRoot, resolved)
+      .filter((c) => c.status === 'renamed').map((c) => [c.oldPath, c.path]);
+    const st = require('./change').stackCompare(base, cur, beBase, beHead, { fe: renames, be: beRenames }).summary.stack;
+    const file = (id) => id.replace(/^fe:/, '').split('#')[0];
+    stackReport = {
+      backend: stack.label,
+      broken: st.broken.map((b) => ({ file: file(b.from), line: b.line, verb: b.verb, path: b.path, match: b.match,
+        was: b.was ? b.was.split('#')[0] : null })),
+      endpointsAdded: st.endpointsAdded.map((e) => ({ endpoint: e.id.split('#')[0], calledBy: [...new Set(e.calledBy.map(file))] })),
+      endpointsRemoved: st.endpointsRemoved.map((e) => ({ endpoint: e.id.split('#')[0], calledBy: [...new Set(e.calledBy.map(file))] })),
+      http: st.http,
+      unread: st.unread.length,
+    };
+  } else if (stack && stack.other) {
+    stackReport = { backendAt: 'current', backend: cfg.backend };
+  }
+
   // The report ends with a map: the changed set as a focus URL on the city
   // view, when the view was actually built — the path of the last built
   // view, not a guess. No view, no link.
@@ -394,6 +425,7 @@ function analyze(cfg, opts = {}) {
     look: { hotspots: look.hotspots, coupling: look.coupling },
     untested: { files: untested, of: look.sourceCount },
     focus,
+    stack: stackReport,
   };
 }
 
@@ -413,14 +445,58 @@ function endpointNames(e) { return e.verb + ' ' + e.route; }
 // An orphan violation has no target; don't draw a dangling arrow.
 const vPair = (v) => (v.to ? v.from + ' → ' + v.to : v.from);
 
+/** Spec 14: what the change does across the stack. Broken calls lead. */
+function stackLines(st, md) {
+  if (!st) return [];
+  if (st.backendAt === 'current') {
+    return [(md ? '**Across the stack** — ' : 'across the stack: ') + 'the backend (' + st.backend + ') is in another repository; not compared'];
+  }
+  const L = [md ? '**Across the stack** (' + st.backend + ')' : 'across the stack (' + st.backend + ')'];
+  const item = md ? '- ' : '    ';
+  const code = (t) => (md ? '`' + t + '`' : t);
+  if (st.broken.length) {
+    L.push((md ? '' : '  ') + (md ? '**' : '') + st.broken.length + ' broken call' + (st.broken.length === 1 ? '' : 's') + (md ? '**' : '  !'));
+    for (const b of st.broken) {
+      L.push(item + code(b.verb + ' ' + b.path) + '   ' + b.file + ':' + b.line + '   ' +
+        (b.was ? 'reached ' + b.was + ' before this change' : 'new, reaches no endpoint') + (b.match === 'ambiguous' ? ' (ambiguous)' : ''));
+    }
+  } else L.push((md ? '' : '  ') + 'broken calls: none');
+  const eps = (title, list, verb) => {
+    if (!list.length) { L.push((md ? '' : '  ') + title + ': none'); return; }
+    L.push((md ? '' : '  ') + title + ': ' + list.length);
+    for (const e of list) {
+      L.push(item + code(e.endpoint) + '   ' + (e.calledBy.length ? verb + ' ' + e.calledBy.join(', ') : 'nothing calls it'));
+    }
+  };
+  eps('endpoints added', st.endpointsAdded, '←');
+  eps('endpoints removed', st.endpointsRemoved, 'was called by');
+  const parts = ['territory', 'attachment', 'graft', 'rewire', 'detached'].filter((k) => st.http[k]).map((k) => st.http[k] + ' ' + k);
+  L.push((md ? '' : '  ') + 'http: ' + (parts.length ? parts.join(' · ') : 'no connection between the sides moved'));
+  if (st.unread) L.push((md ? '' : '  ') + st.unread + ' call' + (st.unread === 1 ? '' : 's') + ' with a URL metatron cannot read');
+  if (!md) return L;
+  // Markdown: a line after a list item without a blank line is folded into
+  // the item, so each group gets its own paragraph.
+  const out = [];
+  L.forEach((line, i) => {
+    if (i > 0 && !line.startsWith('- ')) out.push('');
+    out.push(line);
+  });
+  return out;
+}
+
 function renderTerminal(r) {
   if (!r.files.total) {
-    return 'metatron · ' + r.project + ' · ' + r.range + '\nno files changed in the scanned root\n';
+    const head = 'metatron · ' + r.project + ' · ' + r.range + '\nno files changed in the scanned root\n';
+    // a backend-only change can still cut a frontend call
+    const st = stackLines(r.stack, false);
+    return st.length ? head + '\n' + st.join('\n') + '\n' : head;
   }
   const L = [];
   L.push('metatron · ' + r.project + ' · ' + r.range);
   L.push(filesLine(r));
   L.push('');
+  const st = stackLines(r.stack, false);
+  if (st.length) { L.push(...st); L.push(''); }
   L.push('blast radius: ' + r.blast.direct.length + ' direct dependent' + (r.blast.direct.length === 1 ? '' : 's') +
     ', ' + r.blast.transitive + ' transitively reachable (' + r.blast.pct + '% of ' + r.blast.tree + ' files)');
   if (r.blast.direct.length) L.push('  direct: ' + r.blast.direct.join(', '));
@@ -465,11 +541,14 @@ function renderTerminal(r) {
 
 function renderMarkdown(r) {
   if (!r.files.total) {
-    return '### metatron · ' + r.range + '\n\nNo files changed in the scanned root.\n';
+    const st = stackLines(r.stack, true);
+    return '### metatron · ' + r.range + '\n\nNo files changed in the scanned root.\n' + (st.length ? '\n' + st.join('\n') + '\n' : '');
   }
   const L = [];
   L.push('### metatron · ' + filesLine(r));
   L.push('');
+  const st = stackLines(r.stack, true);
+  if (st.length) { L.push(...st); L.push(''); }
   L.push('**Blast radius** — ' + r.blast.direct.length + ' direct dependent' + (r.blast.direct.length === 1 ? '' : 's') + ', ' +
     r.blast.transitive + ' transitively reachable (' + r.blast.pct + '% of the tree)');
   L.push('');

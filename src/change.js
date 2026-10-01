@@ -575,4 +575,4 @@ function stackChangeAt(cfg, r, stack, frame, at, cache, opts) {
   };
 }
 
-module.exports = { compare, stackCompare, resolveChange, changeAt, modelCache };
+module.exports = { compare, stackCompare, stackOf, resolveChange, changeAt, modelCache };

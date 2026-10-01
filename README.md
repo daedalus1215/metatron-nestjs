@@ -226,6 +226,12 @@ Aggregate findings — `dag` reports cycle totals, `app-apps` reports a spelling
 split — carry `gate: false` and never become violations. They are worth printing
 and meaningless to ratchet. `metatron-nest baseline` lists which ones are excluded.
 
+In a frontend with a linked backend (see **Frontend**), a call that reaches no
+endpoint is a violation too: `http-broken`, one per call, keyed by file and
+`VERB url`. The baseline accepts today's, and `check` fails on the next one.
+This is the gate that would have stopped chronus #155, which shipped three
+calls to endpoints that did not exist.
+
 ---
 
 ## Blast radius
@@ -268,6 +274,26 @@ description, `--json` is for tooling. The report ends with a `focus:` line:
 a URL that opens the city view with only the changed files' towers lit, for
 the files that have towers. If the views have not been built it says
 `build the view first (metatron-nest views)` instead of printing a dead link.
+
+Run from a frontend whose backend shares its repository, the report reads
+both sides at both ends of the range and opens with what crossed the line.
+Broken calls come first:
+
+```
+across the stack (../backend)
+  3 broken calls  !
+    GET /check-items   pages/ExplorerPage/hooks/useCheckItemsForMerge.ts:16   new, reaches no endpoint
+    GET /note-tags   pages/ExplorerPage/hooks/useNoteTagsForMerge.ts:13   new, reaches no endpoint
+    GET /time-tracks   pages/ExplorerPage/hooks/useTimeTracksForMerge.ts:14   new, reaches no endpoint
+  endpoints added: 1
+    POST /notes/merge   ← api/requests/notes.requests.ts
+  endpoints removed: none
+  http: 1 graft
+```
+
+A change to the backend alone is reported too: an endpoint it removes that
+the frontend still calls is a broken call, with the endpoint it used to
+reach.
 
 Three things the report refuses to do:
 
