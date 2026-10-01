@@ -9,7 +9,7 @@ tags: [index, roadmap]
 
 # Specs
 
-Fourteen changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
+Fifteen changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
 were written 2026-09-17 against `d11ba66`; 09–11 were written 2026-09-26
 (09 against `ca8be31`, 10 against `b319797`, 11 against `5b4f3da`). Numbered by dependency, not by
 importance.
@@ -37,6 +37,7 @@ work lands. One spec per unit of work.
 | 12 | [Frontend scanner](12-frontend-scanner.md) | scanner, lens | 09, 10 |
 | 13 | [Stack change](13-stack-change.md) | lens, analysis | 11, 12 |
 | 14 | [The stack in diff, broken calls in check](14-stack-in-diff-and-check.md) | report, gating | 02, 04, 13 |
+| 15 | [Contracts: request and response shapes](15-contracts.md) | analysis | 12, 13, 14 |
 
 ## Suggested order
 
