@@ -283,6 +283,9 @@ if (W && W.http) {
     if (K) {
       const tally = (x) => `${x.agree + x.differ} compared · ${x.differ} differ · ${x.unread} unread`;
       console.log(`  contracts requests ${tally(K.requests)}   responses ${tally(K.responses)}`);
+      const drift = (model.findings.find((f) => f.id === 'contract-drift') || { items: [] }).items;
+      for (const it of drift.slice(0, 8)) console.log(`       ${it}`);
+      if (drift.length > 8) console.log(`       … (${drift.length - 8} more)`);
     }
   } else console.log(`  http ${W.http.calls} calls through the API client · ${W.http.unread} with a URL metatron cannot read · no backend linked`);
 } else if (W) {

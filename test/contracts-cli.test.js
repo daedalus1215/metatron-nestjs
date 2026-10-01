@@ -24,6 +24,7 @@ test('scan prints the contracts line; check is not failed by contract drift', ()
     const s = run('scan');
     assert.strictEqual(s.status, 0, s.stderr);
     assert.match(s.stdout, /contracts requests 5 compared · 4 differ · 0 unread {3}responses 0 compared · 0 differ · 5 unread/);
+    assert.match(s.stdout, /\n {7}api\/requests\/things\.requests\.ts:\d+ GET \/things\/\$\{id\} · request: the endpoint requires a body; the frontend sends none; missing name\n/);
 
     assert.strictEqual(run('baseline').status, 0);
     const doc = JSON.parse(fs.readFileSync(path.join(fe, 'arch.baseline.json'), 'utf8'));
