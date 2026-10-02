@@ -84,6 +84,22 @@ test('a backend-only rename of a DTO field: the contract drift it causes', () =>
   assert.match(D.renderTerminal(D.analyze(load(FE), { range: 'main...cut' })), /contract drift: none/);
 });
 
+test('--staged: the drift a staged backend change causes; an unstaged frontend fix does not count', () => {
+  const rename = path.join(ACTIONS, 'rename-thing.action.ts');
+  const req = path.join(FE, 'src', 'api', 'requests', 'things.requests.ts');
+  try {
+    fs.writeFileSync(rename, fs.readFileSync(rename, 'utf8').replace('body: { name: string }', 'body: { title: string }'));
+    g('add', rename);
+    fs.writeFileSync(req, fs.readFileSync(req, 'utf8').replace('await api.patch(url, { name });', 'await api.patch(url, { title: name });'));
+    const r = D.analyze(load(FE), { staged: true });
+    assert.strictEqual(r.range, 'staged changes');
+    assert.deepStrictEqual(r.stack.contractDrift.map((d) => [d.verb, d.path, d.request.missing, d.request.extra]),
+      [['PATCH', '/things/${id}/name', ['title'], ['name']]]);
+  } finally {
+    g('reset', '-q', '--hard');
+  }
+});
+
 test('a frontend with no backend linked has no stack section', () => {
   const cfg = load(FE);
   delete cfg.backend;
