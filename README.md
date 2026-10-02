@@ -790,8 +790,11 @@ DevTools protocol instead (`--remote-debugging-port`): navigate, wait, then
   is a field, not a shape to descend into. Query and path parameters are not
   compared. A shape is read from the types each side writes down, never
   inferred from code: an untyped `res.data` or a handler with no return
-  type is unread. A type name defined in two files is read through the
-  calling file's import, and is unread when no import says which.
+  type is unread. A type is followed through the importing file's imports
+  (a renamed import too), and a type's own references through its file's.
+  A name defined in two files is unread when no import says which, and a
+  type imported from a package is unread even if the tree has one of the
+  same name.
 - **Calls in other shapes are invisible.** A destructured dependency
   (`const { repo } = this`), a call through a local alias
   (`const r = this.repo`), a subclass calling what its parent injected, and

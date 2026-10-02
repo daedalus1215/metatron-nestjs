@@ -14,6 +14,9 @@ were written 2026-09-17 against `d11ba66`; 09–11 were written 2026-09-26
 (09 against `ca8be31`, 10 against `b319797`, 11 against `5b4f3da`). Numbered by dependency, not by
 importance.
 
+What comes next, before it is a spec, is tracked in
+[`CHECKLIST.md`](../../CHECKLIST.md).
+
 ## Layout
 
 Flat, numbered `NN-{kebab}.md` — this project has no tracker, so the number is

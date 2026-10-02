@@ -65,7 +65,10 @@ function withHistory(overrides = {}) {
       sweep.push(f);
     }
     touch(sweep.concat([S, H]), 26);
-    return scan(Object.assign({}, nestjs, { name: 'fixture', root: '.', __dir: tmp, ...overrides }));
+    const m = scan(Object.assign({}, nestjs, { name: 'fixture', root: '.', __dir: tmp, ...overrides }));
+    // The scan swallows a git failure into churnMeta; say so, rather than fail later on a missing pair.
+    assert.ok(m.churnMeta.available, 'the history was not read: ' + JSON.stringify(m.churnMeta));
+    return m;
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
