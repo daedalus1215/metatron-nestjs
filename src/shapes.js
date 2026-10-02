@@ -174,28 +174,39 @@ function typeIndex(text) {
 }
 
 /**
- * A lookup over an index. `prefer(name)` names the file a caller means (the
- * one it imports the name from); without it, a name defined once is read and
- * a name defined twice is unread.
+ * A lookup over an index, from `file`. `where(name, file)` says where that
+ * file gets a name:
+ *
+ *   { file, name }      a file of the tree, and the name declared there (an
+ *                       import may rename it)
+ *   { external: true }  outside the tree, a package's type: unread
+ *   null                nowhere in particular: by name across the tree
+ *
+ * A name defined once is read; one defined twice is unread unless `where`
+ * names the file. A named type's own references are looked up from the file
+ * that declares it.
  */
-function lookupIn(index, prefer = () => null) {
-  const lookup = (name, depth = 0) => {
-    const defs = index.get(name);
-    if (!defs || depth > 8) return null;
-    const want = prefer(name);
-    const def = (want && defs.find((d) => d.file === want)) || (defs.length === 1 ? defs[0] : null);
+function lookupIn(index, where = () => null, file = null) {
+  const from = (at) => (name, depth = 0) => {
+    if (depth > 8) return null;
+    const w = where(name, at);
+    if (w && w.external) return null;
+    const defs = index.get((w && w.name) || name);
+    if (!defs) return null;
+    const def = (w && w.file && defs.find((d) => d.file === w.file)) || (defs.length === 1 ? defs[0] : null);
     if (!def) return null;
-    if (def.kind === 'type') return shapeOf(def.expr, lookup, depth + 1);
+    const look = from(def.file);
+    if (def.kind === 'type') return shapeOf(def.expr, look, depth + 1);
     const own = def.kind === 'class' ? { fields: classFields(def.body), open: false } : membersOf(def.body);
     for (const base of def.extends) {
-      const b = shapeOf(base, lookup, depth + 1);
+      const b = shapeOf(base, look, depth + 1);
       if (!b || !b.fields) return null;                    // a base we cannot read: the whole shape is unread
       own.fields = Object.assign({}, b.fields, own.fields);
       own.open = own.open || b.open;
     }
     return own;
   };
-  return lookup;
+  return from(file);
 }
 
 module.exports = { shapeOf, membersOf, splitTop, classFields, typeIndex, lookupIn };

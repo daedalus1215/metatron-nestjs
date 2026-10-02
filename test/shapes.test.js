@@ -103,5 +103,22 @@ test('type aliases: object, array, union with null', () => {
 
 test('a name defined twice is unread, unless the caller says which file it means', () => {
   assert.strictEqual(look('Dup'), null);
-  assert.deepStrictEqual(keys(lookupIn(idx, (n) => (n === 'Dup' ? 'b/dup.ts' : null))('Dup')), { b: false });
+  assert.deepStrictEqual(keys(lookupIn(idx, (n) => (n === 'Dup' ? { file: 'b/dup.ts', name: 'Dup' } : null))('Dup')), { b: false });
+});
+
+test('where a file gets a name: renamed on import, from a package, and from the declaring file', () => {
+  const T = Object.assign({}, TEXT, {
+    'b/list.ts': "import { Dup } from './dup';\nexport type DupList = Dup[];",
+    'shared/note.ts': 'export type Note = { id: number; title: string };',
+  });
+  // what each file imports, as contracts' importedFrom would say
+  const imports = {
+    'b/list.ts': { Dup: { file: 'b/dup.ts', name: 'Dup' } },
+    'page.ts': { Row: { file: 'api/types.ts', name: 'Note' }, DupList: { file: 'b/list.ts', name: 'DupList' }, Base: { external: true } },
+  };
+  const where = (n, f) => (imports[f] || {})[n] || null;
+  const look2 = lookupIn(typeIndex(T), where, 'page.ts');
+  assert.deepStrictEqual(keys(look2('Row')), { id: false, name: false, pinned: true }, '`Note as Row`, from its file');
+  assert.strictEqual(look2('Base'), null, "a package's type, though the tree has one of that name");
+  assert.deepStrictEqual(keys(look2('DupList').array), { b: false }, "DupList's own Dup, through b/list.ts's import");
 });

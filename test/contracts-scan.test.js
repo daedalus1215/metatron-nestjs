@@ -107,3 +107,20 @@ test('the backend model does not carry what contracts read', () => {
   assert.ok(!('retDeclared' in JSON.parse(JSON.stringify(e))));
   assert.ok(!Object.keys(be).includes('__resolve'));
 });
+
+test('through a renamed import; and a package type is unread, though the tree has one of that name', () => {
+  const fe2 = scan(fcfg, { backend: { model: be, label: 'be', cfg: bcfg }, files: {
+    'api/axios.ts': FE['api/axios.ts'],
+    'api/types.ts': 'export type FolderRow = { id: number; name: string };\nexport type Paged = { items: number[]; total: number };\n',
+    'api/folders.ts': `import api from './axios';
+import type { FolderRow as Row } from './types';
+import type { Paged } from 'pager-lib';
+
+export const createFolder = async (name: string) => (await api.post<Row>('/folders', { name })).data;
+export const listFolders = async () => (await api.get<Paged>('/folders')).data;
+`,
+  } });
+  const at = (fn) => fe2.calls.find((c) => c.kind === 'http' && c.fromMethod === fn).contract.response;
+  assert.deepStrictEqual(at('createFolder'), { status: 'agree' });
+  assert.strictEqual(at('listFolders').status, 'unread', "not the tree's own Paged");
+});

@@ -71,19 +71,25 @@ function describe(r) {
 const { shapeOf, typeIndex, lookupIn } = require('./shapes');
 
 /**
- * The file `rel` imports `name` from, by the side's own resolver (the
- * scanner's: aliases, `src/` and relative specs). `rel` itself when the name
- * is not imported: it is declared there, if anywhere. Null when the import
- * names no file in the tree, a package's type.
+ * Where `rel` gets the type `name`, for lookupIn (src/shapes.js): imported
+ * from a file of the tree, by the side's own resolver (the scanner's:
+ * aliases, `src/` and relative specs), with the name it is declared under
+ * there; or imported from outside the tree, a package or a file the scan
+ * cannot see, which is unread. A name not imported is declared in `rel`, if
+ * anywhere.
  */
 function importedFrom(text, rel, name, resolve) {
-  const re = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g;
+  const re = /import\s+(?:type\s+)?(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g;
   let m;
   while ((m = re.exec(text[rel] || ''))) {
-    const names = m[1].split(',').map((x) => x.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop().trim());
-    if (names.includes(name)) return resolve(m[2], rel) || null;
+    for (const entry of m[1].split(',')) {
+      const [declared, local = declared] = entry.trim().replace(/^type\s+/, '').split(/\s+as\s+/).map((x) => x.trim());
+      if (local !== name) continue;
+      const file = resolve(m[2], rel);
+      return file ? { file, name: declared } : { external: true };
+    }
   }
-  return rel;
+  return rel ? { file: rel, name } : null;
 }
 
 /**
@@ -94,8 +100,9 @@ function contractsOf(fe, be) {
   const feText = fe.__text || {}, beText = be.__text || {};
   const feIndex = typeIndex(feText), beIndex = typeIndex(beText);
   const none = () => null;
-  const feLook = (rel) => lookupIn(feIndex, (n) => importedFrom(feText, rel, n, fe.__resolve || none));
-  const beLook = (rel) => lookupIn(beIndex, (n) => importedFrom(beText, rel, n, be.__resolve || none));
+  const feWhere = (n, rel) => importedFrom(feText, rel, n, fe.__resolve || none);
+  const beWhere = (n, rel) => importedFrom(beText, rel, n, be.__resolve || none);
+  const feLook = (rel) => lookupIn(feIndex, feWhere, rel), beLook = (rel) => lookupIn(beIndex, beWhere, rel);
   const endpoints = new Map(be.endpoints.map((e) => [e.id, e]));
   const byId = new Map(fe.bricks.map((b) => [b.id, b]));
   const meta = { requests: { agree: 0, differ: 0, unread: 0 }, responses: { agree: 0, differ: 0, unread: 0 } };
