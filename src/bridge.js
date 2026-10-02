@@ -19,6 +19,9 @@
 
 const HOLE = '\u0001';
 
+/** A stud's http entry and the call it records: two calls can share a line and a verb. */
+const sameCall = (h, c) => h.line === c.line && h.verb === c.verb && h.path === c.path;
+
 /** Path segments of a URL, with the prefix stripped and holes marked. */
 function segmentsOf(url, prefix) {
   let u = url.replace(/\$\{[^}]*\}/g, HOLE).split('?')[0].split('#')[0];
@@ -65,7 +68,7 @@ function bridgeOf(model, backend, cfg, backendLabel) {
     const b = byId.get(c.from);
     if (!b) return;
     for (const s of b.studs.concat(b.internals)) {
-      for (const h of s.http || []) if (h.line === c.line && h.verb === c.verb) Object.assign(h, fields);
+      for (const h of s.http || []) if (sameCall(h, c)) Object.assign(h, fields);
     }
   };
   for (const c of model.calls) {
@@ -104,4 +107,4 @@ function bridgeOf(model, backend, cfg, backendLabel) {
   return out;
 }
 
-module.exports = { bridgeOf, segmentsOf, score };
+module.exports = { bridgeOf, segmentsOf, score, sameCall };

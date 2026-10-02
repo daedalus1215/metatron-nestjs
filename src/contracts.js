@@ -69,6 +69,7 @@ function describe(r) {
 // ------------------------------------------------------------ the models
 
 const { shapeOf, typeIndex, lookupIn } = require('./shapes');
+const { sameCall } = require('./bridge');
 
 /**
  * Where `rel` gets the type `name`, for lookupIn (src/shapes.js): imported
@@ -139,7 +140,7 @@ function contractsOf(fe, be) {
     // and on its stud's http entry, as the bridge notes the match
     const brick = byId.get(c.from);
     if (brick) for (const st of brick.studs.concat(brick.internals)) {
-      for (const h of st.http || []) if (h.line === c.line && h.verb === c.verb) h.contract = c.contract;
+      for (const h of st.http || []) if (sameCall(h, c)) h.contract = c.contract;
     }
     meta.requests[request.status]++;
     meta.responses[response.status]++;

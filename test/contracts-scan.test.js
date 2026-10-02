@@ -124,3 +124,19 @@ export const listFolders = async () => (await api.get<Paged>('/folders')).data;
   assert.deepStrictEqual(at('createFolder'), { status: 'agree' });
   assert.strictEqual(at('listFolders').status, 'unread', "not the tree's own Paged");
 });
+
+test('two calls on one line: each http entry keeps its own endpoint and contract', () => {
+  const fe3 = scan(fcfg, { backend: { model: be, label: 'be', cfg: bcfg }, files: {
+    'api/axios.ts': FE['api/axios.ts'],
+    'api/types.ts': FE['api/types.ts'],
+    'api/folders.ts': `import api from './axios';
+import type { Folder, FolderRow } from './types';
+
+export const both = async (id: number) => Promise.all([api.get<FolderRow[]>('/folders'), api.get<Folder>(\`/folders/\${id}\`)]);
+`,
+  } });
+  const [list, one] = fe3.bricks.find((x) => x.id === 'api/folders.ts').studs.find((x) => x.name === 'both').http;
+  assert.strictEqual(list.line, one.line);
+  assert.deepStrictEqual([list.endpoint, one.endpoint], ['GET /folders#apply', 'GET /folders/:id#apply']);
+  assert.deepStrictEqual([list.contract.response.status, one.contract.response.status], ['agree', 'unread']);
+});
