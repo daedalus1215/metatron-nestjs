@@ -1151,21 +1151,34 @@ function scan(cfg, opts = {}) {
   };
 
   // ---- orphans: nothing reaches these from a route or a module registration
+  // A backend is entered through its modules and its HTTP handlers. A profile
+  // can name its own entry patterns instead (`orphanRoots`: a frontend's is
+  // `bootstrap`, its main.tsx). A lazy `import('./pages/X')` loads a file as
+  // surely as a static import, so the walk follows it too.
   const reach = new Set();
   const stack = [];
   const adjOut = {};
   for (const e of fileEdges) (adjOut[e.from] = adjOut[e.from] || []).push(e.to);
+  const DYNAMIC_IMPORT = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
   for (const f of files) {
-    if (info[f].pattern === 'module' || endpoints.some((e) => e.file === f)) {
-      if (!reach.has(f)) { reach.add(f); stack.push(f); }
+    DYNAMIC_IMPORT.lastIndex = 0;
+    let m;
+    while ((m = DYNAMIC_IMPORT.exec(text[f]))) {
+      const to = resolveSpec(m[1], f);
+      if (to) (adjOut[f] = adjOut[f] || []).push(to);
     }
   }
+  const roots = files.filter((f) => (cfg.orphanRoots ? cfg.orphanRoots.includes(info[f].pattern)
+    : info[f].pattern === 'module' || endpoints.some((e) => e.file === f)));
+  for (const f of roots) if (!reach.has(f)) { reach.add(f); stack.push(f); }
   while (stack.length) {
     const cur = stack.pop();
     for (const nb of adjOut[cur] || []) if (!reach.has(nb)) { reach.add(nb); stack.push(nb); }
   }
   const IGNORE_ORPHAN = new Set(['spec', 'test-util', 'migration', 'bootstrap', 'module']);
-  const orphans = files.filter((f) => !reach.has(f) && !IGNORE_ORPHAN.has(info[f].pattern));
+  // With named roots and none in the tree, nothing can be said to be unreachable.
+  const orphans = cfg.orphanRoots && !roots.length ? []
+    : files.filter((f) => !reach.has(f) && !IGNORE_ORPHAN.has(info[f].pattern));
 
   // ---- findings
   const pairs = (fp, tp) => fileEdges.filter((e) => info[e.from] && info[e.to] && info[e.from].pattern === fp && info[e.to].pattern === tp);
@@ -1286,8 +1299,10 @@ function scan(cfg, opts = {}) {
   if (orphans.length) {
     findings.push({
       id: 'orphans', tone: 'warn',
-      title: `${orphans.length} files are unreachable from any route or module`,
-      detail: 'Walking imports outward from every HTTP handler and every *.module.ts registration never arrives at these. Likely dead.',
+      title: `${orphans.length} file${orphans.length === 1 ? ' is' : 's are'} unreachable from `
+        + (cfg.orphanRoots ? "the app's entry" : 'any route or module'),
+      detail: cfg.orphanRoots ? `Walking imports outward from ${roots.join(', ')} never arrives at these. Likely dead.`
+        : 'Walking imports outward from every HTTP handler and every *.module.ts registration never arrives at these. Likely dead.',
       items: orphans,
       instances: orphans.map((f) => ({ from: f, to: '' })),
     });

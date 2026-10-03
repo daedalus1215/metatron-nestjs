@@ -90,6 +90,9 @@ module.exports = {
     'infrastructure', 'core', 'services', 'router', 'lib', 'utils', 'constants', 'styles', 'assets', 'store'],
   crossDomainGateways: ['page'],
 
+  /** Reachability starts at the app's entry (main.tsx), not at modules and handlers. */
+  orphanRoots: ['bootstrap'],
+
   /** pages/<Page>/… is the module <Page>; everything else its first segment. */
   moduleOf: (rel) => {
     const parts = rel.split('/');
