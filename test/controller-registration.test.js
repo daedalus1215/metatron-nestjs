@@ -85,3 +85,36 @@ test('a list it cannot read, or no lists at all: nothing is flagged', () => {
   const none = run({ 'notes/apps/actions/delete-note.action.ts': BASE['notes/apps/actions/delete-note.action.ts'] });
   assert.ok(none.endpoints.every((e) => !e.unregistered), 'a tree with no module says nothing');
 });
+
+// ---------------------------------------------------------------- the bridge
+const react = require('../src/defaults/react');
+
+test("a frontend call to a route Nest does not serve is unserved, and broken", () => {
+  const be = run(Object.assign({}, BASE, {
+    // a served `:id`, and an unserved literal the URL would fit better
+    'notes/apps/actions/get-note.action.ts': action('GetNoteAction', 'Get', ':id'),
+    'notes/apps/actions/note-detail.action.ts': action('NoteDetailAction', 'Get', 'detail'),
+    'notes/notes.module.ts': BASE['notes/notes.module.ts'].replace('import { DeleteNoteAction }',
+      "import { GetNoteAction } from './apps/actions/get-note.action';\nimport { NoteDetailAction } from './apps/actions/note-detail.action';\nimport { DeleteNoteAction }")
+      .replace('controllers: [CreateNoteAction]', 'controllers: [CreateNoteAction, GetNoteAction]'),
+  }));
+  const fcfg = Object.assign({}, react, { name: 'fe', root: 'src', __dir: path.join(__dirname, 'fixtures', 'react') });
+  const fe = scan(fcfg, { backend: { model: be, label: 'be', cfg }, files: {
+    'api/axios.ts': "import axios from 'axios';\nconst api = axios.create({ baseURL: '/' });\nexport default api;\n",
+    'api/notes.ts': `import api from './axios';
+export const deleteNote = async (id: number) => { await api.delete(\`/notes/\${id}\`); };
+export const createNote = async () => { await api.post('/notes', {}); };
+export const noteDetail = async () => { await api.get('/notes/detail'); };
+`,
+  } });
+  const at = (fn) => fe.calls.find((c) => c.kind === 'http' && c.fromMethod === fn);
+  assert.deepStrictEqual([at('deleteNote').match, at('deleteNote').endpoint], ['unserved', 'DELETE /notes/:id#apply']);
+  assert.strictEqual(at('createNote').match, 'matched');
+  assert.deepStrictEqual([at('noteDetail').match, at('noteDetail').endpoint], ['matched', 'GET /notes/:id#apply'],
+    'Nest serves /notes/detail with the :id route, since the literal one is not served');
+  assert.strictEqual(fe.bridge.unserved, 1);
+  assert.match(fe.diagnostics.find((d) => d.kind === 'http-unserved').detail, /DeleteNoteAction is in no module's controllers/);
+  assert.deepStrictEqual(fe.findings.find((f) => f.id === 'http-broken').items, ['api/notes.ts:2 DELETE /notes/${id} (not served)']);
+  const row = fe.bricks.find((b) => b.id === 'api/notes.ts').studs.find((s) => s.name === 'deleteNote').http[0];
+  assert.strictEqual(row.match, 'unserved', "the stud's http entry says so too");
+});
