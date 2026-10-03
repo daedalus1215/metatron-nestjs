@@ -144,9 +144,14 @@ function reactWiringOf(ctx) {
       add(Object.assign({ id: rel + '#' + c.name, name: c.name, shape: 'class', tier: fi.tier, lines: [c.start, c.end], cls: c }, base));
     }
     // Any other top-level function gets a brick, exported or not: a helper
-    // beside a hook is where that hook's HTTP call may live.
+    // beside a hook is where that hook's HTTP call may live. It is named for
+    // its file; by the file's full name when a component, hook or context in
+    // the same file already has the short one (TagActionPanel.tsx beside
+    // TagActionPanel), so a list never shows two of one name.
+    const stem = rel.split('/').pop().replace(/\.tsx?$/, '');
     if (fns.length && fi.pattern !== 'bootstrap') {
-      add(Object.assign({ id: rel, name: rel.split('/').pop().replace(/\.tsx?$/, ''), shape: 'functions', tier: fi.tier,
+      const taken = bricks.some((b) => b.file === rel && b.name === stem);
+      add(Object.assign({ id: rel, name: taken ? rel.split('/').pop() : stem, shape: 'functions', tier: fi.tier,
         lines: [1, fi.loc], fns }, base));
     } else if (fi.pattern === 'bootstrap') {
       add(Object.assign({ id: rel, name: rel.split('/').pop().replace(/\.tsx?$/, ''), shape: 'script', tier: fi.tier,

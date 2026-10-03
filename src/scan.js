@@ -788,6 +788,44 @@ function scan(cfg, opts = {}) {
     }
   }
 
+  // ---- controller registration
+  //
+  // Nest serves a controller's routes only when a module lists the class in
+  // its `controllers`. An endpoint on a class no module lists is declared and
+  // not served: `unregistered`, set only then, so other endpoints are as
+  // before. Read only when every list in the tree is a plain list of names:
+  // a spread or a variable could hold anything. A tree with no lists at all
+  // (a partial scan, a fixture) says nothing either way.
+  const registered = controllersRegistered();
+  if (registered) for (const e of endpoints) if (!registered.has(e.file + '#' + e.cls)) e.unregistered = true;
+
+  /** `file#Class` of every controller a module lists, or null when that cannot be known. */
+  function controllersRegistered() {
+    const out = new Set();
+    let lists = 0;
+    for (const rel of files) {
+      if (!/@Module\s*\(/.test(text[rel])) continue;       // AppModule's pattern is bootstrap, not module
+      // comments and strings out: `./apps/controllers/x` is an import path, not a key
+      const src = text[rel].replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, '""');
+      const LIST = /\bcontrollers\s*(?=[:,}])(:\s*\[)?/g;
+      let m;
+      while ((m = LIST.exec(src))) {
+        if (!m[1]) return null;                              // `controllers,` or `controllers: LIST`
+        lists++;
+        let d = 0, j = m.index + m[0].length - 1;
+        for (; j < src.length; j++) { if (src[j] === '[') d++; else if (src[j] === ']' && --d === 0) break; }
+        for (const raw of src.slice(m.index + m[0].length, j).split(',')) {
+          const name = raw.trim();
+          if (!name) continue;
+          if (!/^[A-Za-z_$][\w$]*$/.test(name)) return null;   // a spread, a call
+          const file = symbolIndex[rel][name] || (declaresClass(rel, name) ? rel : null);
+          if (file) out.add(file + '#' + name);               // a package's controller is not ours to check
+        }
+      }
+    }
+    return lists ? out : null;
+  }
+
   // Spec 07: a mid-trace stop is a diagnostic, not a silence. One per
   // (file, method, reason) — the same stall reached from two endpoints is
   // one gap, reported once.
@@ -1113,21 +1151,34 @@ function scan(cfg, opts = {}) {
   };
 
   // ---- orphans: nothing reaches these from a route or a module registration
+  // A backend is entered through its modules and its HTTP handlers. A profile
+  // can name its own entry patterns instead (`orphanRoots`: a frontend's is
+  // `bootstrap`, its main.tsx). A lazy `import('./pages/X')` loads a file as
+  // surely as a static import, so the walk follows it too.
   const reach = new Set();
   const stack = [];
   const adjOut = {};
   for (const e of fileEdges) (adjOut[e.from] = adjOut[e.from] || []).push(e.to);
+  const DYNAMIC_IMPORT = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
   for (const f of files) {
-    if (info[f].pattern === 'module' || endpoints.some((e) => e.file === f)) {
-      if (!reach.has(f)) { reach.add(f); stack.push(f); }
+    DYNAMIC_IMPORT.lastIndex = 0;
+    let m;
+    while ((m = DYNAMIC_IMPORT.exec(text[f]))) {
+      const to = resolveSpec(m[1], f);
+      if (to) (adjOut[f] = adjOut[f] || []).push(to);
     }
   }
+  const roots = files.filter((f) => (cfg.orphanRoots ? cfg.orphanRoots.includes(info[f].pattern)
+    : info[f].pattern === 'module' || endpoints.some((e) => e.file === f)));
+  for (const f of roots) if (!reach.has(f)) { reach.add(f); stack.push(f); }
   while (stack.length) {
     const cur = stack.pop();
     for (const nb of adjOut[cur] || []) if (!reach.has(nb)) { reach.add(nb); stack.push(nb); }
   }
   const IGNORE_ORPHAN = new Set(['spec', 'test-util', 'migration', 'bootstrap', 'module']);
-  const orphans = files.filter((f) => !reach.has(f) && !IGNORE_ORPHAN.has(info[f].pattern));
+  // With named roots and none in the tree, nothing can be said to be unreachable.
+  const orphans = cfg.orphanRoots && !roots.length ? []
+    : files.filter((f) => !reach.has(f) && !IGNORE_ORPHAN.has(info[f].pattern));
 
   // ---- findings
   const pairs = (fp, tp) => fileEdges.filter((e) => info[e.from] && info[e.to] && info[e.from].pattern === fp && info[e.to].pattern === tp);
@@ -1223,6 +1274,20 @@ function scan(cfg, opts = {}) {
     const b = text[f].trim();
     return /^export\s*\{[^}]*\}\s*from\s*['"][^'"]+['"];?$/.test(b) && !fileEdges.some((e) => e.to === f);
   });
+  const unregistered = endpoints.filter((e) => e.unregistered);
+  if (unregistered.length) {
+    const classes = [...new Map(unregistered.map((e) => [e.file + '#' + e.cls, e])).values()];
+    findings.push({
+      id: 'controller-unregistered', tone: 'warn',
+      title: `${classes.length} controller${classes.length === 1 ? ' is' : 's are'} in no module's controllers: `
+        + `${unregistered.length} route${unregistered.length === 1 ? '' : 's'} not served`,
+      detail: 'Nest serves a controller\'s routes only when a module lists the class in `controllers`. No module lists these.',
+      items: classes.map((c) => `${c.file} ${c.cls}: ` + unregistered.filter((e) => e.file === c.file && e.cls === c.cls)
+        .map((e) => e.verb + ' ' + e.route).join(', ')),
+      instances: classes.map((c) => ({ from: c.file, to: c.cls })),
+    });
+  }
+
   if (deadShims.length) {
     findings.push({
       id: 'dead-shims', tone: 'warn', title: 'Dead re-export files',
@@ -1234,8 +1299,10 @@ function scan(cfg, opts = {}) {
   if (orphans.length) {
     findings.push({
       id: 'orphans', tone: 'warn',
-      title: `${orphans.length} files are unreachable from any route or module`,
-      detail: 'Walking imports outward from every HTTP handler and every *.module.ts registration never arrives at these. Likely dead.',
+      title: `${orphans.length} file${orphans.length === 1 ? ' is' : 's are'} unreachable from `
+        + (cfg.orphanRoots ? "the app's entry" : 'any route or module'),
+      detail: cfg.orphanRoots ? `Walking imports outward from ${roots.join(', ')} never arrives at these. Likely dead.`
+        : 'Walking imports outward from every HTTP handler and every *.module.ts registration never arrives at these. Likely dead.',
       items: orphans,
       instances: orphans.map((f) => ({ from: f, to: '' })),
     });
@@ -1438,14 +1505,14 @@ function scan(cfg, opts = {}) {
       // gates it and `baseline` can accept it. Keyed by file and VERB url, so
       // it keeps its identity when it moves down its file. An unread URL is
       // not broken as far as anyone can tell, and is not gated.
-      const broken = model.calls.filter((c) => c.kind === 'http' && (c.match === 'unmatched' || c.match === 'ambiguous'));
+      const broken = model.calls.filter((c) => c.kind === 'http' && ['unmatched', 'ambiguous', 'unserved'].includes(c.match));
       if (broken.length) {
         const file = (c) => c.from.split('#')[0];
         model.findings.push({
           id: 'http-broken', tone: 'warn',
-          title: `${broken.length} frontend call${broken.length === 1 ? '' : 's'} reach no endpoint in ${be.label}`,
-          detail: 'The URL matches no endpoint of its verb in the linked backend, or matches several equally.',
-          items: broken.map((c) => `${file(c)}:${c.line} ${c.verb} ${c.path}${c.match === 'ambiguous' ? ' (ambiguous)' : ''}`),
+          title: `${broken.length} frontend call${broken.length === 1 ? '' : 's'} reach no served endpoint in ${be.label}`,
+          detail: 'The URL matches no endpoint of its verb in the linked backend, matches several equally, or reaches one whose controller no module serves.',
+          items: broken.map((c) => `${file(c)}:${c.line} ${c.verb} ${c.path}${c.match === 'ambiguous' ? ' (ambiguous)' : c.match === 'unserved' ? ' (not served)' : ''}`),
           instances: broken.map((c) => ({ from: file(c), to: `${c.verb} ${c.path}` })),
         });
         model.violations = violationsOf(model);

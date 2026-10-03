@@ -27,6 +27,12 @@ and this list links to it.
 - [ ] **Props through renders:** which parent passes what to a child. A render
   edge records only that the parent renders it.
 
+**Backend**
+
+- [ ] **A module nobody imports.** `controller-unregistered` checks that a
+  module lists the controller, not that the app imports that module. A
+  controller in an orphaned module is still not served.
+
 **Across repositories**
 
 - [ ] **`diff` and `check` from the backend directory.** The backend config
@@ -61,3 +67,13 @@ There is nothing in chronus or omega to test these against yet.
 - [x] Two HTTP calls on one line keep their own endpoint and contract, on the
   stud and in the inspector.
 - [x] `diff --staged` reports the contract drift of what is staged (tested).
+- [x] A controller no module lists is `controller-unregistered`, and a call
+  that reaches only its routes is `unserved` and broken. Caught chronus's
+  `DELETE /notes/:id`, dropped from the notes module by `dae3a70`.
+- [x] A stack change lists the calls it fixed.
+- [x] A frontend's `orphans` are walked from `main.tsx`, following lazy
+  imports, not from backend roots it does not have.
+- [x] A file's loose functions beside a same-named component are named for
+  the file (`TagActionPanel.tsx`), so a list never shows two of one name.
+- [x] Hovering a line or a legend item on the workbench explains it.
+- [x] The workbench's sidebars resize by dragging their inner edge.

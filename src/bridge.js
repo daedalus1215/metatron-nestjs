@@ -15,6 +15,10 @@
  *   ${hole}          literal            1
  *
  * The best score wins. A tie is ambiguous and is reported, not picked.
+ *
+ * Only served endpoints are matched first. A call that reaches nothing
+ * served, but would reach an endpoint whose controller no module lists, is
+ * `unserved`: the route is declared, and Nest does not serve it.
  */
 
 const HOLE = '\u0001';
@@ -56,10 +60,22 @@ function score(urlSegs, routeSegs) {
  */
 function bridgeOf(model, backend, cfg, backendLabel) {
   const endpoints = backend.endpoints.map((e) => ({ e, segs: segmentsOf(e.route, null) }));
+  const served = endpoints.filter((x) => !x.e.unregistered), unserved = endpoints.filter((x) => x.e.unregistered);
   const out = {
     backend: backendLabel, endpoints: endpoints.length,
-    calls: 0, matched: 0, ambiguous: 0, unmatched: 0, unread: 0,
+    calls: 0, matched: 0, ambiguous: 0, unmatched: 0, unserved: 0, unread: 0,
     reached: 0, unreached: [],
+  };
+  /** The endpoints of `pool` a call's segments fit best. */
+  const bestOf = (pool, verb, segs) => {
+    let best = -1, hits = [];
+    for (const { e, segs: rs } of pool) {
+      if (e.verb !== verb && e.verb !== 'ALL') continue;
+      const s = score(segs, rs);
+      if (s < 0) continue;
+      if (s > best) { best = s; hits = [e]; } else if (s === best) hits.push(e);
+    }
+    return hits;
   };
   const byId = new Map(model.bricks.map((b) => [b.id, b]));
   const reached = new Set();
@@ -78,14 +94,15 @@ function bridgeOf(model, backend, cfg, backendLabel) {
     // no URL, or no method (a fetch whose method is a variable): unread
     if (c.path === null || c.path === undefined || !c.verb) { note(c, { match: 'unread' }); out.unread++; continue; }
     const segs = segmentsOf(c.path, cfg.apiPrefix || null);
-    let best = -1, hits = [];
-    for (const { e, segs: rs } of endpoints) {
-      if (e.verb !== c.verb && e.verb !== 'ALL') continue;
-      const s = score(segs, rs);
-      if (s < 0) continue;
-      if (s > best) { best = s; hits = [e]; } else if (s === best) hits.push(e);
-    }
-    if (!hits.length) {
+    const hits = bestOf(served, c.verb, segs);
+    const dark = hits.length ? [] : bestOf(unserved, c.verb, segs);
+    if (dark.length) {
+      const e = dark[0];
+      note(c, dark.length === 1 ? { match: 'unserved', endpoint: e.id } : { match: 'unserved', candidates: dark.map((x) => x.id) });
+      out.unserved++;
+      model.diagnostics.push({ kind: 'http-unserved', file, line: c.line,
+        detail: `${c.verb} ${c.path} reaches ${e.verb} ${e.route} in ${backendLabel}, whose controller ${e.cls} is in no module's controllers: not served` });
+    } else if (!hits.length) {
       note(c, { match: 'unmatched' });
       out.unmatched++;
       model.diagnostics.push({ kind: 'http-unmatched', file, line: c.line,

@@ -113,3 +113,14 @@ test('wiringMeta counts it all', () => {
   assert.deepStrictEqual([W.sockets, W.framework, W.unresolved, W.renders, W.http.calls, W.http.unread], [12, 7, 1, 7, 8, 1]);
   assert.deepStrictEqual(W.studs, { total: 20, brick: 12, route: 3, framework: 0, unseen: 5 });
 });
+
+test("a file's loose functions beside a component of the file's name take the file's full name", () => {
+  const react = require('../src/defaults/react');
+  const m = scan(Object.assign({}, react, { name: 'fe', root: 'src', __dir: path.join(__dirname, 'fixtures', 'react') }), { files: {
+    'components/Panel.tsx': "const label = (n: number) => `#${n}`;\nexport const Panel = () => <div>{label(1)}</div>;\n",
+    'api/notes.requests.ts': 'export const fetchNotes = async () => [];\n',
+  } });
+  const names = (file) => m.bricks.filter((b) => b.file === file).map((b) => [b.shape, b.name]).sort();
+  assert.deepStrictEqual(names('components/Panel.tsx'), [['component', 'Panel'], ['functions', 'Panel.tsx']]);
+  assert.deepStrictEqual(names('api/notes.requests.ts'), [['functions', 'notes.requests']], 'no collision, no change');
+});
