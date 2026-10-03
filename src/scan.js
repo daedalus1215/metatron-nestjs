@@ -788,6 +788,44 @@ function scan(cfg, opts = {}) {
     }
   }
 
+  // ---- controller registration
+  //
+  // Nest serves a controller's routes only when a module lists the class in
+  // its `controllers`. An endpoint on a class no module lists is declared and
+  // not served: `unregistered`, set only then, so other endpoints are as
+  // before. Read only when every list in the tree is a plain list of names:
+  // a spread or a variable could hold anything. A tree with no lists at all
+  // (a partial scan, a fixture) says nothing either way.
+  const registered = controllersRegistered();
+  if (registered) for (const e of endpoints) if (!registered.has(e.file + '#' + e.cls)) e.unregistered = true;
+
+  /** `file#Class` of every controller a module lists, or null when that cannot be known. */
+  function controllersRegistered() {
+    const out = new Set();
+    let lists = 0;
+    for (const rel of files) {
+      if (!/@Module\s*\(/.test(text[rel])) continue;       // AppModule's pattern is bootstrap, not module
+      // comments and strings out: `./apps/controllers/x` is an import path, not a key
+      const src = text[rel].replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, '""');
+      const LIST = /\bcontrollers\s*(?=[:,}])(:\s*\[)?/g;
+      let m;
+      while ((m = LIST.exec(src))) {
+        if (!m[1]) return null;                              // `controllers,` or `controllers: LIST`
+        lists++;
+        let d = 0, j = m.index + m[0].length - 1;
+        for (; j < src.length; j++) { if (src[j] === '[') d++; else if (src[j] === ']' && --d === 0) break; }
+        for (const raw of src.slice(m.index + m[0].length, j).split(',')) {
+          const name = raw.trim();
+          if (!name) continue;
+          if (!/^[A-Za-z_$][\w$]*$/.test(name)) return null;   // a spread, a call
+          const file = symbolIndex[rel][name] || (declaresClass(rel, name) ? rel : null);
+          if (file) out.add(file + '#' + name);               // a package's controller is not ours to check
+        }
+      }
+    }
+    return lists ? out : null;
+  }
+
   // Spec 07: a mid-trace stop is a diagnostic, not a silence. One per
   // (file, method, reason) — the same stall reached from two endpoints is
   // one gap, reported once.
@@ -1223,6 +1261,20 @@ function scan(cfg, opts = {}) {
     const b = text[f].trim();
     return /^export\s*\{[^}]*\}\s*from\s*['"][^'"]+['"];?$/.test(b) && !fileEdges.some((e) => e.to === f);
   });
+  const unregistered = endpoints.filter((e) => e.unregistered);
+  if (unregistered.length) {
+    const classes = [...new Map(unregistered.map((e) => [e.file + '#' + e.cls, e])).values()];
+    findings.push({
+      id: 'controller-unregistered', tone: 'warn',
+      title: `${classes.length} controller${classes.length === 1 ? ' is' : 's are'} in no module's controllers: `
+        + `${unregistered.length} route${unregistered.length === 1 ? '' : 's'} not served`,
+      detail: 'Nest serves a controller\'s routes only when a module lists the class in `controllers`. No module lists these.',
+      items: classes.map((c) => `${c.file} ${c.cls}: ` + unregistered.filter((e) => e.file === c.file && e.cls === c.cls)
+        .map((e) => e.verb + ' ' + e.route).join(', ')),
+      instances: classes.map((c) => ({ from: c.file, to: c.cls })),
+    });
+  }
+
   if (deadShims.length) {
     findings.push({
       id: 'dead-shims', tone: 'warn', title: 'Dead re-export files',
