@@ -64,7 +64,15 @@ button { font:inherit; color:inherit; }
 .dot.live { background:var(--green); }
 
 /* three columns */
-main { flex:1; display:grid; grid-template-columns:260px minmax(0,1fr) 420px; min-height:0; }
+main { flex:1; display:grid; grid-template-columns:var(--lw, 260px) minmax(0,1fr) var(--rw, 420px); min-height:0; position:relative; }
+/* a sidebar's inner edge: drag to resize, double-click to reset */
+.gutter { position:absolute; top:0; bottom:0; width:9px; z-index:6; cursor:col-resize; touch-action:none; }
+.gutter::after { content:''; position:absolute; top:0; bottom:0; left:3px; width:3px; border-radius:2px; transition:background .12s; }
+.gutter:hover::after, .gutter.drag::after, .gutter:focus-visible::after { background:var(--blue); }
+.gutter:focus-visible { outline:none; }
+#gl { left:calc(var(--lw, 260px) - 5px); }
+#gr { right:calc(var(--rw, 420px) - 5px); }
+body.resizing { cursor:col-resize; user-select:none; }
 aside, section { min-height:0; }
 .col { border-right:1px solid var(--rule); display:flex; flex-direction:column; min-height:0; }
 
@@ -199,13 +207,16 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
 .badge.edited { border-color:var(--amber); color:var(--amber); }
 
 @media (max-width: 1100px) {
-  main { grid-template-columns:220px minmax(0,1fr); grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
+  main { grid-template-columns:var(--lw, 220px) minmax(0,1fr); grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
   .insp { grid-column:1 / -1; border-left:0; border-top:1px solid var(--rule); }
+  #gl { left:calc(var(--lw, 220px) - 5px); bottom:50%; }
+  #gr { display:none; }
 }
 @media (max-width: 700px) {
   body { overflow:auto; }
   main { display:flex; flex-direction:column; }
   .col { max-height:40vh; border-right:0; border-bottom:1px solid var(--rule); }
+  .gutter { display:none; }
   .bench { min-height:60vh; }
   .insp { min-height:80vh; }
 }
@@ -249,6 +260,10 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
     <div class="parts" id="parts"></div>
     <div class="src mono" id="src"></div>
   </aside>
+  <div class="gutter" id="gl" role="separator" aria-orientation="vertical" aria-label="Resize the brick list" tabindex="0"
+    title="Drag to resize · double-click to reset"></div>
+  <div class="gutter" id="gr" role="separator" aria-orientation="vertical" aria-label="Resize the inspector" tabindex="0"
+    title="Drag to resize · double-click to reset"></div>
 </main>
 <div class="tip" id="tip" hidden></div>
 
@@ -1085,6 +1100,64 @@ $('bench').addEventListener('mousemove', (e) => { if (!tip.hidden) moveTip(e); }
 $('bench').addEventListener('mouseout', (e) => {
   if (e.target.closest('.stud, .sock, .hit, [data-legend]')) { clearLit(); tip.hidden = true; }
 });
+// ------------------------------------------------------------------ column widths
+// Drag a sidebar's inner edge to resize it, or use the arrow keys on it;
+// double-click resets it. The widths are kept in this browser only, as a
+// convenience: a blocked or empty storage just means the default widths.
+const COLS = {
+  gl: { v: '--lw', pane: () => document.querySelector('main > aside.col:not(.insp)'), min: 180, dir: 1 },
+  gr: { v: '--rw', pane: () => document.querySelector('main > aside.insp'), min: 260, dir: -1 },
+};
+const COLS_KEY = 'metatron.workbench.columns';
+const paneWidth = (id) => COLS[id].pane().getBoundingClientRect().width;
+function setCol(id, px) {
+  const main = document.querySelector('main'), other = id === 'gl' ? 'gr' : 'gl';
+  const otherW = getComputedStyle($(other)).display === 'none' ? 0 : paneWidth(other);
+  const max = Math.max(COLS[id].min, main.clientWidth - otherW - 320);   // the bench keeps room
+  const w = Math.round(Math.min(Math.max(px, COLS[id].min), max));
+  main.style.setProperty(COLS[id].v, w + 'px');
+  $(id).setAttribute('aria-valuenow', String(w));
+}
+function saveCols() {
+  const st = document.querySelector('main').style;
+  try { localStorage.setItem(COLS_KEY, JSON.stringify({ gl: st.getPropertyValue('--lw'), gr: st.getPropertyValue('--rw') })); } catch { /* storage blocked */ }
+}
+(function loadCols() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(COLS_KEY) || 'null'); } catch { /* storage blocked */ }
+  for (const id of Object.keys(COLS)) if (saved && parseFloat(saved[id])) setCol(id, parseFloat(saved[id]));
+})();
+for (const id of Object.keys(COLS)) {
+  const g = $(id);
+  g.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    g.setPointerCapture(e.pointerId);
+    g.classList.add('drag'); document.body.classList.add('resizing');
+    const x0 = e.clientX, w0 = paneWidth(id);
+    const move = (ev) => setCol(id, w0 + COLS[id].dir * (ev.clientX - x0));
+    const up = () => {
+      g.classList.remove('drag'); document.body.classList.remove('resizing');
+      g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); g.removeEventListener('pointercancel', up);
+      saveCols();
+    };
+    g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
+  });
+  g.addEventListener('dblclick', () => { document.querySelector('main').style.removeProperty(COLS[id].v); saveCols(); });
+  g.addEventListener('keydown', (e) => {
+    const d = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
+    if (!d) return;
+    e.preventDefault();
+    setCol(id, paneWidth(id) + COLS[id].dir * d);
+    saveCols();
+  });
+}
+// A narrower window: keep the bench its room.
+addEventListener('resize', () => {
+  const st = document.querySelector('main').style;
+  for (const id of Object.keys(COLS)) if (st.getPropertyValue(COLS[id].v)) setCol(id, paneWidth(id));
+});
+
 $('q').addEventListener('input', (e) => { S.q = e.target.value; renderList(); });
 $('mod').addEventListener('change', (e) => { S.mod = e.target.value; renderList(); });
 $('pats').addEventListener('change', (e) => {
