@@ -118,3 +118,25 @@ export const noteDetail = async () => { await api.get('/notes/detail'); };
   const row = fe.bricks.find((b) => b.id === 'api/notes.ts').studs.find((s) => s.name === 'deleteNote').http[0];
   assert.strictEqual(row.match, 'unserved', "the stud's http entry says so too");
 });
+
+test('a change that registers the controller fixes the call, and says what it was', () => {
+  const { stackCompare } = require('../src/change');
+  const fcfg = Object.assign({}, react, { name: 'fe', root: 'src', __dir: path.join(__dirname, 'fixtures', 'react') });
+  const FE = {
+    'api/axios.ts': "import axios from 'axios';\nconst api = axios.create({ baseURL: '/' });\nexport default api;\n",
+    'api/notes.ts': "import api from './axios';\nexport const deleteNote = async (id: number) => { await api.delete(`/notes/${id}`); };\n",
+  };
+  const be0 = run(BASE);
+  const be1 = run(Object.assign({}, BASE, {
+    'notes/notes.module.ts': BASE['notes/notes.module.ts'].replace('controllers: [CreateNoteAction]', 'controllers: [CreateNoteAction, DeleteNoteAction]'),
+  }));
+  const fe = (be) => scan(fcfg, { files: FE, backend: { model: be, label: 'be', cfg } });
+  const st = stackCompare(fe(be0), fe(be1), be0, be1).summary.stack;
+  assert.deepStrictEqual(st.fixed.map((f) => [f.fromMethod, f.verb, f.path, f.endpoint, f.was]),
+    [['deleteNote', 'DELETE', '/notes/${id}', 'DELETE /notes/:id#apply', 'unserved']]);
+  assert.deepStrictEqual(st.broken, []);
+  // and the other way: the change that drops it from the module breaks the call
+  const back = stackCompare(fe(be1), fe(be0), be1, be0).summary.stack;
+  assert.deepStrictEqual(back.broken.map((b) => [b.fromMethod, b.match, b.endpoint, b.was]),
+    [['deleteNote', 'unserved', 'DELETE /notes/:id#apply', 'DELETE /notes/:id#apply']]);
+});

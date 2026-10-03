@@ -255,12 +255,20 @@ function stackCompare(baseFe, headFe, baseBe, headBe, renames = {}) {
   // ---- broken calls: new calls into nothing, and calls the change cut off.
   const before = new Map();
   for (const c of baseFe.calls) if (c.kind === 'http') before.set(callKey(feMove(c.from), c), c);
-  const broken = [], unread = [];
+  // And calls it repaired: broken at the base, reaching a served endpoint now.
+  const broken = [], unread = [], fixed = [];
+  const BROKEN = ['unmatched', 'ambiguous', 'unserved'];
   for (const c of headFe.calls) {
     if (c.kind !== 'http') continue;
     if (c.match === 'unread') { unread.push({ from: 'fe:' + c.from, verb: c.verb, line: c.line }); continue; }
-    if (c.match === 'matched') continue;
     const was = before.get(callKey(c.from, c));
+    if (c.match === 'matched') {
+      if (was && BROKEN.includes(was.match)) {
+        fixed.push({ from: 'fe:' + c.from, fromMethod: c.fromMethod, verb: c.verb, path: c.path, line: c.line,
+          endpoint: c.endpoint, was: was.match });
+      }
+      continue;
+    }
     if (was && was.match !== 'matched') continue;       // broken before the change too: not its doing
     broken.push({ from: 'fe:' + c.from, fromMethod: c.fromMethod, verb: c.verb, path: c.path, line: c.line,
       match: c.match, endpoint: c.endpoint || null, was: was ? was.endpoint : null });
@@ -272,7 +280,7 @@ function stackCompare(baseFe, headFe, baseBe, headBe, renames = {}) {
   const count = {};
   for (const k of ['added', 'removed', 'edited', 'unchanged']) count[k] = fe.count[k] + be.count[k];
   const summary = summarise(count, pairs);
-  summary.stack = { endpointsAdded, endpointsRemoved, broken, unread, http,
+  summary.stack = { endpointsAdded, endpointsRemoved, broken, fixed, unread, http,
     contractDrift: contractDriftOf(baseFe, headFe, feMove),
     sides: { fe: fe.summary, be: be.summary } };
   return {
