@@ -355,7 +355,8 @@ what travels along it (the injected parameter, the methods called, the HTTP
 requests) and, in a change, what its colour means. Hover a legend item for
 what it means, and every mark of that kind on the bench lights up. Click
 anything to read its source, where each call site links to the brick it
-lands in.
+lands in. Drag either sidebar's inner edge to widen it (double-click the
+edge to reset); the widths are kept in your browser.
 
 It is a local server, bound to `127.0.0.1` only, because it serves source
 code. It re-scans when you save a `.ts` file, and the open page redraws

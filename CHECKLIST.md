@@ -76,3 +76,4 @@ There is nothing in chronus or omega to test these against yet.
 - [x] A file's loose functions beside a same-named component are named for
   the file (`TagActionPanel.tsx`), so a list never shows two of one name.
 - [x] Hovering a line or a legend item on the workbench explains it.
+- [x] The workbench's sidebars resize by dragging their inner edge.
