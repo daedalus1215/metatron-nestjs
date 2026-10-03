@@ -100,6 +100,10 @@ drift upward quietly. Report what `check` said and let them choose.
 
 `--allow-new <n>` and `--rule <id>` exist for adopting the gate mid-stream.
 
+`controller-unregistered` is a controller no module lists in `controllers`:
+its routes are declared and Nest never serves them. That is a real outage,
+not a style point. Name the class and its routes.
+
 ## Blast radius of a change
 
 When asked what a change touches, what its blast radius is, or what a commit/PR
@@ -135,6 +139,8 @@ npx metatron-nest serve                  # http://127.0.0.1:4477/, re-scans on s
 
 It is a long-running local server (bound to 127.0.0.1), so start it in the
 background and give the user the URL. Do not leave it running unasked.
+Hovering a line or a legend item on the bench explains what it means, so
+point the user there when they ask what the lines and colours are.
 
 For questions you can answer yourself, read the wiring model in
 `.metatron/model.json` directly:
@@ -204,8 +210,11 @@ For a PR that touches both sides, change mode on the joined workbench (or
 at each commit. `change.summary.stack` has:
 
 - `endpointsAdded` and `endpointsRemoved`, each with the calls that reach it
-- `broken`: frontend calls that reach no endpoint after the change, with
-  what each reached before (`was`)
+- `broken`: frontend calls that reach no served endpoint after the change,
+  with what each reached before (`was`). `match: 'unserved'` means the call
+  reaches an endpoint (`endpoint`) whose controller no module lists
+- `fixed`: calls broken at the base that reach a served endpoint now, with
+  what was wrong (`was`: `unmatched`, `ambiguous` or `unserved`)
 - `http`: the cross-stack pairs by class
 - `contractDrift`: calls whose request or response the change made differ
   from the endpoint's declared shape (drift already there is left out)
