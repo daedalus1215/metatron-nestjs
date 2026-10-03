@@ -883,6 +883,13 @@ function stackPanel(st, link) {
         + ` <span class="muted">from</span> ${link(b.from)} <span class="muted">· ${b.match === 'unserved' && b.endpoint ? 'reaches ' + esc(b.endpoint.split('#')[0]) + ', which no module serves'
           : b.was ? 'reached ' + esc(b.was.split('#')[0]) + ' before' : 'new, reaches nothing'}</span></div>`).join('');
   }
+  const fixed = st.fixed || [];
+  if (fixed.length) {
+    const was = { unmatched: 'reached nothing', ambiguous: 'was ambiguous', unserved: 'was not served' };
+    h += `<div class="it"><b style="color:var(--green)">${fixed.length} call${fixed.length === 1 ? '' : 's'} fixed</b></div>`
+      + fixed.map((f) => `<div class="it">${esc(f.verb)} <code>${esc(f.path)}</code> <span class="muted">from</span> ${link(f.from)}`
+        + ` <span class="muted">· now reaches</span> ${ep(f.endpoint)} <span class="muted">(${was[f.was] || esc(f.was)})</span></div>`).join('');
+  }
   const drift = st.contractDrift || [];
   if (drift.length) {
     h += `<div class="it"><b style="color:var(--amber)">${drift.length} call${drift.length === 1 ? ' drifts' : 's drift'} from the endpoint's declared shape</b></div>`
