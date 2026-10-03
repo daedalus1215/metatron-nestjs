@@ -114,6 +114,9 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
 .sideline { stroke:var(--teal); stroke-width:1.5; stroke-dasharray:8 4; }
 .sidelabel { font-size:10px; letter-spacing:.12em; text-transform:uppercase; fill:var(--teal); }
 .edge.http { stroke:var(--teal); stroke-width:1.8; opacity:.85; stroke-dasharray:none; }
+.hit { fill:none; stroke:transparent; stroke-width:12; pointer-events:stroke; cursor:help; }
+.legend [data-legend] { cursor:help; }
+.tip .sw { vertical-align:2px; }
 
 .tip { position:fixed; pointer-events:none; z-index:10; max-width:420px; padding:7px 9px; border-radius:6px;
   background:var(--ink); color:var(--paper); font-size:12px; box-shadow:var(--shadow); }
@@ -434,6 +437,14 @@ function renderBench() {
     const dy = Math.max(30, Math.abs(y2 - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   };
+  // Every drawn connection has a wider, invisible twin on top of the lines
+  // (under the bricks), so a thin line is easy to hover.
+  let hits = '', ei = 0;
+  const edge = (kind, cls, from, to, d, extra = '') => {
+    const i = ei++;
+    hits += `<path class="hit" data-i="${i}" d="${d}"/>`;
+    return `<path class="edge ${cls}" data-i="${i}" data-kind="${kind}" data-from="${esc(from)}" data-to="${esc(to)}"${extra} d="${d}"/>`;
+  };
   // Wires leave from the socket notch that makes them.
   const wired = new Set();
   for (const id of nodes.keys()) {
@@ -443,12 +454,12 @@ function renderBench() {
       if (!tgt) return;
       const q = P.get(tgt);
       wired.add(id + '>' + tgt);
-      edges += `<path class="edge wire${pc(id, tgt)}" data-from="${esc(id)}" data-to="${esc(tgt)}" data-sock="${i}" d="${curve(pipX(p, b.sockets.length, i), p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+      edges += edge('wire', 'wire' + pc(id, tgt), id, tgt, curve(pipX(p, b.sockets.length, i), p.y + BH, q.x + q.w / 2, q.y), ` data-sock="${i}"`);
       if (s.status === 'port' && s.to && s.boundTo && P.has(s.to) && P.has(s.boundTo)) {
         const r = P.get(s.boundTo), pp = P.get(s.to);
         if (!wired.has(s.to + '>' + s.boundTo)) {
           wired.add(s.to + '>' + s.boundTo);
-          edges += `<path class="edge bound${pc(s.to, s.boundTo)}" data-from="${esc(s.to)}" data-to="${esc(s.boundTo)}" d="${curve(pp.x + pp.w / 2, pp.y + BH, r.x + r.w / 2, r.y)}"/>`;
+          edges += edge('bound', 'bound' + pc(s.to, s.boundTo), s.to, s.boundTo, curve(pp.x + pp.w / 2, pp.y + BH, r.x + r.w / 2, r.y));
         }
       }
     });
@@ -459,7 +470,7 @@ function renderBench() {
     for (const d of S.change.pairs) {
       if (d.class !== 'detached' || !P.has(d.from) || !P.has(d.to)) continue;
       const p = P.get(d.from), q = P.get(d.to);
-      edges += `<path class="edge c-detached" data-from="${esc(d.from)}" data-to="${esc(d.to)}" d="${curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+      edges += edge('detached', 'c-detached', d.from, d.to, curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y));
     }
   }
   // A call with no wire behind it: a function brick, a static call, main.ts.
@@ -469,7 +480,7 @@ function renderBench() {
       if (!P.has(c.to) || wired.has(id + '>' + c.to) || seen.has(c.to)) continue;
       seen.add(c.to);
       const p = P.get(id), q = P.get(c.to);
-      edges += `<path class="edge call${c.kind === 'http' ? ' http' : ''}${pc(id, c.to)}" data-from="${esc(id)}" data-to="${esc(c.to)}" d="${curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y)}"/>`;
+      edges += edge(c.kind === 'http' ? 'http' : 'call', 'call' + (c.kind === 'http' ? ' http' : '') + pc(id, c.to), id, c.to, curve(p.x + p.w / 2, p.y + BH, q.x + q.w / 2, q.y));
     }
   }
 
@@ -484,7 +495,7 @@ function renderBench() {
       + `<text class="sub" x="${p.x + p.w / 2}" y="${p.y + 37}" text-anchor="middle">${esc(b.pattern)} · ${esc(b.module)}</text>`;
     b.studs.slice(0, 18).forEach((s, i) => {
       const x = pipX(p, b.studs.length, i), y = p.y;
-      const common = `class="stud" data-id="${esc(id)}" data-stud="${i}"`;
+      const common = `class="stud" data-id="${esc(id)}" data-stud="${i}" data-grip="${esc(s.grip)}"`;
       if (s.grip === 'framework') g += `<rect ${common} x="${x - 4}" y="${y - 4}" width="8" height="8" fill="var(--violet)" stroke="var(--surface)"/>`;
       else if (s.grip === 'route') g += `<circle ${common} cx="${x}" cy="${y}" r="4.5" fill="var(--surface)" stroke="var(--blue)" stroke-width="2.2"/>`;
       else if (s.grip === 'unseen') g += `<circle ${common} cx="${x}" cy="${y}" r="4.5" fill="var(--paper)" stroke="var(--rose)" stroke-width="1.4" stroke-dasharray="2 1.6"/>`;
@@ -502,26 +513,64 @@ function renderBench() {
 
   bench.innerHTML = (cut ? `<div class="note">${cut} more neighbours not drawn — lower the depth or hide patterns.</div>` : '')
     + `<svg id="svg" width="${L.width}" height="${L.height}" viewBox="0 0 ${L.width} ${L.height}" role="img" aria-label="Bricks around ${esc(short(S.focus))}">`
-    + rowsSvg + `<g id="edges">${edges}</g>` + bricks + '</svg>'
+    + rowsSvg + `<g id="edges">${edges}</g><g id="hits">${hits}</g>` + bricks + '</svg>'
     + legend();
   const f = P.get(mapMode ? [...nodes.keys()].find((k) => S.change.bricks[k] === 'added') || [...nodes.keys()][0] : S.focus);
   bench.scrollLeft = Math.max(0, f.x + f.w / 2 - bench.clientWidth / 2);
   bench.scrollTop = mapMode ? 0 : Math.max(0, f.y - bench.clientHeight / 3);
 }
+/**
+ * What each mark on the bench means, in words: shown when a line, or a
+ * legend item, is hovered. [name, how it looks, what it says].
+ */
+const MEANING = {
+  wire: ['Wire', 'solid line', 'A constructor injection: the first brick is handed the second, and calls it.'],
+  call: ['Call with no wire', 'dashed line', 'A direct use with nothing injected: an imported function, a static method, a render, a hook.'],
+  bound: ['Port binding', 'dotted line', 'The first brick is a port (an interface or token). A module binds it to the second, the class that does the work.'],
+  http: ['HTTP call', 'teal line', 'A frontend request crossing to the backend endpoint that serves it.'],
+  detached: ['Detached', 'rose dashed line', 'This connection was there before the change, and is gone after it.'],
+  'c-attachment': ['Attachment', 'green line', 'New code plugged into an existing brick: the first brick is new, the second was already there.'],
+  'c-graft': ['Graft', 'amber line', 'Existing code now reaches new code: the first brick was there, the second is new.'],
+  'c-rewire': ['Rewire', 'violet line', 'Two bricks that were both already there, newly connected.'],
+  'c-territory': ['Territory', 'thin green line', 'New code connected to new code.'],
+  'c-kept': ['New calls on a kept wire', 'blue line', 'The connection was already there. This change adds calls along it.'],
+  'pip-brick': ['Stud', 'filled dot on top', 'What a brick offers: a public method on the backend; a render, hook or exported function on the frontend. Some brick in the tree uses this one.'],
+  'pip-route': ['Route stud', 'ringed dot on top', 'Reached from outside the code: an HTTP route on the backend, a <Route> mount on the frontend.'],
+  'pip-framework': ['Framework stud', 'square on top', "Called by the framework itself: a lifecycle hook, a guard's canActivate."],
+  'pip-unseen': ['Unseen stud', 'dashed ring on top', 'Nothing in the scanned tree is seen using it. Not necessarily dead: a dynamic call or a caller outside the tree would not show.'],
+  'pip-socket': ['Socket', 'notch underneath', 'What the brick plugs into: a constructor parameter on the backend, a hook or context on the frontend. Black: found in the tree. Teal: a port a module binds. Grey: from a framework package. Rose: not found.'],
+  'brick-added': ['Added brick', 'green brick', 'New in this change.'],
+  'brick-edited': ['Edited brick', 'amber brick', 'Changed in this change. A ring marks each stud that was added or edited.'],
+  'brick-ctx': ['Context', 'faded brick', 'Unchanged. Drawn because a changed connection touches it.'],
+  'brick-removed': ['Removed brick', 'rose dashed brick', 'Deleted by this change, drawn as it was.'],
+};
+const CHANGE_SW = { 'c-attachment': 'var(--green)', 'c-graft': 'var(--amber)', 'c-rewire': 'var(--violet)', 'c-territory': 'var(--green)', 'c-kept': 'var(--blue)' };
+
 function legend() {
   const pip = (inner) => `<svg width="12" height="12" viewBox="-6 -6 12 12">${inner}</svg>`;
-  return `<div class="legend">
-    <span>${pip('<circle r="4.5" fill="var(--l4)"/>')}stud a brick grips</span>
-    <span>${pip('<circle r="4" fill="var(--surface)" stroke="var(--blue)" stroke-width="2"/>')}route</span>
-    <span>${pip('<rect x="-4" y="-4" width="8" height="8" fill="var(--violet)"/>')}framework</span>
-    <span>${pip('<circle r="4" fill="none" stroke="var(--rose)" stroke-dasharray="2 1.6"/>')}unseen</span>
-    <span>${pip('<rect x="-4.5" y="-3" width="9" height="6" fill="var(--ink)"/>')}socket</span>
-    <span>solid: wire · dashed: call with no wire · dotted: port → bound class${S.m.bridge ? ' · teal: HTTP, frontend → backend' : ''}</span>
-    ${S.change ? `<span><i class="sw" style="background:var(--green)"></i>attachment: new → existing</span>
-    <span><i class="sw" style="background:var(--amber)"></i>graft: existing → new</span>
-    <span><i class="sw" style="background:var(--violet)"></i>rewire: existing → existing</span>
-    <span><i class="sw" style="background:var(--blue)"></i>new calls on a kept wire</span>
-    <span><i class="sw" style="background:var(--rose)"></i>detached · a dashed brick was removed</span>` : ''}</div>`;
+  const line = (dash, color = 'var(--ink3)') => `<svg width="22" height="8" viewBox="0 0 22 8"><line x1="1" x2="21" y1="4" y2="4" stroke="${color}" stroke-width="2"${dash ? ` stroke-dasharray="${dash}"` : ''}/></svg>`;
+  const item = (k, mark, text) => `<span data-legend="${k}">${mark}${text}</span>`;
+  const sw = (k) => `<i class="sw" style="background:${CHANGE_SW[k] || 'var(--rose)'}"></i>`;
+  return `<div class="legend">`
+    + item('pip-brick', pip('<circle r="4.5" fill="var(--l4)"/>'), 'stud a brick grips')
+    + item('pip-route', pip('<circle r="4" fill="var(--surface)" stroke="var(--blue)" stroke-width="2"/>'), 'route')
+    + item('pip-framework', pip('<rect x="-4" y="-4" width="8" height="8" fill="var(--violet)"/>'), 'framework')
+    + item('pip-unseen', pip('<circle r="4" fill="none" stroke="var(--rose)" stroke-dasharray="2 1.6"/>'), 'unseen')
+    + item('pip-socket', pip('<rect x="-4.5" y="-3" width="9" height="6" fill="var(--ink)"/>'), 'socket')
+    + item('wire', line(''), 'wire')
+    + item('call', line('4 4'), 'call with no wire')
+    + item('bound', line('1.5 3'), 'port → bound class')
+    + (S.m.bridge ? item('http', line('', 'var(--teal)'), 'HTTP, frontend → backend') : '')
+    + (S.change ? item('c-attachment', sw('c-attachment'), 'attachment: new → existing')
+      + item('c-graft', sw('c-graft'), 'graft: existing → new')
+      + item('c-rewire', sw('c-rewire'), 'rewire: existing → existing')
+      + item('c-kept', sw('c-kept'), 'new calls on a kept wire')
+      + item('detached', sw('detached'), 'detached')
+      + item('brick-added', '<i class="sw" style="background:var(--green);height:8px"></i>', 'added')
+      + item('brick-edited', '<i class="sw" style="background:var(--amber);height:8px"></i>', 'edited')
+      + item('brick-ctx', '<i class="sw" style="background:var(--rule2);height:8px"></i>', 'unchanged')
+      + item('brick-removed', '<i class="sw" style="border:1px dashed var(--rose);height:6px"></i>', 'removed') : '')
+    + '</div>';
 }
 
 // ------------------------------------------------------------------ hover
@@ -573,6 +622,58 @@ function hoverSock(el, e) {
   showTip(e, `<code>${esc(s.prop)}: ${esc(s.external || s.type || '?')}</code><br><span class="k">${esc(s.status)}</span>`
     + (tgt ? ` → ${esc(short(tgt))}` : '') + (s.boundTo && s.to ? ` <span class="k">bound to</span> ${esc(short(s.boundTo))}` : '')
     + (used.size ? `<br><span class="k">grips</span> ${[...used].map(esc).join(', ')}` : ''));
+}
+
+/** What a hovered line is, between which bricks, and why it is drawn. */
+function hoverEdge(hit, e) {
+  const p = document.querySelector(`#edges .edge[data-i="${hit.dataset.i}"]`);
+  if (!p) return;
+  document.querySelectorAll('#edges .edge').forEach((x) => x.classList.add(x === p ? 'lit' : 'dim'));
+  const from = p.dataset.from, to = p.dataset.to, kind = p.dataset.kind;
+  const [name, look, what] = MEANING[kind];
+  let h = `<b>${esc(name)}</b> <span class="k">· ${esc(look)}</span><br>${esc(short(from))} → ${esc(short(to))}`;
+  const calls = (S.callsFrom.get(from) || []).filter((c) => c.to === to || c.boundTo === to);
+  const said = (list) => [...new Set(list)].slice(0, 6).join('<br>') + (new Set(list).size > 6 ? '<br>…' : '');
+  if (kind === 'wire') {
+    const s = S.byId.get(from).sockets[+p.dataset.sock];
+    if (s) h += `<br><span class="k">injected as</span> <code>${esc(s.prop)}: ${esc(s.type || '?')}</code>`;
+  }
+  if (kind === 'http') {
+    h += '<br>' + said(calls.map((c) => `${esc(c.fromMethod || '(module)')} <code>${esc(c.verb)} ${esc(c.path)}</code> → ${esc(short(to))}.${esc(c.toMethod || '?')}`));
+  } else if (kind === 'detached') {
+    const d = S.change && S.change.pairs.find((x) => x.class === 'detached' && x.from === from && x.to === to);
+    if (d && d.calls) h += '<br><span class="k">it carried</span><br>' + said(d.calls.map(esc));
+  } else if (calls.length) {
+    const fm = (c) => esc(c.fromMethod || '(module)');
+    const VERB = { render: (c) => `${fm(c)} renders it`, mount: () => 'a route mounts it', hook: (c) => `${fm(c)} uses it`,
+      context: (c) => `${fm(c)} reads it`, provide: (c) => `${fm(c)} provides it` };
+    h += '<br>' + said(calls.map((c) => (VERB[c.kind] ? VERB[c.kind](c) : `${fm(c)} → ${esc(short(c.to))}.${esc(c.toMethod || '?')}`)));
+  }
+  h += `<br><span class="k">${esc(what)}</span>`;
+  const cc = [...p.classList].find((c) => MEANING[c] && c.startsWith('c-'));
+  if (cc) h += `<br><i class="sw" style="background:${CHANGE_SW[cc]}"></i><b>${esc(MEANING[cc][0])}</b> <span class="k">${esc(MEANING[cc][2])}</span>`;
+  showTip(e, h);
+}
+/** A legend item: what it means, and every mark of its kind on the bench, lit. */
+function hoverLegend(el, e) {
+  const k = el.dataset.legend, m = MEANING[k];
+  if (!m) return;
+  let n;
+  if (k.startsWith('pip-')) {
+    const marks = document.querySelectorAll(k === 'pip-socket' ? '#bench .sock' : `#bench .stud[data-grip="${k.slice(4)}"]`);
+    marks.forEach((x) => x.classList.add('lit'));
+    n = marks.length;
+  } else if (k.startsWith('brick-')) {
+    const all = [...document.querySelectorAll('#bench .brick')];
+    all.forEach((b) => b.classList.toggle('dim', !b.classList.contains(k.slice(6))));
+    n = all.filter((b) => b.classList.contains(k.slice(6))).length;
+  } else {
+    const sel = k.startsWith('c-') ? '.' + k : `[data-kind="${k}"]`;
+    const all = [...document.querySelectorAll('#edges .edge')];
+    all.forEach((x) => x.classList.add(x.matches(sel) ? 'lit' : 'dim'));
+    n = all.filter((x) => x.matches(sel)).length;
+  }
+  showTip(e, `<b>${esc(m[0])}</b> <span class="k">· ${esc(m[1])}</span><br>${esc(m[2])}<br><span class="k">${n} on the bench now</span>`);
 }
 
 // ------------------------------------------------------------------ inspector
@@ -976,12 +1077,12 @@ document.addEventListener('click', (e) => {
   if (row) { const [a, z] = row.dataset.lines.split('-').map(Number); flashLines(a, z); }
 });
 $('bench').addEventListener('mouseover', (e) => {
-  const st = e.target.closest('.stud'), so = e.target.closest('.sock');
-  if (st) hoverStud(st, e); else if (so) hoverSock(so, e);
+  const st = e.target.closest('.stud'), so = e.target.closest('.sock'), hit = e.target.closest('.hit'), lg = e.target.closest('[data-legend]');
+  if (st) hoverStud(st, e); else if (so) hoverSock(so, e); else if (hit) hoverEdge(hit, e); else if (lg) hoverLegend(lg, e);
 });
 $('bench').addEventListener('mousemove', (e) => { if (!tip.hidden) moveTip(e); });
 $('bench').addEventListener('mouseout', (e) => {
-  if (e.target.closest('.stud, .sock')) { clearLit(); tip.hidden = true; }
+  if (e.target.closest('.stud, .sock, .hit, [data-legend]')) { clearLit(); tip.hidden = true; }
 });
 $('q').addEventListener('input', (e) => { S.q = e.target.value; renderList(); });
 $('mod').addEventListener('change', (e) => { S.mod = e.target.value; renderList(); });

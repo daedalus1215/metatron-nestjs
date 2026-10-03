@@ -61,6 +61,16 @@ test('source is served for both trees, by namespaced file', async () => {
   assert.strictEqual(bare.status, 404, 'an un-namespaced path is not a file in the stack');
 });
 
+test("the page's script parses, and every line kind and legend item it draws has a meaning", async () => {
+  const html = await (await fetch(base)).text();
+  const js = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'));
+  assert.doesNotThrow(() => new Function(js));
+  const keys = new Set([...js.matchAll(/^  '?([\w-]+)'?: \['/gm)].map((m) => m[1]));
+  const used = [...js.matchAll(/\bitem\('([\w-]+)'/g), ...js.matchAll(/\bedge\('([\w-]+)'/g)].map((m) => m[1]).concat('http', 'call');
+  assert.ok(used.length > 15, 'found the legend items and line kinds');
+  for (const k of used) assert.ok(keys.has(k), `no meaning for ${k}`);
+});
+
 test('routes and the bridge travel with the stack', () => {
   assert.ok(m.routes.some((r) => r.path === '/things/:id' && r.component === 'fe:pages/ThingPage/ThingPage.tsx#ThingPage'));
   assert.deepStrictEqual(m.bridge.unreached.length, 3);
