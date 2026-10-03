@@ -263,7 +263,7 @@ function stackCompare(baseFe, headFe, baseBe, headBe, renames = {}) {
     const was = before.get(callKey(c.from, c));
     if (was && was.match !== 'matched') continue;       // broken before the change too: not its doing
     broken.push({ from: 'fe:' + c.from, fromMethod: c.fromMethod, verb: c.verb, path: c.path, line: c.line,
-      match: c.match, was: was ? was.endpoint : null });
+      match: c.match, endpoint: c.endpoint || null, was: was ? was.endpoint : null });
   }
 
   // ---- merged

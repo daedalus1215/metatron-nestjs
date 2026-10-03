@@ -375,6 +375,7 @@ function analyze(cfg, opts = {}) {
     stackReport = {
       backend: stack.label,
       broken: st.broken.map((b) => ({ file: file(b.from), line: b.line, verb: b.verb, path: b.path, match: b.match,
+        endpoint: b.endpoint ? b.endpoint.split('#')[0] : null,
         was: b.was ? b.was.split('#')[0] : null })),
       endpointsAdded: st.endpointsAdded.map((e) => ({ endpoint: e.id.split('#')[0], calledBy: [...new Set(e.calledBy.map(file))] })),
       endpointsRemoved: st.endpointsRemoved.map((e) => ({ endpoint: e.id.split('#')[0], calledBy: [...new Set(e.calledBy.map(file))] })),
@@ -460,7 +461,8 @@ function stackLines(st, md) {
     L.push((md ? '' : '  ') + (md ? '**' : '') + st.broken.length + ' broken call' + (st.broken.length === 1 ? '' : 's') + (md ? '**' : '  !'));
     for (const b of st.broken) {
       L.push(item + code(b.verb + ' ' + b.path) + '   ' + b.file + ':' + b.line + '   ' +
-        (b.was ? 'reached ' + b.was + ' before this change' : 'new, reaches no endpoint') + (b.match === 'ambiguous' ? ' (ambiguous)' : ''));
+        (b.match === 'unserved' ? 'reaches ' + b.endpoint + ', whose controller no module lists'
+          : b.was ? 'reached ' + b.was + ' before this change' : 'new, reaches no endpoint') + (b.match === 'ambiguous' ? ' (ambiguous)' : ''));
     }
   } else L.push((md ? '' : '  ') + 'broken calls: none');
   // Spec 15: advisory, so no `!` — the runtime may still work.

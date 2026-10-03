@@ -271,8 +271,9 @@ if (W && W.http) {
   const B = model.bridge;
   if (B && B.error) console.log(`  http ${W.http.calls} calls · backend unavailable: ${B.error}  !`);
   else if (B) {
-    const bad = B.ambiguous + B.unmatched + B.unread;
-    console.log(`  http ${B.matched}/${B.calls} calls matched a backend endpoint (${B.backend}) · ${B.ambiguous} ambiguous · ${B.unmatched} unmatched · ${B.unread} unread${bad ? '  !' : ''}`);
+    const bad = B.ambiguous + B.unmatched + (B.unserved || 0) + B.unread;
+    console.log(`  http ${B.matched}/${B.calls} calls matched a backend endpoint (${B.backend}) · ${B.ambiguous} ambiguous · ${B.unmatched} unmatched`
+      + `${B.unserved ? ` · ${B.unserved} not served` : ''} · ${B.unread} unread${bad ? '  !' : ''}`);
     if (B.unreached.length) {
       const show = B.unreached.slice(0, 4).map((id) => id.split('#')[0]).join(', ');
       console.log(`       ${B.unreached.length} of ${B.endpoints} endpoints reached by no frontend call: ${show}${B.unreached.length > 4 ? ', …' : ''}`);

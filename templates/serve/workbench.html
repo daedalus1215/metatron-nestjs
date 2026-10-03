@@ -591,7 +591,8 @@ function routeOf(s) {
 /** A stud's HTTP calls and where each lands (spec 12). */
 function httpText(h) {
   const where = h.match === 'matched' ? '→ ' + h.endpoint.split('#')[0]
-    : h.match ? h.match : '';
+    : h.match === 'unserved' && h.endpoint ? '→ ' + h.endpoint.split('#')[0] + ' · not served: no module lists its controller'
+      : h.match ? h.match : '';
   return `${h.verb} ${h.path === null ? '(unread URL)' : h.path} ${where}`.trim();
 }
 function httpLines(s, sep) { return (s.http || []).map((h) => sep + '<code>' + esc(httpText(h)) + '</code>').join(''); }
@@ -716,7 +717,7 @@ async function renderSource(b) {
     const n = from + k;
     const ms = (markers.get(n) || []).map((c) => c.kind === 'http'
       ? (c.to ? `<button class="go" data-go="${esc(c.to)}">→ ${esc(c.verb)} ${esc(short(c.to))}.${esc(c.toMethod)}</button>`
-        : `<span class="go" style="cursor:default;color:var(--rose)">${esc(c.verb)} ${esc(c.match || 'unmatched')}</span>`)
+        : `<span class="go" style="cursor:default;color:var(--rose)">${esc(c.verb)} ${esc(c.match === 'unserved' ? 'not served' : c.match || 'unmatched')}</span>`)
       : `<button class="go" data-go="${esc(c.boundTo || c.to)}">→ ${esc(short(c.boundTo || c.to))}.${esc(c.toMethod)}</button>`).join('');
     rows += `<tr data-n="${n}"><td class="n">${n}</td><td>${h}${ms}</td></tr>`;
   });
@@ -879,7 +880,8 @@ function stackPanel(st, link) {
   if (st.broken.length) {
     h += `<div class="it"><b style="color:var(--rose)">${st.broken.length} broken call${st.broken.length === 1 ? '' : 's'}</b></div>`
       + st.broken.map((b) => `<div class="it" style="color:var(--rose)">${esc(b.verb)} <code>${esc(b.path)}</code>`
-        + ` <span class="muted">from</span> ${link(b.from)} <span class="muted">· ${b.was ? 'reached ' + esc(b.was.split('#')[0]) + ' before' : 'new, reaches nothing'}</span></div>`).join('');
+        + ` <span class="muted">from</span> ${link(b.from)} <span class="muted">· ${b.match === 'unserved' && b.endpoint ? 'reaches ' + esc(b.endpoint.split('#')[0]) + ', which no module serves'
+          : b.was ? 'reached ' + esc(b.was.split('#')[0]) + ' before' : 'new, reaches nothing'}</span></div>`).join('');
   }
   const drift = st.contractDrift || [];
   if (drift.length) {
