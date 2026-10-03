@@ -107,8 +107,9 @@ svg text { font-family:'Archivo', ui-sans-serif, system-ui, sans-serif; }
 .edge { fill:none; stroke:var(--ink3); stroke-width:1.3; opacity:.65; }
 .edge.call { stroke-dasharray:4 4; opacity:.5; }
 .edge.bound { stroke-dasharray:1.5 3; }
-.edge.lit { stroke:var(--hot); opacity:1; stroke-width:2.2; }
-.edge.dim { opacity:.12; }
+/* an id, so lit and dim win over the http and change colours below */
+#edges .edge.lit { stroke:var(--hot); opacity:1; stroke-width:2.6; }
+#edges .edge.dim { opacity:.12; }
 .rowlabel { font-size:10px; letter-spacing:.14em; text-transform:uppercase; fill:var(--ink3); }
 .rowline { stroke:var(--rule); stroke-dasharray:2 4; }
 .sideline { stroke:var(--teal); stroke-width:1.5; stroke-dasharray:8 4; }
