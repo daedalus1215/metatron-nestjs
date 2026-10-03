@@ -158,7 +158,8 @@ parameter it cannot read. The count is on the `wiring` line of the scan.
 
 A local import that names no file is `import-unresolved`. The rest belong to a
 frontend (see **Frontend**): `http-unmatched`, `http-ambiguous` and
-`http-unread` for calls the bridge could not place, `route-path-unread` for a
+`http-unread` for calls the bridge could not place, `http-unserved` for a
+call that reaches an endpoint no module serves, `route-path-unread` for a
 `<Route path>` it cannot read, and `backend-unavailable` when the linked
 backend cannot be loaded.
 
@@ -226,11 +227,23 @@ Aggregate findings — `dag` reports cycle totals, `app-apps` reports a spelling
 split — carry `gate: false` and never become violations. They are worth printing
 and meaningless to ratchet. `metatron-nest baseline` lists which ones are excluded.
 
+A controller no module lists in its `controllers` is a violation too:
+`controller-unregistered`, one per class. Nest serves a controller's routes
+only when a module lists it, so its routes are declared and never served. It
+is read only when every `controllers` list in the tree is a plain list of
+names. A spread or a variable could hold anything, and then nothing is
+flagged. Whether the listing module is itself imported into the app is not
+checked. On chronus, the pin feature (`dae3a70`) dropped `DeleteNoteAction`
+from the notes module and kept its import, and `DELETE /notes/:id` went
+unserved for a week.
+
 In a frontend with a linked backend (see **Frontend**), a call that reaches no
-endpoint is a violation too: `http-broken`, one per call, keyed by file and
-`VERB url`. The baseline accepts today's, and `check` fails on the next one.
-This is the gate that would have stopped chronus #155, which shipped three
-calls to endpoints that did not exist.
+served endpoint is a violation too: `http-broken`, one per call, keyed by file
+and `VERB url`. That covers a URL that matches no endpoint, one that matches
+several equally, and one whose only match is on an unregistered controller
+(the call is `unserved`). The baseline accepts today's, and `check` fails on
+the next one. This is the gate that would have stopped chronus #155, which
+shipped three calls to endpoints that did not exist.
 
 ---
 
@@ -337,8 +350,12 @@ The parts of a brick are its **studs** and **sockets**:
 - **Sockets** are its constructor parameters, along the bottom edge.
 
 Hover a stud to light every call that grips it. Hover a socket to see which
-studs it grips. Click anything to read its source, where each call site
-links to the brick it lands in.
+studs it grips. Hover a line to see what kind it is, between which bricks,
+what travels along it (the injected parameter, the methods called, the HTTP
+requests) and, in a change, what its colour means. Hover a legend item for
+what it means, and every mark of that kind on the bench lights up. Click
+anything to read its source, where each call site links to the brick it
+lands in.
 
 It is a local server, bound to `127.0.0.1` only, because it serves source
 code. It re-scans when you save a `.ts` file, and the open page redraws
@@ -469,6 +486,11 @@ contracts requests 67 compared · 0 differ · 2 unread   responses 45 compared �
 components reach the API through hooks. A component that imports the request
 layer directly is a `component>request` skip, like the backend's layer skips.
 
+**Dead files.** `orphans` walks imports outward from the app's entry
+(`main.tsx`), following a lazy `import('./pages/X')` as well, and lists the
+files it never reaches. On a backend the walk starts from the modules and
+the HTTP handlers instead.
+
 **One stack.** `metatron-nest serve` in a frontend with `backend` set serves
 both as one workbench:
 
@@ -490,7 +512,8 @@ frontend to the backend of that same commit. The change panel leads with
 what crossed the line:
 
 - **broken calls first:** a frontend call the change added that reaches no
-  endpoint, or one whose endpoint the change removed
+  endpoint, or one whose endpoint the change removed or stopped serving
+- **fixed calls:** broken at the base, reaching a served endpoint now
 - **endpoints added,** with the calls that reach them, or "nothing calls it
   yet"
 - **endpoints removed,** with the calls that used to reach them
