@@ -70,6 +70,7 @@ const ACTIONS = [
 ];
 
 const defaultsOf = (action) => Object.fromEntries(action.fields.map((f) => [f.id, f.value]));
+const valuesOf = (s, action) => ({ ...defaultsOf(action), ...s.values[action.id] });
 
 /** The argv an action runs: its own, then the project unless the CLI would find that itself. */
 function argvFor(action, values, project) {
@@ -199,7 +200,32 @@ function onPath(s, key, ctx) {
   return useProject(s, full, ctx);
 }
 
-const SCREENS = { menu: onMenu, projects: onProjects, path: onPath };
+// Arrows and Tab only move here: a letter may be text being typed.
+function onForm(s, key, ctx) {
+  const action = ACTIONS.find((a) => a.id === s.action);
+  const field = action.fields[s.field];
+  const values = valuesOf(s, action);
+  const n = action.fields.length;
+  const set = (value, matches = []) => ({ ...s, matches, values: { ...s.values, [action.id]: { ...values, [field.id]: value } } });
+  const go = (by) => ({ ...s, matches: [], field: step(s.field, by, n) });
+
+  if (key.name === 'escape') return { ...s, screen: 'menu', matches: [] };
+  if (isEnter(key)) return { ...s, run: argvFor(action, values, s.project) };
+  if (key.name === 'up' || (key.name === 'tab' && key.shift)) return go(-1);
+  if (key.name === 'tab' && field.type === 'path') {
+    const done = completeDir(values[field.id], ctx);
+    return set(done.text, done.matches);
+  }
+  if (key.name === 'down' || key.name === 'tab') return go(1);
+  if (field.type === 'toggle') return ['space', 'left', 'right'].includes(key.name) ? set(!values[field.id]) : s;
+  if (field.type === 'choice') {
+    const by = key.name === 'left' ? -1 : key.name === 'right' || key.name === 'space' ? 1 : 0;
+    return by ? set(field.options[step(field.options.indexOf(values[field.id]), by, field.options.length)]) : s;
+  }
+  return set(edit(values[field.id], key, field.type === 'number'));
+}
+
+const SCREENS = { menu: onMenu, form: onForm, projects: onProjects, path: onPath };
 
 /** A key, to the next state. `state.run` is an argv to run; `state.quit` ends the menu. */
 function update(s, key, ctx) {

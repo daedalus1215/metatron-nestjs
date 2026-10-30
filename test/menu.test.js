@@ -243,3 +243,74 @@ test('typing a path: Tab completes, a key clears the matches, Esc steps back', (
     assert.strictEqual(press(more, ctx, 'escape').screen, 'projects');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+const inForm = (letter) => {
+  const ctx = { cwd: '/', home: HOME };
+  const s = { screen: 'menu', cursor: 0, project: { dir: '/p/api', here: true }, values: {}, matches: [], message: '' };
+  return { ctx, s: press(s, ctx, letter) };
+};
+
+test('a command with options opens a form instead of running', () => {
+  const { s } = inForm('w');
+  assert.strictEqual(s.screen, 'form');
+  assert.strictEqual(s.action, 'serve');
+  assert.strictEqual(s.run, undefined);
+});
+
+test('Enter runs what the form says, from any field', () => {
+  const { s, ctx } = inForm('d');
+  const done = press(s, ctx, ...typed('main...HEAD'), 'down', 'down', 'right', 'return');
+  assert.deepStrictEqual(done.run, ['diff', 'main...HEAD', '--format', 'markdown']);
+});
+
+test('a toggle flips on space or an arrow, and ignores letters', () => {
+  const { s, ctx } = inForm('l');
+  assert.deepStrictEqual(press(s, ctx, 'space', 'return').run, ['baseline', '--update']);
+  assert.deepStrictEqual(press(s, ctx, 'space', 'left', 'return').run, ['baseline']);
+  assert.deepStrictEqual(press(s, ctx, 'x', 'return').run, ['baseline']);
+});
+
+test('a choice cycles through its options both ways', () => {
+  const { s, ctx } = inForm('v');
+  const last = action('views').fields[0].options.slice(-1)[0];
+  assert.deepStrictEqual(press(s, ctx, 'left', 'return').run, ['views', last]);
+  assert.deepStrictEqual(press(s, ctx, 'left', 'right', 'return').run, ['views']);
+});
+
+test('a number field takes digits only, and a blank one falls back to the default', () => {
+  const { s, ctx } = inForm('w');
+  assert.deepStrictEqual(press(s, ctx, { name: 'u', ctrl: true }, ...typed('5x0-00'), 'return').run, ['serve', '--port', '5000']);
+  assert.deepStrictEqual(press(s, ctx, { name: 'u', ctrl: true }, 'return').run, ['serve']);
+});
+
+test('letters that mean something in the menu are text in a form', () => {
+  const { s, ctx } = inForm('d');
+  const done = press(s, ctx, ...typed('jkq'));
+  assert.strictEqual(done.quit, undefined);
+  assert.strictEqual(done.field, 0);
+  assert.deepStrictEqual(done.values.diff.range, 'jkq');
+});
+
+test('Tab moves between fields, except on a path, where it completes', () => {
+  const { s, ctx } = inForm('c');
+  assert.strictEqual(press(s, ctx, 'tab').field, 1);
+  assert.strictEqual(press(s, ctx, { name: 'tab', shift: true }).field, 3);
+
+  const dir = tree('skills/x', 'skins/x');
+  const here = { cwd: dir, home: HOME };
+  try {
+    const skill = press(inForm('i').s, here, ...typed('sk'), 'tab');
+    assert.strictEqual(skill.field, 0);
+    assert.strictEqual(skill.values.skill.dest, 'ski');
+    assert.deepStrictEqual(skill.matches, ['skills', 'skins']);
+    assert.deepStrictEqual(press(skill, here, 'down').matches, [], 'matches belong to the field just left');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('Esc goes back and a form remembers its values for the next run', () => {
+  const { s, ctx } = inForm('w');
+  const back = press(s, ctx, { name: 'u', ctrl: true }, ...typed('5000'), 'escape');
+  assert.strictEqual(back.screen, 'menu');
+  assert.strictEqual(back.run, undefined);
+  assert.deepStrictEqual(press(back, ctx, 'w', 'return').run, ['serve', '--port', '5000']);
+});
