@@ -685,10 +685,18 @@ metatron-nest diff             what does this change touch? (report on stdout)
 metatron-nest diff main...HEAD   an explicit range
 metatron-nest diff --staged      what is about to be committed
 metatron-nest serve            the workbench (local server, live re-scan)
+metatron-nest menu             a keyboard menu over all of these
 metatron-nest skill            install the agent skill
 metatron-nest skill --dest <dir>   ... into <dir>/metatron-nest/ instead
 metatron-nest --help
 ```
+
+`metatron-nest menu` (`npm run menu` in a checkout) is for when you would rather
+pick than remember. It finds the projects near where you started, offers each
+command's flags as a form, and shows the exact command before running it. The
+output lands on your normal screen, so it stays in the scrollback. Ctrl-C stops
+the command and leaves the menu running, which is how you stop `serve`. Nothing
+here is out of reach from a script: it only runs the commands above.
 
 Working on metatron itself: `npm test` runs the fixture suite.
 
