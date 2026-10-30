@@ -7,7 +7,10 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawn, spawnSync } = require('child_process');
 const M = require('../src/menu');
+
+const BIN = path.join(__dirname, '..', 'bin', 'metatron.js');
 
 /**
  * A throwaway tree: each path is a file, made along with its parents. A test
@@ -429,9 +432,6 @@ test('a terminal that reports no size is treated as 80 by 24', () => {
  * Ctrl-C reaching the right process cannot be seen any other way. `script` is
  * util-linux; its BSD namesake on macOS takes different arguments.
  */
-const { spawn, spawnSync } = require('child_process');
-
-const BIN = path.join(__dirname, '..', 'bin', 'metatron.js');
 const noPty = process.platform !== 'linux' || spawnSync('script', ['--version']).error ? 'needs util-linux script' : false;
 
 function terminal(cwd, args = ['menu']) {
