@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { listTemplates } = require('./build');
 const { find, NAMES } = require('./config');
+const { FILENAME } = require('./baseline');
 
 const when = (on, ...args) => (on ? args : []);
 const LENSES = listTemplates().map((f) => f.replace(/\.html$/, ''));
@@ -69,6 +70,7 @@ const ACTIONS = [
     argv: () => ['--help'] },
 ];
 
+const tilde = (p, home) => (p === home || p.startsWith(home + path.sep) ? '~' + p.slice(home.length) : p);
 const defaultsOf = (action) => Object.fromEntries(action.fields.map((f) => [f.id, f.value]));
 const valuesOf = (s, action) => ({ ...defaultsOf(action), ...s.values[action.id] });
 
@@ -80,9 +82,8 @@ function argvFor(action, values, project) {
 
 /** The same argv as the line you would type, for the screen. */
 function commandLine(argv, home) {
-  const tilde = (a) => (a === home || a.startsWith(home + path.sep) ? '~' + a.slice(home.length) : a);
   const quote = (a) => (/^[\w@%+=:,./^~-]+$/.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`);
-  return ['metatron-nest', ...argv.map((a) => quote(tilde(a)))].join(' ');
+  return ['metatron-nest', ...argv.map((a) => quote(tilde(a, home)))].join(' ');
 }
 
 // Copies, output and other people's code. A fixture's config is not a project.
@@ -233,4 +234,133 @@ function update(s, key, ctx) {
   return SCREENS[s.screen](s, key, ctx);
 }
 
-module.exports = { ACTIONS, ROWS, defaultsOf, argvFor, commandLine, discover, expand, completeDir, init, update };
+const sgr = (code) => (text) => `\x1b[${code}m${text}\x1b[0m`;
+const bold = sgr(1), dim = sgr(2), accent = sgr(36), caret = sgr(7)(' ');
+const pointer = (on) => (on ? accent('▸') + ' ' : '  ');
+
+/** Cuts a line to a width, counting what shows and keeping every colour code. */
+function clip(line, cols) {
+  let left = cols;
+  return line.split(/(\x1b\[[0-9;]*m)/).map((part) => {
+    if (part.startsWith('\x1b')) return part;
+    const kept = [...part].slice(0, left);
+    left -= kept.length;
+    return kept.join('');
+  }).join('');
+}
+
+const wrap = (text, cols) => text.match(new RegExp(`.{1,${cols}}`, 'g')) || [''];
+
+/** What the project's state means for this command, when it would otherwise surprise you. */
+function noteFor(action, project) {
+  if (!project || !['baseline', 'check'].includes(action.id)) return '';
+  const has = fs.existsSync(path.join(project.dir, FILENAME));
+  if (action.id === 'baseline' && has) return `${FILENAME} exists: turn on Update to rewrite it`;
+  if (action.id === 'check' && !has) return `no ${FILENAME} yet: run Baseline first`;
+  return '';
+}
+
+function showValue(field, value, focused) {
+  if (field.type === 'toggle') return value ? '[x]' : '[ ]';
+  if (field.type === 'choice') return field.options.map((o) => (o === value ? accent(o) : dim(o))).join('  ');
+  return focused ? value + caret : value || dim('-');
+}
+
+const FORM_KEYS = {
+  text: 'type',
+  number: 'type',
+  path: 'type · tab completes',
+  toggle: 'space toggles',
+  choice: '←→ choose',
+};
+
+function preview(s, row, ctx, cols) {
+  if (!row.argv) return [''];
+  if (row.project && !s.project) return [dim('choose a project first')];
+  return wrap('$ ' + commandLine(argvFor(row, valuesOf(s, row), s.project), ctx.home), cols).map(accent);
+}
+
+function viewMenu(s, ctx, cols) {
+  const wide = Math.max(...ROWS.map((r) => r.label.length));
+  const row = ROWS[s.cursor];
+  const note = noteFor(row, s.project);
+  return {
+    head: [bold('metatron'), s.project ? dim(tilde(s.project.dir, ctx.home)) : dim('no project chosen'), ''],
+    list: ROWS.map((r, i) => {
+      const label = r.label.padEnd(wide);
+      return `${pointer(i === s.cursor)}${accent(r.key)}  ${i === s.cursor ? bold(label) : label}  ${dim(r.hint)}`;
+    }),
+    at: s.cursor,
+    tail: ['', ...preview(s, row, ctx, cols), note ? dim(note) : '', dim('↑↓ move · enter choose · letters jump · q quit')],
+  };
+}
+
+function viewForm(s, ctx, cols) {
+  const action = ACTIONS.find((a) => a.id === s.action);
+  const field = action.fields[s.field];
+  const values = valuesOf(s, action);
+  const wide = Math.max(...action.fields.map((f) => f.label.length));
+  const note = noteFor(action, s.project);
+  return {
+    head: [
+      bold(action.label) + dim(' · ' + action.hint),
+      action.project ? dim(tilde(s.project.dir, ctx.home)) : '',
+      ...(note ? [note] : []),
+      '',
+    ],
+    list: action.fields.map((f, i) => {
+      const label = f.label.padEnd(wide);
+      return `${pointer(i === s.field)}${i === s.field ? bold(label) : label}  ${showValue(f, values[f.id], i === s.field)}`;
+    }),
+    at: s.field,
+    tail: [
+      '',
+      dim(field.hint),
+      ...(s.matches.length ? [dim(s.matches.join('  '))] : []),
+      ...preview(s, action, ctx, cols),
+      '',
+      dim(`${FORM_KEYS[field.type]} · ↑↓ field · enter run · esc back`),
+    ],
+  };
+}
+
+function viewProjects(s, ctx) {
+  const names = [...s.projects.map((p) => tilde(p, ctx.home)), 'Type a path…'];
+  const none = s.projects.length ? [] : [dim('No arch.config.js near here.')];
+  return {
+    head: [bold('Choose a project'), ...(s.message ? [s.message] : []), ...none, ''],
+    list: names.map((name, i) => {
+      const current = s.project && s.projects[i] === s.project.dir ? dim('  current') : '';
+      return pointer(i === s.pick) + (i === s.pick ? bold(name) : name) + current;
+    }),
+    at: s.pick,
+    tail: ['', dim('↑↓ move · enter choose · esc back')],
+  };
+}
+
+function viewPath(s) {
+  return {
+    head: [bold('Type a path'), dim('a project, or anywhere inside one'), ''],
+    list: [pointer(true) + s.text + caret],
+    at: 0,
+    tail: [
+      '',
+      ...(s.matches.length ? [dim(s.matches.join('  '))] : []),
+      ...(s.message ? [s.message] : []),
+      dim('tab completes · enter choose · esc back'),
+    ],
+  };
+}
+
+const VIEWS = { menu: viewMenu, form: viewForm, projects: viewProjects, path: viewPath };
+
+/** A state, to the lines of the screen: a list scrolled to its cursor, clipped to fit. */
+function view(s, ctx, columns, lines) {
+  const cols = Math.max((columns || 80) - 2, 1), rows = lines || 24;
+  const { head, list, at, tail } = VIEWS[s.screen](s, ctx, cols);
+  const room = Math.max(rows - head.length - tail.length, 1);
+  const first = Math.min(Math.max(at - Math.floor(room / 2), 0), Math.max(list.length - room, 0));
+  return [...head, ...list.slice(first, first + room), ...tail].slice(0, rows).map((l) => ' ' + clip(l, cols));
+}
+
+module.exports = { ACTIONS, ROWS, defaultsOf, argvFor, commandLine, discover, expand, completeDir, init, update, view };

@@ -9,7 +9,11 @@ const os = require('os');
 const path = require('path');
 const M = require('../src/menu');
 
-/** A throwaway tree: each path is a file, made along with its parents. */
+/**
+ * A throwaway tree: each path is a file, made along with its parents. A test
+ * that opens the project list starts in a directory inside it, because the list
+ * looks in the parent too, and the parent of the tree is the shared temp dir.
+ */
 function tree(...files) {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'metatron-menu-')));
   for (const f of files) {
@@ -189,8 +193,8 @@ test('q and Ctrl-C quit from the menu; Esc there does nothing', () => {
 });
 
 test('a command that reads a project asks for one first; one that does not, does not', () => {
-  const dir = tree('x');
-  const ctx = { cwd: dir, home: HOME };
+  const dir = tree('cwd/x');
+  const ctx = { cwd: path.join(dir, 'cwd'), home: HOME };
   const s = { screen: 'menu', cursor: 0, project: null, values: {}, matches: [], message: '' };
   try {
     const asked = press(s, ctx, 'b');
@@ -202,12 +206,12 @@ test('a command that reads a project asks for one first; one that does not, does
 });
 
 test('choosing again starts on the current project and keeps it when it was typed', () => {
-  const dir = tree('a/arch.config.js', 'b/arch.config.js', 'far/away/arch.config.js');
-  const ctx = { cwd: dir, home: HOME };
+  const dir = tree('cwd/a/arch.config.js', 'cwd/b/arch.config.js');
+  const ctx = { cwd: path.join(dir, 'cwd'), home: HOME };
   try {
-    let s = { screen: 'menu', cursor: 0, project: { dir: path.join(dir, 'b'), here: false }, values: {}, matches: [], message: '' };
+    let s = { screen: 'menu', cursor: 0, project: { dir: path.join(dir, 'cwd/b'), here: false }, values: {}, matches: [], message: '' };
     assert.strictEqual(press(s, ctx, 'p').pick, 1);
-    assert.strictEqual(press(s, ctx, 'p', 'escape').project.dir, path.join(dir, 'b'));
+    assert.strictEqual(press(s, ctx, 'p', 'escape').project.dir, path.join(dir, 'cwd/b'));
     s = { ...s, project: { dir: '/elsewhere/api', here: false } };
     assert.strictEqual(press(s, ctx, 'p').projects[0], '/elsewhere/api');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -313,4 +317,109 @@ test('Esc goes back and a form remembers its values for the next run', () => {
   assert.strictEqual(back.screen, 'menu');
   assert.strictEqual(back.run, undefined);
   assert.deepStrictEqual(press(back, ctx, 'w', 'return').run, ['serve', '--port', '5000']);
+});
+
+const plain = (lines) => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''));
+const screen = (s, ctx, cols = 100, rows = 30) => plain(M.view(s, ctx, cols, rows)).join('\n');
+
+test('the menu names the project and shows the command under the cursor', () => {
+  const ctx = { cwd: '/', home: HOME };
+  const s = { screen: 'menu', cursor: 0, project: { dir: HOME + '/code/api', here: false }, values: {}, matches: [], message: '' };
+  const text = screen(s, ctx);
+  assert.match(text, /~\/code\/api/);
+  for (const r of M.ROWS) assert.ok(text.includes(r.label), r.label);
+  assert.match(text, /\$ metatron-nest ~\/code\/api/);
+  assert.match(screen(press(s, ctx, 'down'), ctx), /\$ metatron-nest serve ~\/code\/api/);
+});
+
+test('with no project the menu says so, rather than show a command that would fail', () => {
+  const s = { screen: 'menu', cursor: 0, project: null, values: {}, matches: [], message: '' };
+  const text = screen(s, { cwd: '/', home: HOME });
+  assert.match(text, /no project chosen/);
+  assert.match(text, /choose a project first/);
+  assert.doesNotMatch(text, /\$ metatron-nest/);
+});
+
+test('a form shows its values, the focused hint and the command as it changes', () => {
+  const { s, ctx } = inForm('d');
+  const text = screen(press(s, ctx, ...typed('main...HEAD')), ctx);
+  assert.match(text, /Range\s+main\.\.\.HEAD/);
+  assert.match(text, /default branch's merge base/);
+  assert.match(text, /\$ metatron-nest diff main\.\.\.HEAD/);
+  assert.match(text, /terminal {2}markdown {2}json/, 'a choice shows every option');
+  assert.match(screen(press(s, ctx, 'down', 'space'), ctx), /Staged\s+\[x\]/);
+  assert.match(screen(press(s, ctx, 'down', 'space'), ctx), /\$ metatron-nest diff --staged/);
+});
+
+test('Baseline and Check say when the baseline file will get in the way', () => {
+  const dir = tree('api/arch.config.js');
+  const ctx = { cwd: path.join(dir, 'api'), home: HOME };
+  try {
+    const s = M.init(ctx);
+    assert.match(screen(press(s, ctx, 'c'), ctx), /no arch\.baseline\.json yet: run Baseline first/);
+    assert.doesNotMatch(screen(press(s, ctx, 'l'), ctx), /exists/);
+    fs.writeFileSync(path.join(dir, 'api', 'arch.baseline.json'), '{}');
+    assert.match(screen(press(s, ctx, 'l'), ctx), /arch\.baseline\.json exists: turn on Update/);
+    assert.doesNotMatch(screen(press(s, ctx, 'c'), ctx), /run Baseline first/);
+    assert.match(screen({ ...s, cursor: M.ROWS.findIndex((r) => r.id === 'baseline') }, ctx), /exists: turn on Update/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the project list marks the current one and always offers a path', () => {
+  const dir = tree('cwd/a/arch.config.js', 'cwd/b/arch.config.js');
+  const ctx = { cwd: path.join(dir, 'cwd'), home: path.join(dir, 'cwd') };
+  try {
+    const s = { screen: 'menu', cursor: 0, project: { dir: path.join(dir, 'cwd/b'), here: false }, values: {}, matches: [], message: '' };
+    const text = screen(press(s, ctx, 'p'), ctx);
+    assert.match(text, /~\/a\n/);
+    assert.match(text, /~\/b {2}current/);
+    assert.match(text, /Type a path…/);
+    const empty = tree('cwd/x');
+    try {
+      assert.match(screen(M.init({ cwd: path.join(empty, 'cwd'), home: HOME }), ctx), /No arch\.config\.js near here/);
+    } finally { fs.rmSync(empty, { recursive: true, force: true }); }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the path screen shows what was typed, the matches and what went wrong', () => {
+  const dir = tree('home/api/x', 'home/app/x', 'cwd/x');
+  const ctx = { cwd: path.join(dir, 'cwd'), home: path.join(dir, 'home') };
+  try {
+    const s = press(M.init(ctx), ctx, 'return', ...typed('~/a'), 'tab');
+    assert.match(screen(s, ctx), /~\/ap/);
+    assert.match(screen(s, ctx), /api {2}app/);
+    assert.match(screen(press(s, ctx, 'return'), ctx), /~\/ap does not exist/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('nothing is wider than the terminal, colour codes aside', () => {
+  const { s, ctx } = inForm('d');
+  const long = press(s, ctx, ...typed('feature/a-very-long-branch-name...feature/another-very-long-branch-name'));
+  for (const line of plain(M.view(long, ctx, 40, 24))) assert.ok([...line].length <= 39, line);
+  const rendered = M.view(long, ctx, 40, 24).join('\n');
+  assert.strictEqual((rendered.match(/\x1b\[0m/g) || []).length, (rendered.match(/\x1b\[(?:1|2|7|36)m/g) || []).length, 'a clipped line still closes its colours');
+});
+
+test('a long command wraps instead of losing its end', () => {
+  const { s, ctx } = inForm('d');
+  const long = press(s, ctx, ...typed('feature/a-very-long-branch-name...feature/another-very-long-branch-name'));
+  const text = plain(M.view(long, ctx, 40, 24)).map((l) => l.trim()).join('');
+  assert.ok(text.includes('another-very-long-branch-name'));
+});
+
+test('a short terminal scrolls the list to keep the cursor on screen', () => {
+  const ctx = { cwd: '/', home: HOME };
+  const s = { screen: 'menu', cursor: 0, project: { dir: '/p/api', here: true }, values: {}, matches: [], message: '' };
+  for (let cursor = 0; cursor < M.ROWS.length; cursor++) {
+    const lines = plain(M.view({ ...s, cursor }, ctx, 80, 10));
+    assert.ok(lines.length <= 10);
+    assert.ok(lines.some((l) => l.includes('▸') && l.includes(M.ROWS[cursor].label)), M.ROWS[cursor].label);
+  }
+});
+
+test('a terminal that reports no size is treated as 80 by 24', () => {
+  const ctx = { cwd: '/', home: HOME };
+  const s = { screen: 'menu', cursor: 0, project: { dir: '/p/api', here: true }, values: {}, matches: [], message: '' };
+  assert.ok(M.view(s, ctx, 0, 0).length > M.ROWS.length);
+  assert.ok(M.view(s, ctx, undefined, undefined).length > M.ROWS.length);
 });
