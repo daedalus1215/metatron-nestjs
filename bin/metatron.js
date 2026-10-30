@@ -26,6 +26,7 @@ if (args[0] === '--help' || args[0] === '-h') {
   metatron-nest diff --staged        what is about to be committed
   metatron-nest serve [path]     the workbench: bricks, wiring and source, live
   metatron-nest serve --port 4477 --no-watch
+  metatron-nest menu             a keyboard menu over all of these
   metatron-nest skill            install the agent skill into ~/.agents/skills
   metatron-nest skill --dest <dir>   install into <dir>/metatron-nest/ instead
   metatron-nest skill --where    print where the skill would be installed
@@ -74,6 +75,12 @@ if (args[0] === 'skill') {
     ? `Link it into your agent to load it, e.g.\n  ln -s ${path.dirname(dest)} ${path.join(home, '.agents', 'skills', 'metatron-nest')}`
     : 'Start a new agent session to pick it up.');
   process.exit(0);
+}
+
+// The menu only starts this same binary, so like `skill` it needs no config here.
+if (args[0] === 'menu') {
+  require('../src/menu').start();
+  return;
 }
 
 const cmd = ['scan', 'views', 'baseline', 'check', 'diff', 'serve', 'all'].includes(args[0]) ? args.shift() : 'all';

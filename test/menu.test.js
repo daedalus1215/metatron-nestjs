@@ -423,3 +423,179 @@ test('a terminal that reports no size is treated as 80 by 24', () => {
   assert.ok(M.view(s, ctx, 0, 0).length > M.ROWS.length);
   assert.ok(M.view(s, ctx, undefined, undefined).length > M.ROWS.length);
 });
+
+/**
+ * The real binary on a real pseudo-terminal: raw mode, the alternate screen and
+ * Ctrl-C reaching the right process cannot be seen any other way. `script` is
+ * util-linux; its BSD namesake on macOS takes different arguments.
+ */
+const { spawn, spawnSync } = require('child_process');
+
+const BIN = path.join(__dirname, '..', 'bin', 'metatron.js');
+const noPty = process.platform !== 'linux' || spawnSync('script', ['--version']).error ? 'needs util-linux script' : false;
+
+function terminal(cwd, args = ['menu']) {
+  const command = [process.execPath, BIN, ...args].join(' ');
+  const child = spawn('script', ['-qfec', command, '/dev/null'], { cwd, env: { ...process.env, TERM: 'xterm' } });
+  let output = '', read = 0;
+  child.stdout.on('data', (d) => { output += d; });
+  const close = new Promise((resolve) => child.on('close', resolve));
+  return {
+    send: (text) => child.stdin.write(text),
+    /** Waits for a pattern in what has arrived since the last match, so a stale frame cannot satisfy it. */
+    until: async (pattern, ms = 20000) => {
+      const end = Date.now() + ms;
+      for (;;) {
+        const m = pattern.exec(output.slice(read));
+        if (m) { read += m.index + m[0].length; return m; }
+        if (Date.now() > end) throw new Error(`no ${pattern} in: ${JSON.stringify(output.slice(read).slice(-600))}`);
+        await new Promise((r) => setTimeout(r, 15));
+      }
+    },
+    /** Rejects rather than waits forever, so a menu that will not quit fails its test and is cleaned up. */
+    closed: (ms = 20000) => Promise.race([close, new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('still running: ' + JSON.stringify(output.slice(-300)))), ms).unref();
+    })]),
+    output: () => output,
+    kill: () => child.kill('SIGKILL'),
+  };
+}
+
+const project = () => {
+  const dir = tree('api/src/a.ts');
+  fs.writeFileSync(path.join(dir, 'api/arch.config.js'), "module.exports = { root: 'src' };\n");
+  return dir;
+};
+
+test('without a terminal it says so and exits 2, and needs no config', () => {
+  const dir = tree('x');
+  try {
+    const r = spawnSync(process.execPath, [BIN, 'menu'], { cwd: dir, input: '', encoding: 'utf8' });
+    assert.strictEqual(r.status, 2);
+    assert.match(r.stderr, /needs a terminal/);
+    assert.strictEqual(r.stdout, '');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('--help lists the menu', () => {
+  const r = spawnSync(process.execPath, [BIN, '--help'], { encoding: 'utf8' });
+  assert.match(r.stdout, /metatron-nest menu/);
+});
+
+test('q leaves the alternate screen, shows the cursor again and exits 0', { skip: noPty }, async () => {
+  const dir = project();
+  const t = terminal(path.join(dir, 'api'));
+  try {
+    await t.until(/\x1b\[\?1049h/);
+    await t.until(/Workbench/);
+    t.send('q');
+    assert.strictEqual(await t.closed(), 0);
+    assert.match(t.output(), /\x1b\[\?25h\x1b\[\?1049l/);
+  } finally { t.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a run shows its command and its result, then any key returns to the menu', { skip: noPty }, async () => {
+  const dir = project();
+  const t = terminal(path.join(dir, 'api'));
+  try {
+    await t.until(/Workbench/);
+    t.send('s');
+    await t.until(/\$ metatron-nest scan/);
+    await t.until(/coverage/);
+    await t.until(/exit 0/);
+    assert.ok(fs.existsSync(path.join(dir, 'api/.metatron/model.json')), 'the real command ran');
+    t.send(' ');
+    await t.until(/\x1b\[\?1049h/);
+    await t.until(/Workbench/);
+    t.send('q');
+    assert.strictEqual(await t.closed(), 0);
+  } finally { t.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('Ctrl-C stops the workbench and comes back to the menu, the port remembered', { skip: noPty }, async () => {
+  const dir = project();
+  const t = terminal(path.join(dir, 'api'));
+  try {
+    await t.until(/Workbench/);
+    t.send('w');
+    await t.until(/Port/);
+    t.send('\x150');                    // Ctrl-U, then port 0: any free one
+    await t.until(/serve --port 0/);
+    t.send('\r');
+    await t.until(/metatron workbench/);
+    await t.until(/http:\/\/127\.0\.0\.1:\d+/);
+    t.send('\x03');
+    await t.until(/stopped/);
+    t.send('w');                        // any key, even one the menu would act on
+    await t.until(/\x1b\[\?1049h/);
+    await t.until(/Quit/);
+    await t.until(/\$ metatron-nest serve --port 0/);
+    t.send('q');
+    assert.strictEqual(await t.closed(), 0);
+  } finally { t.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('after a run, q quits with the output left on the screen', { skip: noPty }, async () => {
+  const dir = project();
+  const t = terminal(path.join(dir, 'api'));
+  try {
+    await t.until(/Workbench/);
+    t.send('h');
+    await t.until(/exit 0/);
+    t.send('q');
+    assert.strictEqual(await t.closed(), 0);
+    const tail = t.output().slice(t.output().lastIndexOf('\x1b[?1049l'));
+    assert.match(tail, /scan and build every lens/);
+    assert.doesNotMatch(tail, /\x1b\[\?1049h/);
+  } finally { t.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('from a directory with no config it opens on the project list', { skip: noPty }, async () => {
+  const dir = project();
+  fs.mkdirSync(path.join(dir, 'elsewhere'));
+  const t = terminal(path.join(dir, 'elsewhere'));
+  try {
+    await t.until(/Choose a project/);
+    await t.until(/\/api/);
+    t.send('\r');
+    await t.until(/Workbench/);
+    t.send('s');
+    await t.until(/\$ metatron-nest scan \S*\/api/);
+    await t.until(/exit 0/);
+    assert.ok(fs.existsSync(path.join(dir, 'api/.metatron/model.json')), 'the path reached the command');
+    t.send('q');
+    assert.strictEqual(await t.closed(), 0);
+  } finally { t.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('keys pressed during a run do not answer the prompt after it', { skip: noPty }, async () => {
+  const dir = project();
+  const t = terminal(path.join(dir, 'api'));
+  try {
+    await t.until(/Workbench/);
+    t.send('w');
+    await t.until(/Port/);
+    t.send('\x150\r');
+    await t.until(/http:\/\/127\.0\.0\.1:\d+/);
+    t.send('\r\r');                      // waiting in the terminal's buffer
+    t.send('\x03');
+    await t.until(/stopped/);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.doesNotMatch(t.output().slice(t.output().lastIndexOf('stopped')), /\x1b\[\?1049h/, 'still at the prompt');
+    t.send(' ');
+    await t.until(/\x1b\[\?1049h/);
+    t.send('q');
+    assert.strictEqual(await t.closed(), 0);
+  } finally { t.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a long path keeps its end, since that is what tells two projects apart', () => {
+  const ctx = { cwd: '/', home: HOME };
+  const deep = '/very/long/path/that/goes/on/and/on/and/on/and/on/chronus';
+  const s = { screen: 'menu', cursor: 0, project: { dir: deep + '/backend', here: true }, values: {}, matches: [], message: '' };
+  assert.match(screen(s, ctx, 40), /…\S*chronus\/backend/);
+  const list = { ...s, screen: 'projects', projects: [deep + '/backend', deep + '/frontend'], pick: 0 };
+  assert.match(screen(list, ctx, 40), /chronus\/backend {2}current/);
+  assert.match(screen(list, ctx, 40), /chronus\/frontend/);
+  for (const line of plain(M.view(list, ctx, 40, 24))) assert.ok([...line].length <= 39, line);
+});

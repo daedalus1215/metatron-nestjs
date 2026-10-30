@@ -7,11 +7,15 @@
  * typed or scripted later.
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const readline = require('readline');
+const { spawn } = require('child_process');
 const { listTemplates } = require('./build');
 const { find, NAMES } = require('./config');
 const { FILENAME } = require('./baseline');
 
+const BIN = path.resolve(__dirname, '..', 'bin', 'metatron.js');
 const when = (on, ...args) => (on ? args : []);
 const LENSES = listTemplates().map((f) => f.replace(/\.html$/, ''));
 
@@ -251,6 +255,9 @@ function clip(line, cols) {
 
 const wrap = (text, cols) => text.match(new RegExp(`.{1,${cols}}`, 'g')) || [''];
 
+// A path's end is what tells two projects apart, so it is the start that goes.
+const fit = (text, cols) => (text.length > cols ? '…' + text.slice(1 - cols) : text);
+
 /** What the project's state means for this command, when it would otherwise surprise you. */
 function noteFor(action, project) {
   if (!project || !['baseline', 'check'].includes(action.id)) return '';
@@ -285,7 +292,7 @@ function viewMenu(s, ctx, cols) {
   const row = ROWS[s.cursor];
   const note = noteFor(row, s.project);
   return {
-    head: [bold('metatron'), s.project ? dim(tilde(s.project.dir, ctx.home)) : dim('no project chosen'), ''],
+    head: [bold('metatron'), dim(s.project ? fit(tilde(s.project.dir, ctx.home), cols) : 'no project chosen'), ''],
     list: ROWS.map((r, i) => {
       const label = r.label.padEnd(wide);
       return `${pointer(i === s.cursor)}${accent(r.key)}  ${i === s.cursor ? bold(label) : label}  ${dim(r.hint)}`;
@@ -304,7 +311,7 @@ function viewForm(s, ctx, cols) {
   return {
     head: [
       bold(action.label) + dim(' · ' + action.hint),
-      action.project ? dim(tilde(s.project.dir, ctx.home)) : '',
+      action.project ? dim(fit(tilde(s.project.dir, ctx.home), cols)) : '',
       ...(note ? [note] : []),
       '',
     ],
@@ -324,8 +331,8 @@ function viewForm(s, ctx, cols) {
   };
 }
 
-function viewProjects(s, ctx) {
-  const names = [...s.projects.map((p) => tilde(p, ctx.home)), 'Type a path…'];
+function viewProjects(s, ctx, cols) {
+  const names = [...s.projects.map((p) => fit(tilde(p, ctx.home), cols - 11)), 'Type a path…'];
   const none = s.projects.length ? [] : [dim('No arch.config.js near here.')];
   return {
     head: [bold('Choose a project'), ...(s.message ? [s.message] : []), ...none, ''],
@@ -363,4 +370,86 @@ function view(s, ctx, columns, lines) {
   return [...head, ...list.slice(first, first + room), ...tail].slice(0, rows).map((l) => ' ' + clip(l, cols));
 }
 
-module.exports = { ACTIONS, ROWS, defaultsOf, argvFor, commandLine, discover, expand, completeDir, init, update, view };
+const OPEN = '\x1b[?1049h\x1b[?25l', CLOSE = '\x1b[?25h\x1b[?1049l';
+
+// Painted over the last frame rather than cleared, so nothing flickers.
+const draw = (lines) => '\x1b[H' + lines.join('\x1b[K\r\n') + '\x1b[K\x1b[J';
+
+/** The only part that touches the terminal: keys in, frames out, commands run. */
+function start() {
+  const { stdin, stdout } = process;
+  if (!stdin.isTTY || !stdout.isTTY) {
+    console.error('metatron-nest menu needs a terminal. To script a command, run it directly: see --help.');
+    process.exit(2);
+  }
+  const ctx = { cwd: process.cwd(), home: os.homedir() };
+  let state = init(ctx);
+  let showing = false;
+
+  const paint = () => { if (showing) stdout.write(draw(view(state, ctx, stdout.columns, stdout.rows))); };
+
+  const show = () => {
+    showing = true;
+    stdout.write(OPEN);
+    stdin.setRawMode(true);
+    stdin.on('keypress', onKey);
+    stdin.resume();
+    paint();
+  };
+
+  const hide = () => {
+    showing = false;
+    stdin.removeListener('keypress', onKey);
+    stdin.setRawMode(false);
+    stdin.pause();
+    stdout.write(CLOSE);
+  };
+
+  const onKey = (str, key) => {
+    state = update(state, { ...key, str }, ctx);
+    if (state.quit) { hide(); process.exit(0); }
+    if (!state.run) { paint(); return; }
+    const argv = state.run;
+    state = { ...state, run: null, screen: 'menu' };
+    hide();
+    launch(argv);
+  };
+
+  // The run happens on the normal screen, so its output stays in the scrollback.
+  const launch = (argv) => {
+    stdout.write(`${accent('$ ' + commandLine(argv, ctx.home))}\n`);
+    // The terminal sends Ctrl-C to the whole foreground group. It is meant for
+    // the command, and the menu has to outlive it: that is how `serve` is stopped.
+    const ignore = () => {};
+    process.on('SIGINT', ignore);
+    const child = spawn(process.execPath, [BIN, ...argv], { stdio: 'inherit' });
+    child.on('error', (e) => console.error(e.message));
+    child.on('close', (code, signal) => {
+      process.removeListener('SIGINT', ignore);
+      pause(signal ? 'stopped' : `exit ${code}`);
+    });
+  };
+
+  // Keys pressed while the command ran are still in the terminal's buffer, and
+  // they were no answer to this prompt. The stream drops them while nothing is
+  // listening, so the prompt waits a moment before it listens.
+  const pause = (outcome) => {
+    stdin.setRawMode(true);
+    stdin.resume();
+    setTimeout(() => {
+      stdout.write(`\n${bold(outcome)} ${dim('· any key for the menu · q to quit')}\n`);
+      stdin.once('keypress', (str, key) => {
+        if (key.name === 'q' || (key.ctrl && key.name === 'c')) process.exit(0);
+        show();
+      });
+    }, 50);
+  };
+
+  readline.emitKeypressEvents(stdin, { escapeCodeTimeout: 50 });
+  stdout.on('resize', paint);
+  process.on('exit', () => { if (showing) stdout.write(CLOSE); });
+  for (const signal of ['SIGTERM', 'SIGHUP']) process.on(signal, () => process.exit(1));
+  show();
+}
+
+module.exports = { ACTIONS, ROWS, defaultsOf, argvFor, commandLine, discover, expand, completeDir, init, update, view, start };
