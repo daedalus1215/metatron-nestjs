@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "demo": "node bin/metatron.js",
+    "menu": "node bin/metatron.js menu",
     "test": "node --test test/*.test.js"
   },
   "license": "MIT",
