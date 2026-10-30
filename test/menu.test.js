@@ -4,7 +4,20 @@
  */
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const M = require('../src/menu');
+
+/** A throwaway tree: each path is a file, made along with its parents. */
+function tree(...files) {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'metatron-menu-')));
+  for (const f of files) {
+    fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+    fs.writeFileSync(path.join(dir, f), '');
+  }
+  return dir;
+}
 
 const HOME = '/home/me';
 const action = (id) => M.ACTIONS.find((a) => a.id === id);
@@ -54,4 +67,54 @@ test('the command line shortens home and quotes what a shell would split', () =>
   assert.strictEqual(M.commandLine(['diff', 'main...HEAD^'], HOME), 'metatron-nest diff main...HEAD^');
   assert.strictEqual(M.commandLine(['scan', '/p/my api'], HOME), "metatron-nest scan '/p/my api'");
   assert.strictEqual(M.commandLine(['scan', "/p/it's"], HOME), `metatron-nest scan '/p/it'\\''s'`);
+});
+
+test('discover finds configs below the roots, under any of their names', () => {
+  const dir = tree('a/backend/arch.config.js', 'a/frontend/arch.config.cjs', 'b/arch.config.mjs', 'c/notes.md');
+  try {
+    assert.deepStrictEqual(M.discover([dir]), [
+      path.join(dir, 'a/backend'), path.join(dir, 'a/frontend'), path.join(dir, 'b'),
+    ]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('discover skips dependencies, output, fixtures and dot directories', () => {
+  const dir = tree(
+    'node_modules/x/arch.config.js', 'dist/arch.config.js', 'test/fixtures/x/arch.config.js',
+    '.git/arch.config.js', 'real/arch.config.js',
+  );
+  try {
+    assert.deepStrictEqual(M.discover([dir]), [path.join(dir, 'real')]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('discover stops at its depth and its limit, and lists a shared root once', () => {
+  const dir = tree('1/2/arch.config.js', '1/2/3/4/arch.config.js');
+  try {
+    assert.deepStrictEqual(M.discover([dir], 2), [path.join(dir, '1/2')]);
+    assert.deepStrictEqual(M.discover([dir], 3, 1), [], 'the limit is reached before anything is read below the root');
+    assert.deepStrictEqual(M.discover([dir, path.join(dir, '1')], 2), [path.join(dir, '1/2')]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('expand reads ~ and relative paths the way a shell would', () => {
+  const ctx = { cwd: '/work/here', home: HOME };
+  assert.strictEqual(M.expand('~', ctx), HOME);
+  assert.strictEqual(M.expand('~/api', ctx), HOME + '/api');
+  assert.strictEqual(M.expand('api', ctx), '/work/here/api');
+  assert.strictEqual(M.expand('/abs', ctx), '/abs');
+  assert.strictEqual(M.expand('~other/api', ctx), '/work/here/~other/api');
+});
+
+test('completeDir finishes one match and stops where several disagree', () => {
+  const dir = tree('chronus/x', 'chronicle/x', 'omega/x', 'chrome.txt');
+  const ctx = { cwd: dir, home: dir };
+  try {
+    assert.deepStrictEqual(M.completeDir('o', ctx), { text: 'omega/', matches: [] });
+    assert.deepStrictEqual(M.completeDir('ch', ctx), { text: 'chron', matches: ['chronicle', 'chronus'] });
+    assert.deepStrictEqual(M.completeDir('~/o', ctx), { text: '~/omega/', matches: [] }, 'what was typed is kept');
+    assert.deepStrictEqual(M.completeDir('nope', ctx), { text: 'nope', matches: [] });
+    assert.deepStrictEqual(M.completeDir('no/such/', ctx), { text: 'no/such/', matches: [] });
+    assert.deepStrictEqual(M.completeDir('', ctx).matches, ['chronicle', 'chronus', 'omega']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

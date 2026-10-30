@@ -81,4 +81,4 @@ function load(from = process.cwd()) {
   return cfg;
 }
 
-module.exports = { load, find, PROFILES };
+module.exports = { load, find, NAMES, PROFILES };

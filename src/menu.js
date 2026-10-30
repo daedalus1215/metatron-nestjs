@@ -6,8 +6,10 @@
  * the screen shows that command before it runs, so anything done here can be
  * typed or scripted later.
  */
+const fs = require('fs');
 const path = require('path');
 const { listTemplates } = require('./build');
+const { NAMES } = require('./config');
 
 const when = (on, ...args) => (on ? args : []);
 const LENSES = listTemplates().map((f) => f.replace(/\.html$/, ''));
@@ -82,4 +84,48 @@ function commandLine(argv, home) {
   return ['metatron-nest', ...argv.map((a) => quote(tilde(a)))].join(' ');
 }
 
-module.exports = { ACTIONS, defaultsOf, argvFor, commandLine };
+// Copies, output and other people's code. A fixture's config is not a project.
+const NOT_PROJECTS = new Set(['node_modules', 'dist', 'build', 'coverage', 'vendor', 'fixtures', '__fixtures__']);
+
+/**
+ * The directories holding a config, down from each root. The walk is bounded in
+ * depth and size, so opening the list stays instant when started from a home
+ * directory.
+ */
+function discover(roots, depth = 3, limit = 5000) {
+  const found = new Set();
+  let visited = 0;
+  const walk = (dir, left) => {
+    if (++visited > limit) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    if (entries.some((e) => e.isFile() && NAMES.includes(e.name))) found.add(dir);
+    if (left === 0) return;
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith('.') && !NOT_PROJECTS.has(e.name)) walk(path.join(dir, e.name), left - 1);
+    }
+  };
+  for (const root of roots) walk(root, depth);
+  return [...found].sort();
+}
+
+const expand = (text, ctx) => path.resolve(ctx.cwd, text.replace(/^~(?=\/|$)/, ctx.home));
+
+/** Tab on a path: as far as the matching directories agree, and which they are. */
+function completeDir(text, ctx) {
+  const full = expand(text, ctx);
+  const [dir, stem] = !text || text.endsWith('/') ? [full, ''] : [path.dirname(full), path.basename(full)];
+  let matches;
+  try {
+    matches = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => (e.isDirectory() || e.isSymbolicLink()) && e.name.startsWith(stem))
+      .map((e) => e.name).sort();
+  } catch { return { text, matches: [] }; }
+  if (!matches.length) return { text, matches };
+  let shared = matches[0];
+  for (const m of matches) while (!m.startsWith(shared)) shared = shared.slice(0, -1);
+  const typed = text.slice(0, text.length - stem.length);
+  return { text: typed + shared + (matches.length === 1 ? '/' : ''), matches: matches.length === 1 ? [] : matches };
+}
+
+module.exports = { ACTIONS, defaultsOf, argvFor, commandLine, discover, expand, completeDir };
