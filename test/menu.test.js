@@ -118,3 +118,14 @@ test('completeDir finishes one match and stops where several disagree', () => {
     assert.deepStrictEqual(M.completeDir('', ctx).matches, ['chronicle', 'chronus', 'omega']);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('completeDir leaves ~ and .. as paths, not the names they resolve to', () => {
+  const dir = tree('home/me/api/x', 'home/you/x');
+  const ctx = { cwd: path.join(dir, 'home/me'), home: path.join(dir, 'home/me') };
+  try {
+    assert.deepStrictEqual(M.completeDir('~', ctx), { text: '~/', matches: [] });
+    assert.deepStrictEqual(M.completeDir('~/a', ctx), { text: '~/api/', matches: [] });
+    assert.deepStrictEqual(M.completeDir('..', ctx), { text: '..', matches: [] });
+    assert.deepStrictEqual(M.completeDir('../y', ctx), { text: '../you/', matches: [] });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

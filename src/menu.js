@@ -113,18 +113,19 @@ const expand = (text, ctx) => path.resolve(ctx.cwd, text.replace(/^~(?=\/|$)/, c
 
 /** Tab on a path: as far as the matching directories agree, and which they are. */
 function completeDir(text, ctx) {
-  const full = expand(text, ctx);
-  const [dir, stem] = !text || text.endsWith('/') ? [full, ''] : [path.dirname(full), path.basename(full)];
+  if (text === '~') return { text: '~/', matches: [] };
+  // Split what was typed, not the resolved path: `..` resolves to a name nobody typed.
+  const cut = text.lastIndexOf('/') + 1;
+  const typed = text.slice(0, cut), stem = text.slice(cut);
   let matches;
   try {
-    matches = fs.readdirSync(dir, { withFileTypes: true })
+    matches = fs.readdirSync(expand(typed, ctx), { withFileTypes: true })
       .filter((e) => (e.isDirectory() || e.isSymbolicLink()) && e.name.startsWith(stem))
       .map((e) => e.name).sort();
   } catch { return { text, matches: [] }; }
   if (!matches.length) return { text, matches };
   let shared = matches[0];
   for (const m of matches) while (!m.startsWith(shared)) shared = shared.slice(0, -1);
-  const typed = text.slice(0, text.length - stem.length);
   return { text: typed + shared + (matches.length === 1 ? '/' : ''), matches: matches.length === 1 ? [] : matches };
 }
 
