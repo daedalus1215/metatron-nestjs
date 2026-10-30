@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { listTemplates } = require('./build');
-const { NAMES } = require('./config');
+const { find, NAMES } = require('./config');
 
 const when = (on, ...args) => (on ? args : []);
 const LENSES = listTemplates().map((f) => f.replace(/\.html$/, ''));
@@ -129,4 +129,82 @@ function completeDir(text, ctx) {
   return { text: typed + shared + (matches.length === 1 ? '/' : ''), matches: matches.length === 1 ? [] : matches };
 }
 
-module.exports = { ACTIONS, defaultsOf, argvFor, commandLine, discover, expand, completeDir };
+const ROWS = [
+  ...ACTIONS,
+  { id: 'project', key: 'p', label: 'Project', hint: 'choose another project' },
+  { id: 'quit', key: 'q', label: 'Quit', hint: '' },
+];
+
+const isEnter = (key) => key.name === 'return' || key.name === 'enter';
+const step = (at, by, n) => (at + by + n) % n;
+const moved = (key) => (key.name === 'up' || key.name === 'k' ? -1 : key.name === 'down' || key.name === 'j' ? 1 : 0);
+
+/** What a key does to a line of text. */
+function edit(text, key, digitsOnly) {
+  if (key.name === 'backspace') return [...text].slice(0, -1).join('');
+  if (key.ctrl && key.name === 'u') return '';
+  const printable = key.str && !key.ctrl && !key.meta && [...key.str].length === 1 && key.str >= ' ' && key.str !== '\x7f';
+  return printable && (!digitsOnly || /\d/.test(key.str)) ? text + key.str : text;
+}
+
+function init(ctx) {
+  const file = find(ctx.cwd);
+  const state = { screen: 'menu', cursor: 0, project: file ? { dir: path.dirname(file), here: true } : null, values: {}, matches: [], message: '' };
+  return file ? state : openProjects(state, ctx);
+}
+
+function openProjects(s, ctx, message = '') {
+  const near = discover([ctx.cwd, path.dirname(ctx.cwd)]);
+  const projects = s.project && !near.includes(s.project.dir) ? [s.project.dir, ...near] : near;
+  return { ...s, screen: 'projects', projects, pick: s.project ? projects.indexOf(s.project.dir) : 0, message };
+}
+
+// The path is left off the command when the CLI would find the same config from here.
+function useProject(s, dir, ctx) {
+  const file = find(dir);
+  return { ...s, screen: 'menu', message: '', project: { dir: path.dirname(file), here: find(ctx.cwd) === file } };
+}
+
+function choose(s, row, ctx) {
+  if (row.id === 'quit') return { ...s, quit: true };
+  if (row.id === 'project') return openProjects(s, ctx);
+  if (row.project && !s.project) return openProjects(s, ctx, `${row.label} reads a project. Choose one first.`);
+  if (!row.fields.length) return { ...s, run: argvFor(row, {}, s.project) };
+  return { ...s, screen: 'form', action: row.id, field: 0 };
+}
+
+function onMenu(s, key, ctx) {
+  if (moved(key)) return { ...s, cursor: step(s.cursor, moved(key), ROWS.length) };
+  if (isEnter(key)) return choose(s, ROWS[s.cursor], ctx);
+  const at = key.ctrl || key.meta ? -1 : ROWS.findIndex((r) => r.key === key.name);
+  return at < 0 ? s : choose({ ...s, cursor: at }, ROWS[at], ctx);
+}
+
+// The list's last row is not a project: it asks for a path.
+function onProjects(s, key, ctx) {
+  if (moved(key)) return { ...s, pick: step(s.pick, moved(key), s.projects.length + 1) };
+  if (key.name === 'escape' || key.name === 'q') return { ...s, screen: 'menu', message: '' };
+  if (!isEnter(key)) return s;
+  if (s.pick < s.projects.length) return useProject(s, s.projects[s.pick], ctx);
+  return { ...s, screen: 'path', text: '', matches: [], message: '' };
+}
+
+function onPath(s, key, ctx) {
+  if (key.name === 'escape') return { ...s, screen: 'projects', matches: [], message: '' };
+  if (key.name === 'tab') return { ...s, ...completeDir(s.text, ctx), message: '' };
+  if (!isEnter(key)) return { ...s, text: edit(s.text, key), matches: [], message: '' };
+  const full = expand(s.text, ctx);
+  if (!fs.existsSync(full)) return { ...s, message: `${s.text} does not exist` };
+  if (!find(full)) return { ...s, message: `no arch.config.js at or above ${s.text || full}` };
+  return useProject(s, full, ctx);
+}
+
+const SCREENS = { menu: onMenu, projects: onProjects, path: onPath };
+
+/** A key, to the next state. `state.run` is an argv to run; `state.quit` ends the menu. */
+function update(s, key, ctx) {
+  if (key.ctrl && key.name === 'c') return { ...s, quit: true };
+  return SCREENS[s.screen](s, key, ctx);
+}
+
+module.exports = { ACTIONS, ROWS, defaultsOf, argvFor, commandLine, discover, expand, completeDir, init, update };
