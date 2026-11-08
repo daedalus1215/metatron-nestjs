@@ -889,6 +889,11 @@ resolved; its `studs`, the public methods with their `grip`; and its
 · `calls` (every call site from one brick into another, with its line; on a
 frontend each has a `kind`: `render`, `mount`, `hook`, `context`, `provide`,
 `call` or `http`) · `wiringMeta` (the `wiring` and `studs` coverage counts) ·
+`placement` (a backend's files, one entry per `fileNodes` entry: its `kind`,
+`anchored`, `owned` or `cohesive` (spec 16); its `users`, the files that import
+it, as `fileNodes` indices; and its `owner`, the station whose own folder holds
+it. `null` for a module, a test or the Platform tier) · `placementMeta` (the
+counts of each kind, and `ownFolders`, each station's own folder) ·
 `routes` (a frontend's `<Route>` tree: path, component, parent) · `bridge` (a
 frontend's HTTP calls against its backend: matched, ambiguous, unmatched,
 unread, and the endpoints no call reaches) · `contractMeta` (requests and
