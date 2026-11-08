@@ -9,9 +9,10 @@ tags: [index, roadmap]
 
 # Specs
 
-Fifteen changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
+Eighteen changes. 01–06 were written 2026-08-24 against `4c9d87b`; 07 and 08
 were written 2026-09-17 against `d11ba66`; 09–11 were written 2026-09-26
-(09 against `ca8be31`, 10 against `b319797`, 11 against `5b4f3da`). Numbered by dependency, not by
+(09 against `ca8be31`, 10 against `b319797`, 11 against `5b4f3da`); 16–18
+were written 2026-11-07 against `7dff931`. Numbered by dependency, not by
 importance.
 
 What comes next, before it is a spec, is tracked in
@@ -41,6 +42,9 @@ work lands. One spec per unit of work.
 | 13 | [Stack change](13-stack-change.md) | lens, analysis | 11, 12 |
 | 14 | [The stack in diff, broken calls in check](14-stack-in-diff-and-check.md) | report, gating | 02, 04, 13 |
 | 15 | [Contracts: request and response shapes](15-contracts.md) | analysis | 12, 13, 14 |
+| 16 | [Placement: a file lives with its users](16-placement.md) | analysis, gating | 02, 09 |
+| 17 | [Create a brick, through a model](17-create-a-brick.md) | workbench, editing | 10, 11, 16 |
+| 18 | [Connect bricks, and move what becomes shared](18-connect-and-relocate.md) | workbench, editing | 16, 17 |
 
 ## Suggested order
 
@@ -77,6 +81,13 @@ report.
 **09 opens the next arc**: a class-level model (bricks, sockets, studs)
 that a local workbench server (10) and a change overlay on git ranges and
 PRs (11) will read. It renders nothing on its own.
+
+**16 opens the editing arc.** It states functional cohesion as a check:
+anchored files are placed by role, owned files are never shared between
+peers, and cohesive files live with their users. It reports only. 17 and 18
+edit the code from the workbench: a gesture becomes an intent, whichever
+agent the config names makes the edit, and the scan, not the agent, says
+whether it landed. Both need 16 to know where a file goes.
 
 ## The thread running through the analyses
 
