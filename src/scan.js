@@ -16,6 +16,7 @@ const { wiringOf } = require('./wiring');
 const { reactWiringOf } = require('./react-wiring');
 const { bridgeOf } = require('./bridge');
 const { contractsOf } = require('./contracts');
+const { placementOf } = require('./placement');
 
 // A frontend's linked backend, scanned once and reused until one of its
 // files changes (serve re-scans the frontend on every save).
@@ -1488,6 +1489,10 @@ function scan(cfg, opts = {}) {
     bricks, wires, calls, wiringMeta,
   };
   if (routes) model.routes = routes;
+  // Spec 16: each file's kind, users and owner. Absent when the profile
+  // declares no placement.
+  const placed = placementOf(cfg.placement, fileNodes, fileLinks);
+  if (placed) Object.assign(model, placed);
   // Derived, so it costs nothing extra and travels with a cached model.
   model.violations = violationsOf(model);
   // The scanned text, for the workbench's source panel (spec 10). Not

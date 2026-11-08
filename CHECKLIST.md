@@ -10,10 +10,11 @@ and this list links to it.
   [16](docs/specs/16-placement.md) (a file lives with its users),
   [17](docs/specs/17-create-a-brick.md) (create a brick, through a model)
   and [18](docs/specs/18-connect-and-relocate.md) (connect bricks, and move
-  what becomes shared). Drafts, with no open questions. Spec 16's first
-  increment is done: list-valued `forbidden` rules, the outward rule in the
-  nestjs profile, and `.params.ts` out of the `dto` pattern. Next is its
-  second: users, and each station's own folder, in the model.
+  what becomes shared). Drafts, with no open questions. Spec 16's first two
+  increments are done: the outward rule (list-valued `forbidden`, `.params.ts`
+  out of `dto`), and each file's kind, users and owner in the model, with
+  each station's own folder. Next is the third: layouts, with
+  `inside-station` and `off-layout`.
 - [ ] **Nested shapes in contracts.** Compare one level into a field such as
   `checkItems: CheckItem[]`, so a field renamed inside a nested object is
   caught. Spec 15 stops at the top level.
