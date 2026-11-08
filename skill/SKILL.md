@@ -59,7 +59,10 @@ folder-based overrides against shape-specific names.
 
 **5. Set the flow** if the project's differs from
 `['action','service','transaction-script','repository']`. Skip rules are derived
-from it — do not hand-list violations.
+from it — do not hand-list violations. The profile's `forbidden` list also bars
+the domain and infrastructure from depending on an entry point's DTO, responder
+or swagger file. A project that sets `forbidden` replaces that list, so restate
+the profile's rules alongside its own.
 
 **6. Set `infraModules` and `crossDomainGateways`** so cross-context checks mean
 something: which modules are plumbing, and which patterns a cross-context import
