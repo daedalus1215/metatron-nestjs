@@ -10,7 +10,7 @@ and this list links to it.
   [16](docs/specs/16-placement.md) (a file lives with its users),
   [17](docs/specs/17-create-a-brick.md) (create a brick, through a model)
   and [18](docs/specs/18-connect-and-relocate.md) (connect bricks, and move
-  what becomes shared). Drafts. Spec 16 has one open question, and its first
+  what becomes shared). Drafts, with no open questions. Spec 16's first
   increment (the outward rule) can land on its own.
 - [ ] **Nested shapes in contracts.** Compare one level into a field such as
   `checkItems: CheckItem[]`, so a field renamed inside a nested object is

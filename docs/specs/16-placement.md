@@ -39,7 +39,8 @@ The rule has three kinds of file, not one:
   one transaction script, that is its folder. Used by three, it is
   `transaction-scripts/`, the level above them.
 
-**Measured with a prototype (2026-11-07)** on fresh scans of both backends.
+**Measured with a prototype (2026-11-07)** on fresh scans of both backends,
+after renaming three files to the convention (see Names, not roles, below).
 Users are the files that import a file, leaving out module files
 (registering a provider is wiring, not use), tests and test utilities.
 
@@ -48,13 +49,13 @@ Users are the files that import a file, leaving out module files
 | anchored files | 185 | 92 |
 | … inside another station's folder | **0** | **0** |
 | transaction scripts in one layout | 62/62 | 27/27 |
-| owned files that fit | 80 | 67 |
+| owned files that fit | 80 | 69 |
 | … shared by peers | 7 | 3 |
 | … sitting in a by-kind folder, with one owner | 12 | 5 |
 | … used by the domain or infrastructure (outward) | 12 | 1 |
 | … with no owner among their users | 4 | 0 |
 | cohesive files that fit | 12 | 10 |
-| … shared, living in one consumer's folder | 0 | 3 |
+| … shared, living in one consumer's folder | 0 | 1 |
 | … away from all their users | 1 | 1 |
 
 The anchored half of the rule holds without exception in both trees. The
@@ -134,11 +135,33 @@ A command under `cross-domain-commands/` is anchored, whatever `owned`
 says. This is a separate pattern in the profile (`cross-domain-command`),
 not a special case in the check.
 
-A file metatron could not classify (`other`) is cohesive, and its verdict
-says so. omega's `search-calendar-events.result.ts` and
-`calendar-with-role.type.ts` are reported as shared cohesive files that should
-move up. Classified as projections, they would fit. The verdict ends
-`(unclassified: add a pattern to be sure)` rather than claiming either.
+### Names, not roles
+
+Metatron classifies a file by its name, here as everywhere. A transaction
+script's input is a `.command.ts` and its output a `.projection.ts`, whatever
+the file holds. Three files that did the job under other names were renamed,
+not taught to the profile:
+
+| was | is |
+|---|---|
+| omega `search-calendar-events-TS/search-calendar-events.result.ts` | `search-calendar-events.projection.ts` |
+| omega `fetch-calendars-TS/calendar-with-role.type.ts` | `calendar-with-role.projection.ts` |
+| chronus `update-note-TS/update-note.params.ts` | `update-note.command.ts` |
+
+Before the renames, the two omega files were unclassified, so they were
+taken as cohesive and told to move up, out of their transaction script's
+folder. The chronus file matched the `dto` pattern, which caught every
+`.params.ts`. **The `dto` pattern drops `.params.ts`.** That file was its
+only match in either tree, and it was a command.
+
+So that the next one is caught by name, a file in a station's own folder
+that matches no pattern (`other`) gets its own verdict, `unnamed`, with the
+patterns the station's kind owns as the remedy: "name it as a command or a
+projection, or as a converter, mapper or assembler". There are none in
+either tree after the renames. An unclassified file anywhere else is
+cohesive, and its verdict ends `(unclassified)`. Domain vocabulary such as
+omega's `calendar-role.type.ts` in `domain/entities/` is in no station's own
+folder, so it is cohesive, and it fits.
 
 ### Users
 
@@ -215,6 +238,7 @@ Verdicts:
 | `owned-shared` | a peer uses it, or it sits in a by-kind folder and two or more owners use it | each peer gets its own |
 | `owned-move-in` | it sits in a by-kind folder (`apps/dtos/requests/`) and exactly one owner uses it | move it into that owner's folder |
 | `owned-orphan` | none of its users is of its owner's kind (a projection only a service reads) | none proposed; it is listed |
+| `unnamed` | it is in a station's own folder and matches no pattern | name it as one of the patterns its owner's kind owns, or as a cohesive one |
 
 ### Outward: the domain never depends on an entry point's contract
 
@@ -245,10 +269,9 @@ The remedy, stated in the finding, depends on the direction of the DTO:
 - **A response DTO returned by a remote caller:** the caller returns a domain
   type, and the action maps it.
 
-Measured: 29 imports of 16 DTO files in chronus, and 1 in omega. There is
-one false positive. The `dto` pattern matches every `.params.ts`, and
-chronus's `update-note.params.ts` is not a DTO: it is what
-`UpdateNoteTransactionScript` takes, in its own folder. See Open questions.
+Measured: 29 imports of 16 DTO files in chronus, and 1 in omega. Before
+`update-note.params.ts` was renamed, it was a 30th, and a false positive
+(Names, not roles).
 
 Adding the rule to the profile adds those imports to the next `check` as
 new violations. `baseline --update` accepts them, as with any new rule.
@@ -291,8 +314,9 @@ move is proposed.
 
 ## Increments
 
-1. The outward rule: list-valued `from` and `to` in `forbidden`, and the
-   rule in the nestjs profile. It stands alone and can land first.
+1. The outward rule: list-valued `from` and `to` in `forbidden`, the rule in
+   the nestjs profile, and `.params.ts` out of the `dto` pattern. It stands
+   alone and can land first.
 2. Users, and each station's own folder, in the model.
 3. Layouts, with their shares, and the `inside-station` and `off-layout`
    verdicts.
@@ -312,7 +336,10 @@ one projection filled by a repository, and so on.
 - The 0s hold on both trees: no anchored file inside another station's
   folder.
 - omega's `RecurringEventToDomainConverter` is `cohesive-move-up`, and its
-  home is `calendar-events/domain/transaction-scripts/`.
+  home is `calendar-events/domain/transaction-scripts/`. It is the only
+  `cohesive-move-up` in either tree.
+- A fixture file `foo.result.ts` in a transaction script's own folder is
+  `unnamed`, and none is in either tree.
 - chronus's two shared projections and `get-note-by-id.responder.ts` are
   `owned-shared`.
 - chronus's 11 transaction-script commands and omega's 23 fit, though the
@@ -326,34 +353,6 @@ one projection filled by a repository, and so on.
 - The outward rule flags chronus's 16 DTO files used by the domain and
   omega's `create-user.request.dto.ts`, each with its `why`. It does not
   flag a service building its transaction script's command.
-
-## Open questions
-
-1. **A transaction script's input and output under other names.** Most are
-   named `.command.ts` and `.projection.ts`. Three, in the transaction
-   script's own folder, are not:
-
-   | file | what it is | read by |
-   |---|---|---|
-   | omega `search-calendar-events.result.ts` | what `SearchCalendarEventsTransactionScript` returns | the script, `CalendarEventService`, the action's responder |
-   | omega `calendar-with-role.type.ts` | what `FetchCalendarsTransactionScript` returns | the script, `CalendarService` |
-   | chronus `update-note.params.ts` | what `UpdateNoteTransactionScript` takes | the script, its converter |
-
-   By role, the first two are projections and the third is a command. By
-   name they are not. As unclassified files, the first two get
-   `cohesive-move-up`, which would be wrong. The third is matched as a DTO,
-   so the outward rule flags it. Either:
-
-   - **rename them to the convention** (`.projection.ts`, `.command.ts`),
-     and placement reports a type file in a station's own folder that is
-     named as nothing as `unnamed`, with the rename as the remedy; or
-   - **widen the patterns**: `.result.ts` and a transaction script's
-     `.type.ts` as projections, and `.params.ts` as a command, not a DTO.
-
-   `calendar-role.type.ts` and `invitation-status.type.ts` in omega's
-   `domain/entities/` are not part of this. They are domain vocabulary,
-   used by entities, DTOs and infrastructure alike, and they fit where they
-   are.
 
 ## Out of scope
 
