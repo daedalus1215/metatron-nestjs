@@ -74,8 +74,8 @@ reason: the `why` of the `forbidden` rule, or of the derived skip rule.
 
 | below | offered (abridged) | not offered, and why |
 |---|---|---|
-| a service | transaction script, aggregator; converter, mapper, assembler; cache; entity, port; util | repository, remote caller: *Service reaches Repository directly, skipping Transaction Script*. Service: same level (`noSameLevel`). Action, guard: upstream |
-| a transaction script | repository, remote caller, cache; converter, mapper, assembler; command, projection (owned); entity, port; util | service: *Transaction Script calls upward into a Service*. Transaction script: same level. Aggregator, action: upstream |
+| a service | transaction script, aggregator; converter, mapper, assembler; cache; entity, port; util | repository, remote caller: *Service reaches Repository directly, skipping Transaction Script*. DTO, responder: *The domain depends on an entry point's contract* (spec 16). Service: same level (`noSameLevel`). Action, guard: upstream |
+| a transaction script | repository, remote caller, cache; converter, mapper, assembler; command, projection (owned); entity, port; util | service: *Transaction Script calls upward into a Service*. DTO, responder: *The domain depends on an entry point's contract*. Transaction script: same level. Aggregator, action: upstream |
 | an action | service; DTO, responder, swagger (owned); converter, mapper | transaction script: *Action reaches Transaction Script directly, skipping Service*. Repository: the same, skipping two |
 
 Modules, configs and strategies are never offered: they wire bricks
@@ -258,14 +258,19 @@ can send a request to `127.0.0.1`. So:
 - Without `--edit`, every write endpoint answers 405. With it, a request with
   no token, or a foreign `Origin`, is refused.
 
-## Open questions
+## North star
 
-1. **Add above** (a new caller of an existing brick, such as a new action
-   over a service) is the same palette, read the other way. Is it needed in
-   this spec, or is **add below** enough to start?
-2. **A vertical slice in one gesture**: action, then service method, then
-   transaction script, command and projection. That is several intents in
-   order. Is it a later spec, or the first thing worth having?
+Two gestures are wanted and left for later:
+
+- **Add above:** a new caller of an existing brick, such as a new action over
+  a service. It is the same palette, read the other way.
+- **A vertical slice in one gesture:** an action, its service method, the
+  transaction script, and its command and projection. That is several
+  intents in order, each one's verdict gating the next.
+
+Nothing in this spec should make either harder. The palette is a function of
+a pair of patterns, so it can be asked in either direction. The intent is
+the unit of work, so a slice is a list of intents, with a verdict for each.
 
 ## Out of scope
 
