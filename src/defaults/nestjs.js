@@ -74,7 +74,10 @@ module.exports = {
     { id: 'port', tier: 'Domain Model', test: /\.port\.ts$|\/ports\// },
 
     { id: 'dto', tier: 'Contract', test: /\.dto\.ts$|\/dtos?\// },
-    { id: 'command', tier: 'Contract', test: /\.command\.ts$|cross-domain-commands/ },
+    // The sanctioned way across contexts, like a port: anchored, not owned by
+    // a transaction script (spec 16).
+    { id: 'cross-domain-command', tier: 'Contract', test: /cross-domain-commands\// },
+    { id: 'command', tier: 'Contract', test: /\.command\.ts$/ },
     { id: 'event', tier: 'Contract', test: /\.event\.ts$/ },
 
     { id: 'strategy', tier: 'Wiring', test: /\.strategy\.ts$/ },
@@ -163,6 +166,29 @@ module.exports = {
   couplingMaxFiles: 25,
   couplingMinChanges: 5,
   couplingMinDegree: 0.3,
+
+  /**
+   * Where a file lives against the code that uses it (spec 16).
+   * `anchored` patterns are placed by role, at a level of the domain, and are
+   * the stations. `owned` maps a pattern to the station kinds that own it: it
+   * belongs to one, and is never shared between two. Every other pattern is
+   * cohesive, and lives in the nearest folder holding all its users.
+   * `ignore` patterns are neither placed nor counted as users: registering a
+   * provider is wiring, and a test is not a use.
+   */
+  placement: {
+    anchored: ['action', 'controller', 'resolver', 'service', 'transaction-script',
+      'repository', 'remote-caller', 'aggregator', 'port', 'entity', 'guard',
+      'listener', 'gateway', 'cache', 'cross-domain-command'],
+    owned: {
+      dto: ['action', 'controller', 'resolver'],
+      swagger: ['action', 'controller', 'resolver'],
+      responder: ['action', 'controller', 'resolver'],
+      command: ['transaction-script'],
+      projection: ['transaction-script'],
+    },
+    ignore: ['module', 'spec', 'test-util', 'migration', 'bootstrap'],
+  },
 
   /** Naming conventions to flag when a file deviates. */
   naming: [
