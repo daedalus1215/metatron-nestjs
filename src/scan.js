@@ -1181,7 +1181,12 @@ function scan(cfg, opts = {}) {
     : files.filter((f) => !reach.has(f) && !IGNORE_ORPHAN.has(info[f].pattern));
 
   // ---- findings
-  const pairs = (fp, tp) => fileEdges.filter((e) => info[e.from] && info[e.to] && info[e.from].pattern === fp && info[e.to].pattern === tp);
+  // A rule's `from` and `to` are each a pattern or a list of them.
+  const pairs = (fp, tp) => {
+    const from = new Set([].concat(fp)), to = new Set([].concat(tp));
+    return fileEdges.filter((e) => info[e.from] && info[e.to] && from.has(info[e.from].pattern) && to.has(info[e.to].pattern));
+  };
+  const patternsOf = (x) => (Array.isArray(x) ? (x.length === 1 ? x[0] : `{${x.join(',')}}`) : x);
   const findings = [];
 
   const nonGateway = crossDomain.filter((e) => !(cfg.crossDomainGateways || []).includes(e.tp));
@@ -1238,7 +1243,7 @@ function scan(cfg, opts = {}) {
     detail: 'Layering holds in the direction the rules require.',
     items: upward.length
       ? upward.map((u) => `${u.why}: ${u.from} -> ${u.to}`)
-      : (cfg.forbidden || []).map((r) => `${r.from} -> ${r.to}: 0`),
+      : (cfg.forbidden || []).map((r) => `${patternsOf(r.from)} -> ${patternsOf(r.to)}: 0`),
     instances: upward.map((u) => ({ from: u.from, to: u.to })),
   });
 

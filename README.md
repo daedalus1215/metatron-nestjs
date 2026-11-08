@@ -721,7 +721,7 @@ Working on metatron itself: `npm test` runs the fixture suite.
 | `tiers` | the architectural layers, ordered as a request travels. |
 | `flow` | the intended call path. Violation rules are derived from it. |
 | `flowAliases` | other patterns that count as the same station. |
-| `forbidden` | imports that must never go a given direction. |
+| `forbidden` | imports that must never go a given direction: `{ from, to, why }`, where `from` and `to` are each a pattern or a list of them. Given, it replaces the profile's list. |
 | `noSameLevel` | patterns that must not inject their own kind. |
 | `infraModules` | modules that are plumbing, not bounded contexts. |
 | `crossDomainGateways` | the only patterns a cross-context import may land on. |
@@ -740,6 +740,20 @@ flow: ['action', 'service', 'transaction-script', 'repository'],
 
 and metatron derives the violations: jumping one station is a warning, two or
 more is critical. You never hand-list them.
+
+**The domain points in.** Besides three upward calls, the `nestjs` profile
+forbids the domain and infrastructure depending on an entry point's contract:
+
+```js
+{ from: ['service', 'aggregator', 'transaction-script', 'repository', 'hydrator',
+         'remote-caller', 'cache', 'entity', 'port'],
+  to: ['dto', 'responder', 'swagger'],
+  why: "The domain depends on an entry point's contract, pointing out at the apps layer" },
+```
+
+A service taking an action's request DTO breaks it. The action turns its DTO
+into the transaction script's command, and its responder builds the response
+DTO from the projection. Commands are not in `to`: a service builds one.
 
 **Shape beats location.** A `*.converter.ts` inside a services folder is a
 converter. Patterns are tested in order, so put shape-specific names first —
