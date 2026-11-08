@@ -73,7 +73,7 @@ module.exports = {
     { id: 'schema', tier: 'Domain Model', test: /\.schema\.ts$/ },
     { id: 'port', tier: 'Domain Model', test: /\.port\.ts$|\/ports\// },
 
-    { id: 'dto', tier: 'Contract', test: /\.dto\.ts$|\.params\.ts$|\/dtos?\// },
+    { id: 'dto', tier: 'Contract', test: /\.dto\.ts$|\/dtos?\// },
     { id: 'command', tier: 'Contract', test: /\.command\.ts$|cross-domain-commands/ },
     { id: 'event', tier: 'Contract', test: /\.event\.ts$/ },
 
@@ -100,6 +100,15 @@ module.exports = {
     { from: 'transaction-script', to: 'service', why: 'Transaction Script calls upward into a Service' },
     { from: 'repository', to: 'transaction-script', why: 'Repository calls upward into a Transaction Script' },
     { from: 'aggregator', to: 'service', why: 'Aggregator calls upward into a Service' },
+    // The domain is pointed at, never points out. An action turns its DTO into
+    // the transaction script's command, and its responder builds the response
+    // DTO from the projection. Commands are not here: a service builds one.
+    {
+      from: ['service', 'aggregator', 'transaction-script', 'repository', 'hydrator',
+        'remote-caller', 'cache', 'entity', 'port'],
+      to: ['dto', 'responder', 'swagger'],
+      why: "The domain depends on an entry point's contract, pointing out at the apps layer",
+    },
   ],
 
   /** Patterns that must not inject their own kind (no same-level injection). */

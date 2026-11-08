@@ -52,3 +52,42 @@ test('with nothing broken, each rule is listed with its patterns', () => {
   assert.strictEqual(upward(m).tone, 'good');
   assert.deepStrictEqual(upward(m).items, ['{repository,cache} -> {dto,swagger}: 0', 'aggregator -> service: 0']);
 });
+
+// ------------------------------------------------- the nestjs profile's outward rule
+const OUTWARD = "The domain depends on an entry point's contract, pointing out at the apps layer";
+const profile = () => cfgWith(nestjs.forbidden);
+const outward = (m) => upward(m).instances.filter((_, i) => upward(m).items[i].startsWith(OUTWARD))
+  .map((i) => [i.from, i.to]).sort();
+
+test('the domain and infrastructure may not depend on an entry point\'s DTO', () => {
+  const m = scan(profile(), { files: Object.assign({}, TREE, {
+    'notes/apps/actions/get-note-action/note.response.dto.ts': 'export class NoteResponseDto { id!: string; }\n',
+    'notes/infra/repositories/note.repository.ts': `import { NoteResponseDto } from '../../apps/actions/get-note-action/note.response.dto';
+export class NoteRepository { find(): NoteResponseDto { return { id: '1' }; } }
+`,
+  }) });
+  assert.deepStrictEqual(outward(m), [
+    ['notes/domain/services/note.service.ts', DTO],
+    [`${TS}/update-note.transaction.script.ts`, DTO],
+    ['notes/infra/repositories/note.repository.ts', 'notes/apps/actions/get-note-action/note.response.dto.ts'],
+  ].sort());
+});
+
+test('an action using its DTO, and a service building a command, point in', () => {
+  const m = scan(profile(), { files: TREE });
+  const froms = outward(m).map(([from]) => from);
+  assert.ok(!froms.includes('notes/apps/actions/update-note-action/update-note.action.ts'));
+  assert.ok(!outward(m).some(([, to]) => to.endsWith('.command.ts')));
+});
+
+test('a .params.ts file is not a DTO, so a transaction script may take its own', () => {
+  const params = `${TS}/update-note.params.ts`;
+  const m = scan(profile(), { files: {
+    [params]: 'export type UpdateNoteParams = { name?: string };\n',
+    [`${TS}/update-note.transaction.script.ts`]: `import { UpdateNoteParams } from './update-note.params';
+export class UpdateNoteTransactionScript { apply(p: UpdateNoteParams) { return p; } }
+`,
+  } });
+  assert.notStrictEqual(m.fileNodes.find((n) => n.f === params).p, 'dto');
+  assert.deepStrictEqual(outward(m), []);
+});
