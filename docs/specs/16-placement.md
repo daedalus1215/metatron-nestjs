@@ -80,6 +80,13 @@ cases the rule is for:
   `event-reminder.response.dto.ts` (2) in omega.
 - **DTOs in a by-kind folder** such as `notes/apps/dtos/requests/`, used by
   one action: 12 in chronus, 5 in omega. Each belongs in its action's folder.
+- **The domain using an action's DTO.** `TagService` and
+  `UpdateTagTransactionScript` take `update-tag.dto.ts`, three transaction
+  scripts build `tag.response.dto.ts`, and `hermes.remote-caller.ts` returns
+  `audio.response.dto.ts`. In all, 29 imports of 16 DTO files in chronus,
+  and `UsersService` taking `create-user.request.dto.ts` in omega. The
+  domain points out at the apps layer. That is a direction rule rather than
+  a placement one, so it goes in `forbidden` (see Outward, below).
 
 Two things the prototype got wrong, and what the real check must do:
 
@@ -196,8 +203,10 @@ folder, a user is one of three things:
 - **a peer**: it belongs to another station of the owner's kind. That
   breaks the rule.
 - **outward**: the domain or infrastructure depending on an entry point's
-  own file, for example a service taking an action's request DTO. See
-  Open questions.
+  own file, for example a service taking an action's request DTO. That
+  breaks the rule that the domain is pointed at and never points out. It is
+  reported by a `forbidden` rule (Outward, below), not by a placement
+  verdict.
 
 Verdicts:
 
@@ -205,8 +214,44 @@ Verdicts:
 |---|---|---|
 | `owned-shared` | a peer uses it, or it sits in a by-kind folder and two or more owners use it | each peer gets its own |
 | `owned-move-in` | it sits in a by-kind folder (`apps/dtos/requests/`) and exactly one owner uses it | move it into that owner's folder |
-| `owned-outward` | the domain or infrastructure uses an entry point's file | see Open questions |
 | `owned-orphan` | none of its users is of its owner's kind (a projection only a service reads) | none proposed; it is listed |
+
+### Outward: the domain never depends on an entry point's contract
+
+The nestjs profile gains one `forbidden` rule:
+
+```js
+{ from: ['service', 'aggregator', 'transaction-script', 'repository',
+         'hydrator', 'remote-caller', 'cache', 'entity', 'port'],
+  to: ['dto', 'responder', 'swagger'],
+  why: "The domain depends on an entry point's contract, pointing out at the apps layer" },
+```
+
+`from` and `to` accept a list, which is new. A string still works. The
+rule is a `forbidden` rule rather than a placement verdict so that `check`
+enforces it the way it enforces the upward rules, and so that spec 17's
+palette greys out "DTO below a service" with this `why`. The Contract tier
+sits above the domain, so these are reported with the upward calls.
+
+Commands are not in `to`. A service builds its transaction script's
+command, and that points in.
+
+The remedy, stated in the finding, depends on the direction of the DTO:
+
+- **A request DTO taken by the domain:** the action turns it into the
+  transaction script's command, or into the service's arguments.
+- **A response DTO built by the domain:** the transaction script returns its
+  projection, and the action's responder builds the DTO from it.
+- **A response DTO returned by a remote caller:** the caller returns a domain
+  type, and the action maps it.
+
+Measured: 29 imports of 16 DTO files in chronus, and 1 in omega. There is
+one false positive. The `dto` pattern matches every `.params.ts`, and
+chronus's `update-note.params.ts` is not a DTO: it is what
+`UpdateNoteTransactionScript` takes, in its own folder. See Open questions.
+
+Adding the rule to the profile adds those imports to the next `check` as
+new violations. `baseline --update` accepts them, as with any new rule.
 
 ### Cohesive: the nearest folder holding all its users
 
@@ -228,7 +273,7 @@ move is proposed.
 
 - **`scan`** prints one line under `wiring`:
   ```
-  placement anchored 185/185 · owned 80 fit, 7 shared, 12 move in, 12 outward, 4 orphan · cohesive 12 fit, 1 away
+  placement anchored 185/185 · owned 80 fit, 7 shared, 12 move in, 4 orphan · cohesive 12 fit, 1 away
   ```
   Each breaking file is listed under the line, the way contract drift is.
 - **`model.json`** gets `placement`: per file, `{ kind, owner, home,
@@ -246,15 +291,17 @@ move is proposed.
 
 ## Increments
 
-1. Users, and each station's own folder, in the model.
-2. Layouts, with their shares, and the `inside-station` and `off-layout`
+1. The outward rule: list-valued `from` and `to` in `forbidden`, and the
+   rule in the nestjs profile. It stands alone and can land first.
+2. Users, and each station's own folder, in the model.
+3. Layouts, with their shares, and the `inside-station` and `off-layout`
    verdicts.
-3. Owned verdicts.
-4. Cohesive verdicts.
-5. Violations, and the `scan` line with its list.
-6. `diff` and the change map.
-7. The inspector.
-8. README and skill.
+4. Owned verdicts.
+5. Cohesive verdicts.
+6. Violations, and the `scan` line with its list.
+7. `diff` and the change map.
+8. The inspector.
+9. README and skill.
 
 Each increment has fixture tests in a small tree built for the verdict: one
 converter shared by two transaction scripts, one DTO shared by two actions,
@@ -276,20 +323,37 @@ one projection filled by a repository, and so on.
   reported off one.
 - A fixture change that makes a second transaction script import a
   converter from the first one's folder shows `cohesive-move-up` in `diff`.
+- The outward rule flags chronus's 16 DTO files used by the domain and
+  omega's `create-user.request.dto.ts`, each with its `why`. It does not
+  flag a service building its transaction script's command.
 
 ## Open questions
 
-1. **Outward DTOs.** In chronus, 12 request or response DTOs owned by an
-   action are also used by the domain: a service or transaction script takes
-   the action's DTO, or a remote caller builds it (`update-tag.dto.ts`,
-   `merge-notes.request.dto.ts`, `audio.response.dto.ts`). omega has 1. If the
-   domain should not depend on the apps layer, these are violations, and
-   the action should turn its DTO into the transaction script's command. If
-   this is accepted practice, `owned-outward` is dropped. The 12 are listed by
-   the prototype.
-2. **Unclassified type files in a transaction script's folder**
-   (`.result.ts`, `.type.ts`). Should they be projection patterns in the
-   profile, or left to each project's config?
+1. **A transaction script's input and output under other names.** Most are
+   named `.command.ts` and `.projection.ts`. Three, in the transaction
+   script's own folder, are not:
+
+   | file | what it is | read by |
+   |---|---|---|
+   | omega `search-calendar-events.result.ts` | what `SearchCalendarEventsTransactionScript` returns | the script, `CalendarEventService`, the action's responder |
+   | omega `calendar-with-role.type.ts` | what `FetchCalendarsTransactionScript` returns | the script, `CalendarService` |
+   | chronus `update-note.params.ts` | what `UpdateNoteTransactionScript` takes | the script, its converter |
+
+   By role, the first two are projections and the third is a command. By
+   name they are not. As unclassified files, the first two get
+   `cohesive-move-up`, which would be wrong. The third is matched as a DTO,
+   so the outward rule flags it. Either:
+
+   - **rename them to the convention** (`.projection.ts`, `.command.ts`),
+     and placement reports a type file in a station's own folder that is
+     named as nothing as `unnamed`, with the rename as the remedy; or
+   - **widen the patterns**: `.result.ts` and a transaction script's
+     `.type.ts` as projections, and `.params.ts` as a command, not a DTO.
+
+   `calendar-role.type.ts` and `invitation-status.type.ts` in omega's
+   `domain/entities/` are not part of this. They are domain vocabulary,
+   used by entities, DTOs and infrastructure alike, and they fit where they
+   are.
 
 ## Out of scope
 
